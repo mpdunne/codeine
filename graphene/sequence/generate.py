@@ -24,7 +24,7 @@ class SequenceGenerator:
         node = initial_node
         sequence = ''
         while True:
-            codon = random.choice(node.codons)
+            codon = node.sample_codon()
             sequence += codon
             if node.terminal:
                 return sequence

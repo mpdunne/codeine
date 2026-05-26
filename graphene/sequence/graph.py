@@ -1,4 +1,7 @@
+import uuid
+
 from graphene.translation.tables import CodonTable
+from graphene.utils.sampling import Sampler
 
 
 class CodonNode:
@@ -18,12 +21,28 @@ class CodonNode:
         """
         self.pos = pos
         self.aa = aa
+
+        # These will be set separately.
         self.codons = []
+        self.probabilities = []
         self.transitions = {}
         self.terminal = False
+        self.sampler = None
+
+        # Set an ID for this node.
+        self.id = f"{aa}{pos}-{uuid.uuid4().hex[:8]}"
+
+    def sample_codon(self):
+        if self.sampler is None:
+            raise ValueError(f"No sampler initialised for node {self.id}.")
+
+        return self.sampler.sample()
 
 
 class CodonGraph:
+    """
+    Class representing a graph of codon nodes.
+    """
     def __init__(self, aa_seq: str):
         if len(aa_seq) == 0:
             raise ValueError('Please provide non-empty sequence!')
@@ -41,6 +60,8 @@ class CodonGraph:
         for pos, aa in enumerate(self.aa_seq):
             node = CodonNode(pos, aa)
             node.codons = self.ct.aa_to_codons[aa]
+            node.probabilities = [1] * len(node.codons)
+            node.sampler = Sampler(node.codons, node.probabilities)
             nodes.append(node)
 
         self._initial_node = nodes[0]
