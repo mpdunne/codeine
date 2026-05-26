@@ -32,12 +32,12 @@ class SequenceGenerator:
         """
         initial_node = self.graph.initial_node
         node = initial_node
-        sequence = ''
+        codons = []
         while True:
             codon = node.sample_codon()
-            sequence += codon
+            codons.append(codon)
             if node.terminal:
-                return sequence
+                return ''.join(codons)
             else:
                 next_node = node.transitions[codon]
                 node = next_node

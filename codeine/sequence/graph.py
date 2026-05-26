@@ -46,9 +46,6 @@ class CodonNode:
         -------
         A sampled codon.
         """
-        if self.sampler is None:
-            raise ValueError(f"No sampler initialised for node {self.id}.")
-
         return self.sampler.sample()
 
 
