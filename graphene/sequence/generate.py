@@ -1,4 +1,4 @@
-import random
+from typing import Dict, Optional
 
 from graphene.sequence.graph import CodonGraph
 
@@ -8,7 +8,10 @@ class SequenceGenerator:
     Basic coding sequence generator, using a coding sequence graph.
     """
 
-    def __init__(self, aa_seq: str) -> None:
+    def __init__(self,
+                 aa_seq: str,
+                 fixed_codons: Optional[Dict[int, str]] = None,
+                 ) -> None:
         """
         Constructor for the SequenceGenerator class.
 
@@ -17,7 +20,7 @@ class SequenceGenerator:
         aa_seq:
             The amino acid sequence.
         """
-        self.graph = CodonGraph(aa_seq)
+        self.graph = CodonGraph(aa_seq, fixed_codons)
 
     def generate(self) -> str:
         """
