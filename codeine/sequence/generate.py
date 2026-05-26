@@ -1,6 +1,6 @@
 from typing import Dict, Optional
 
-from graphene.sequence.graph import CodonGraph
+from codeine.sequence.graph import CodonGraph
 
 
 class SequenceGenerator:

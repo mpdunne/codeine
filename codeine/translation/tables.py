@@ -1,3 +1,5 @@
+from typing import Dict
+
 from Bio.Data import CodonTable as TranslationTable
 
 
@@ -7,6 +9,9 @@ class CodonTable:
     """
 
     def __init__(self) -> None:
+        """
+        Constructor for the codon table class.
+        """
         dna_to_aa = TranslationTable.unambiguous_dna_by_name["Standard"].forward_table
         aa_to_dna = {}
         for codon, aa in dna_to_aa.items():
@@ -19,13 +24,13 @@ class CodonTable:
         self._codon_probabilities = codon_probabilities
 
     @property
-    def codons_to_aa(self):
+    def codons_to_aa(self) -> Dict[str, str]:
         return self._dna_to_aa
 
     @property
-    def aa_to_codons(self):
+    def aa_to_codons(self) -> Dict[str, str]:
         return self._aa_to_dna
 
     @property
-    def codon_probabilities(self):
+    def codon_probabilities(self) -> Dict[str, float]:
         return self._codon_probabilities

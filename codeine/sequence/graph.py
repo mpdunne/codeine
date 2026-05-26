@@ -1,7 +1,7 @@
 import uuid
 
-from graphene.translation.tables import CodonTable
-from graphene.utils.sampling import Sampler
+from codeine.translation.tables import CodonTable
+from codeine.utils.sampling import Sampler
 
 from typing import Dict, List, Optional
 
