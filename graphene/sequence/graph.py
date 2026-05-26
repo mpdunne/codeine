@@ -3,12 +3,14 @@ import uuid
 from graphene.translation.tables import CodonTable
 from graphene.utils.sampling import Sampler
 
+from typing import List
+
 
 class CodonNode:
     """
     Basic class representing a node on the codon graph.
     """
-    def __init__(self, pos: int, aa: str):
+    def __init__(self, pos: int, aa: str, codons: List[str]) -> None:
         """
         Constructor for the CodonNode class
 
@@ -19,20 +21,29 @@ class CodonNode:
         aa
             The aa identity.
         """
+        # Basic info
         self.pos = pos
         self.aa = aa
-
-        # These will be set separately.
-        self.codons = []
-        self.probabilities = []
-        self.transitions = {}
-        self.terminal = False
-        self.sampler = None
 
         # Set an ID for this node.
         self.id = f"{aa}{pos}-{uuid.uuid4().hex[:8]}"
 
-    def sample_codon(self):
+        # Initialise the sampler.
+        self.codons = codons
+        self.probabilities = [1] * len(codons)
+        self.sampler = Sampler(self.codons, self.probabilities)
+
+        # Graph stuff.
+        self.terminal = False
+
+    def sample_codon(self) -> str:
+        """
+        Sample a codon according to the stored weights!
+
+        Returns
+        -------
+        A sampled codon.
+        """
         if self.sampler is None:
             raise ValueError(f"No sampler initialised for node {self.id}.")
 
@@ -43,7 +54,15 @@ class CodonGraph:
     """
     Class representing a graph of codon nodes.
     """
-    def __init__(self, aa_seq: str):
+    def __init__(self, aa_seq: str) -> None:
+        """
+        Constructor for the CodonGraph class.
+
+        Parameters
+        ----------
+        aa_seq:
+            The amino acid sequence being represented.
+        """
         if len(aa_seq) == 0:
             raise ValueError('Please provide non-empty sequence!')
 
@@ -54,14 +73,20 @@ class CodonGraph:
         self._initial_node = None
         self.initialise_graph()
 
-    def initialise_graph(self):
+    def initialise_graph(self) -> None:
+        """
+        Initialise the codon graph.
+
+        Returns
+        -------
+        None
+        """
 
         nodes = []
-        for pos, aa in enumerate(self.aa_seq):
-            node = CodonNode(pos, aa)
-            node.codons = self.ct.aa_to_codons[aa]
-            node.probabilities = [1] * len(node.codons)
-            node.sampler = Sampler(node.codons, node.probabilities)
+        for ix, aa in enumerate(self.aa_seq):
+            pos = ix + 1
+            codons = self.ct.aa_to_codons[aa]
+            node = CodonNode(pos, aa, codons)
             nodes.append(node)
 
         self._initial_node = nodes[0]
@@ -76,4 +101,11 @@ class CodonGraph:
 
     @property
     def initial_node(self) -> CodonNode:
+        """
+        The initial node in the graph. There's always only one initial node!
+
+        Returns
+        -------
+        The initial node.
+        """
         return self._initial_node

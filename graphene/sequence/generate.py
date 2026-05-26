@@ -8,7 +8,7 @@ class SequenceGenerator:
     Basic coding sequence generator, using a coding sequence graph.
     """
 
-    def __init__(self, aa_seq: str):
+    def __init__(self, aa_seq: str) -> None:
         """
         Constructor for the SequenceGenerator class.
 
@@ -19,7 +19,14 @@ class SequenceGenerator:
         """
         self.graph = CodonGraph(aa_seq)
 
-    def generate(self):
+    def generate(self) -> str:
+        """
+        Generate a DNA coding sequence for the given amino acid sequence!
+
+        Returns
+        -------
+        A valid coding sequence.
+        """
         initial_node = self.graph.initial_node
         node = initial_node
         sequence = ''

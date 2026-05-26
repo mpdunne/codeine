@@ -6,7 +6,7 @@ class CodonTable:
     Basic CodonTable class, using the standard translation table with DNA and uniform probabilites.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         dna_to_aa = TranslationTable.unambiguous_dna_by_name["Standard"].forward_table
         aa_to_dna = {}
         for codon, aa in dna_to_aa.items():
