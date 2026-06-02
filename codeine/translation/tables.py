@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Dict, List
 
 from Bio.Data import CodonTable as TranslationTable
 
@@ -28,9 +28,9 @@ class CodonTable:
         return self._dna_to_aa
 
     @property
-    def aa_to_codons(self) -> Dict[str, str]:
+    def aa_to_codons(self) -> Dict[str, List[str]]:
         return self._aa_to_dna
 
     @property
-    def codon_probabilities(self) -> Dict[str, float]:
+    def codon_probabilities(self) -> Dict[str, Dict[str, float]]:
         return self._codon_probabilities
