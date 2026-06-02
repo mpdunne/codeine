@@ -20,7 +20,7 @@ class SequenceGenerator:
         aa_seq:
             The amino acid sequence.
         """
-        self.graph = CodonGraph(aa_seq, fixed_codons)
+        self.graph = CodonGraph(aa_seq, fixed_codons=fixed_codons)
 
     def generate(self) -> str:
         """
