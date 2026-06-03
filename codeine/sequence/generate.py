@@ -10,7 +10,7 @@ class SequenceGenerator:
 
     def __init__(self,
                  aa_seq: str,
-                 fixed_codons: Optional[Dict[int, str]] = None,
+                 codon_restrictions: Optional[Dict[int, str]] = None,
                  ) -> None:
         """
         Constructor for the SequenceGenerator class.
@@ -20,7 +20,7 @@ class SequenceGenerator:
         aa_seq:
             The amino acid sequence.
         """
-        self.graph = CodonGraph(aa_seq, fixed_codons=fixed_codons)
+        self.graph = CodonGraph(aa_seq, codon_restrictions=codon_restrictions)
 
     def generate(self) -> str:
         """
@@ -41,3 +41,31 @@ class SequenceGenerator:
             else:
                 next_node = node.transitions[codon]
                 node = next_node
+
+    def pin_codons(self, pinned_codons):
+        """
+        Pin (temporarily fix) a codon in the codon graph.
+
+        Parameters
+        ----------
+        pinned_codons:
+            A dict specifying which codons to pin, by pos: codon
+        """
+        self.graph.pin_codons(pinned_codons)
+
+    def unpin_codons(self, positions):
+        """
+        Unpin codon nodes by pos.
+
+        Parameters
+        ----------
+        positions:
+            A list of positions
+        """
+        self.graph.unpin_codons(positions)
+
+    def clear_pins(self):
+        """
+        Remove all codon pins from the generator.
+        """
+        self.graph.clear_pins()
