@@ -3,7 +3,10 @@ import uuid
 from codeine.translation.tables import CodonTable
 from codeine.utils.sampling import Sampler
 
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Sequence, Union
+
+
+CodonRestriction = Union[str, Sequence[str]]
 
 
 class CodonNode:
@@ -57,37 +60,47 @@ class CodonGraph:
     def __init__(
         self,
         aa_seq: str,
-        fixed_codons: Optional[Dict[int, str]] = None,
+        codon_restrictions: Optional[Dict[int, CodonRestriction]] = None,
     ) -> None:
         if len(aa_seq) == 0:
             raise ValueError('Please provide non-empty sequence!')
 
         self.aa_seq = aa_seq.upper()
-        self.fixed_codons = fixed_codons or {}
+        self.codon_restrictions = codon_restrictions or {}
         self.ct = CodonTable()
 
         self.nodes = []
         self._initial_node = None
 
-        self._validate_fixed_codons()
+        self._validate_codon_restrictions()
         self.initialise_graph()
 
-    def _validate_fixed_codons(self) -> None:
+    def _validate_codon_restrictions(self) -> None:
         """
-        Check the inputted fixed codons make sense!
+        Check the inputted codon restrictions make sense!
         """
-        for pos, codon in self.fixed_codons.items():
+        for pos, codon_restriction in self.codon_restrictions.items():
             if pos < 1 or pos > len(self.aa_seq):
-                raise ValueError(f"Fixed codon position {pos} is out of range.")
+                raise ValueError(f"Codon restriction position {pos} is out of range.")
 
-            codon = codon.upper()
+            if isinstance(codon_restriction, str):
+                codons = [codon_restriction]
+            else:
+                codons = list(codon_restriction)
+
+            if len(codons) == 0:
+                raise ValueError(f"Codon restriction at position {pos} cannot be empty.")
+
+            codons = [codon.upper() for codon in codons]
+
             aa = self.aa_seq[pos - 1]
             allowed_codons = self.ct.aa_to_codons[aa]
 
-            if codon not in allowed_codons:
-                raise ValueError(f'Codon {codon} is not valid for amino acid {aa} at position {pos}.')
+            for codon in codons:
+                if codon not in allowed_codons:
+                    raise ValueError(f'Codon {codon} is not valid for amino acid {aa} at position {pos}.')
 
-            self.fixed_codons[pos] = codon
+            self.codon_restrictions[pos] = codons
 
     def initialise_graph(self) -> None:
         """
@@ -97,8 +110,8 @@ class CodonGraph:
 
         for ix, aa in enumerate(self.aa_seq):
             pos = ix + 1
-            if pos in self.fixed_codons:
-                codons = [self.fixed_codons[pos]]
+            if pos in self.codon_restrictions:
+                codons = self.codon_restrictions[pos]
             else:
                 codons = self.ct.aa_to_codons[aa]
 
