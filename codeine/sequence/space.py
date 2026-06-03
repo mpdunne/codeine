@@ -3,9 +3,9 @@ from typing import Dict, Optional
 from codeine.sequence.graph import CodonGraph
 
 
-class SequenceGenerator:
+class SequenceSpace:
     """
-    Basic coding sequence generator, using a coding sequence graph.
+    Class representing coding sequence space, for sampling and mutating CDS coding sequences.
     """
 
     def __init__(self,
@@ -13,7 +13,7 @@ class SequenceGenerator:
                  codon_restrictions: Optional[Dict[int, str]] = None,
                  ) -> None:
         """
-        Constructor for the SequenceGenerator class.
+        Constructor for the SequenceSpace class.
 
         Parameters
         ----------
@@ -22,9 +22,9 @@ class SequenceGenerator:
         """
         self.graph = CodonGraph(aa_seq, codon_restrictions=codon_restrictions)
 
-    def generate(self) -> str:
+    def sample(self) -> str:
         """
-        Generate a DNA coding sequence for the given amino acid sequence!
+        Sample a DNA coding sequence from this sequence space.
 
         Returns
         -------
