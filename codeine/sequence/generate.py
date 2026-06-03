@@ -43,10 +43,29 @@ class SequenceGenerator:
                 node = next_node
 
     def pin_codons(self, pinned_codons):
+        """
+        Pin (temporarily fix) a codon in the codon graph.
+
+        Parameters
+        ----------
+        pinned_codons:
+            A dict specifying which codons to pin, by pos: codon
+        """
         self.graph.pin_codons(pinned_codons)
 
     def unpin_codons(self, positions):
+        """
+        Unpin codon nodes by pos.
+
+        Parameters
+        ----------
+        positions:
+            A list of positions
+        """
         self.graph.unpin_codons(positions)
 
     def clear_pins(self):
+        """
+        Remove all codon pins from the generator.
+        """
         self.graph.clear_pins()
