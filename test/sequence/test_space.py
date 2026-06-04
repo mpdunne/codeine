@@ -88,3 +88,44 @@ def test_sg_rejects_out_of_range_pin():
 
     with pytest.raises(ValueError):
         sg.pin_codons({6: 'ATG'})
+
+def test_sg_sample_excludes_context_by_default():
+    sg = SequenceSpace(
+        aa_seq="MF",
+        context_l="AAAA",
+        context_r="CCCC",
+    )
+
+    cds = sg.sample()
+
+    assert cds in {"ATGTTT", "ATGTTC"}
+    assert not cds.startswith("AAAA")
+    assert not cds.endswith("CCCC")
+
+
+def test_sg_sample_can_include_context():
+    sg = SequenceSpace(
+        aa_seq="MF",
+        context_l="AAAA",
+        context_r="CCCC",
+    )
+
+    generated = {sg.sample(include_context=True) for _ in range(1000)}
+
+    assert generated == {
+        "AAAAATGTTTCCCC",
+        "AAAAATGTTCCCCC",
+    }
+
+
+def test_sg_sample_with_context_still_translates_cds_region():
+    sg = SequenceSpace(
+        aa_seq="MIKEY",
+        context_l="AAAA",
+        context_r="CCCC",
+    )
+
+    full_seq = sg.sample(include_context=True)
+    cds = full_seq[len("AAAA"):-len("CCCC")]
+
+    assert str(Seq(cds).translate()) == "MIKEY"
