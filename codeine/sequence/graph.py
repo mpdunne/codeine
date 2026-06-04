@@ -248,6 +248,8 @@ class CodonGraph:
         for node in codon_nodes:
             self.codon_nodes_by_pos.setdefault(node.pos, []).append(node)
 
+        self.compile()
+
     @property
     def nodes(self) -> List[Node]:
         """
@@ -276,6 +278,8 @@ class CodonGraph:
             for node in self.codon_nodes_by_pos[pos]:
                 node.pin_codon(codon)
 
+        self.compile()
+
     def unpin_codons(self, positions: List[int]) -> None:
         """
         Unpin codon nodes by pos.
@@ -292,12 +296,16 @@ class CodonGraph:
             for node in self.codon_nodes_by_pos[pos]:
                 node.unpin_codon()
 
+        self.compile()
+
     def clear_pins(self) -> None:
         """
         Remove all codon pins from this graph.
         """
         for node in self.codon_nodes:
             node.unpin_codon()
+
+        self.compile()
 
     @property
     def pinned_codons(self) -> Dict[int, str]:
@@ -325,3 +333,13 @@ class CodonGraph:
                 )
 
         return pinned
+
+    def compile(self):
+        """
+        Calculate all graph properties that are derived from its structure.
+        Call this any time the internal structure of the graph changes. Don't forget!
+        """
+        # Update dict of codon nodes keyed by pos
+        self.codon_nodes_by_pos = {}
+        for node in self.codon_nodes:
+            self.codon_nodes_by_pos.setdefault(node.pos, []).append(node)
