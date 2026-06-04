@@ -197,9 +197,7 @@ class CodonGraph:
             node = CodonNode(pos, aa, codons)
             codon_nodes.append(node)
 
-        left_context_node.transitions = {
-            left_context_node.sequence: codon_nodes[0]
-        }
+        left_context_node.transitions = {left_context_node.sequence: codon_nodes[0]}
         codon_nodes[0].parents.add(left_context_node)
 
         for i in range(1, len(codon_nodes)):
