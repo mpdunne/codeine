@@ -1,6 +1,6 @@
 import pytest
 
-from codeine.sequence.graph import CodonGraph, CodonNode, ContextNode
+from codeine.sequence.graph import CodonGraph, CodonNode, ContextNode, EndNode
 
 
 def test_empty_sequence_raises():
@@ -18,10 +18,10 @@ def test_invalid_codon_restriction_positions_raises():
 
 def test_invalid_codon_restriction_value_raises():
     with pytest.raises(ValueError):
-        CodonGraph("MIKEY", codon_restrictions={0: "ATT"})
+        CodonGraph("MIKEY", codon_restrictions={1: "ATT"})
 
     with pytest.raises(ValueError):
-        CodonGraph("MIKEY", codon_restrictions={0: ["ATT"]})
+        CodonGraph("MIKEY", codon_restrictions={2: ["TTT"]})
 
 
 def test_codon_restrictions_are_uppercased():
@@ -120,13 +120,13 @@ def test_graph_rejects_pin_outside_codon_restrictions():
 def test_graph_has_initial_and_final_nodes():
     graph = CodonGraph('MIKEY')
     assert isinstance(graph.initial_node, ContextNode)
-    assert isinstance(graph.final_node, ContextNode)
+    assert isinstance(graph.final_node, EndNode)
 
 
-def test_initial_and_final_nodes_store_flanks():
+def test_context_nodes_store_flanks():
     graph = CodonGraph('MIKEY', flank_l='AAA', flank_r='TTT')
-    assert graph.initial_node.sequence == 'AAA'
-    assert graph.final_node.sequence == 'TTT'
+    assert graph.left_context_node.sequence == 'AAA'
+    assert graph.right_context_node.sequence == 'TTT'
 
 
 def test_initial_node_has_no_parents():
@@ -139,27 +139,50 @@ def test_final_node_has_no_transitions():
     assert graph.final_node.transitions == {}
 
 
-def test_last_codon_node_points_to_final_node():
+def test_left_context_node_points_to_first_codon_node():
+    graph = CodonGraph('MIKEY', flank_l='AAA')
+    first_node = graph.codon_nodes[0]
+
+    assert graph.left_context_node.transitions == {'AAA': first_node}
+    assert graph.left_context_node in first_node.parents
+
+
+def test_last_codon_node_points_to_right_context_node():
     graph = CodonGraph('MIKEY')
     last_node = graph.codon_nodes[-1]
+
     assert set(last_node.transitions) == set(last_node.codons)
-    assert all(target is graph.final_node for target in last_node.transitions.values())
-    assert last_node in graph.final_node.parents
+    assert all(target is graph.right_context_node for target in last_node.transitions.values())
+    assert last_node in graph.right_context_node.parents
 
 
-def test_codon_nodes_by_pos_excludes_initial_and_final_nodes():
+def test_right_context_node_points_to_final_node():
+    graph = CodonGraph('MIKEY', flank_r='TTT')
+
+    assert graph.right_context_node.transitions == {'TTT': graph.final_node}
+    assert graph.right_context_node in graph.final_node.parents
+
+
+def test_codon_nodes_by_pos_excludes_context_and_final_nodes():
     graph = CodonGraph('MIKEY')
     assert set(graph.codon_nodes_by_pos) == {1, 2, 3, 4, 5}
 
 
-def test_codon_nodes_excludes_initial_and_final_nodes():
+def test_codon_nodes_excludes_context_and_final_nodes():
     graph = CodonGraph('MIKEY')
     assert all(isinstance(node, CodonNode) for node in graph.codon_nodes)
-    assert graph.initial_node not in graph.codon_nodes
+    assert graph.left_context_node not in graph.codon_nodes
+    assert graph.right_context_node not in graph.codon_nodes
     assert graph.final_node not in graph.codon_nodes
 
 
 def test_only_two_context_nodes():
     graph = CodonGraph('MIKEY')
-    non_codon_nodes = [node for node in graph.nodes if not isinstance(node, CodonNode)]
-    assert len(non_codon_nodes) == 2
+    context_nodes = [node for node in graph.nodes if isinstance(node, ContextNode)]
+    assert len(context_nodes) == 2
+
+
+def test_graph_has_one_end_node():
+    graph = CodonGraph('MIKEY')
+    end_nodes = [node for node in graph.nodes if isinstance(node, EndNode)]
+    assert len(end_nodes) == 1

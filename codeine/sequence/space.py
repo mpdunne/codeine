@@ -37,21 +37,35 @@ class SequenceSpace:
         )
 
     def sample(self, include_context: bool = False) -> str:
+        """
+        Sample a DNA sequence from this sequence space.
+
+        Parameters
+        ----------
+        include_context
+            Whether to include the left and right context sequences.
+
+        Returns
+        -------
+        A sampled sequence. By default, only the coding sequence is returned.
+        """
         node = self.graph.initial_node
         sequence = []
 
-        while node.transitions:
+        while node is not self.graph.final_node:
+            if not node.transitions:
+                raise RuntimeError(f"Reached non-final node {node.id} with no outgoing transitions.")
+
             if isinstance(node, CodonNode):
                 emitted = node.sample_codon()
                 sequence.append(emitted)
-                node = node.transitions[emitted]
-            else:
-                if include_context:
-                    sequence.append(node.sequence)
-                node = next(iter(node.transitions.values()))
 
-        if include_context:
-            sequence.append(node.sequence)
+            else:
+                emitted = node.sequence
+                if include_context:
+                    sequence.append(emitted)
+
+            node = node.transitions[emitted]
 
         return ''.join(sequence)
 

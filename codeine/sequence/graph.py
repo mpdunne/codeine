@@ -117,6 +117,21 @@ class CodonNode(Node):
         return self.sampler.sample()
 
 
+class EndNode(Node):
+    """
+    Final node for the codon graph.
+
+    Marks successful completion of a graph walk.
+    """
+
+    def __init__(self) -> None:
+        """
+        Constructor for the EndNode class.
+        """
+        super().__init__()
+        self.id = f"end-{uuid.uuid4().hex[:8]}"
+
+
 class CodonGraph:
     """
     Class representing a graph of codon nodes.
@@ -141,6 +156,7 @@ class CodonGraph:
 
         self.left_context_node = None
         self.right_context_node = None
+        self.end_node = None
 
         self.codon_nodes = []
         self.codon_nodes_by_pos = {}
@@ -184,6 +200,7 @@ class CodonGraph:
         """
         left_context_node = ContextNode(self.flank_l)
         right_context_node = ContextNode(self.flank_r)
+        end_node = EndNode()
 
         codon_nodes = []
 
@@ -216,11 +233,15 @@ class CodonGraph:
         }
         right_context_node.parents.add(last_codon_node)
 
+        right_context_node.transitions = {right_context_node.sequence: end_node}
+        end_node.parents.add(right_context_node)
+
         self.left_context_node = left_context_node
         self.right_context_node = right_context_node
+        self.end_node = end_node
 
         self.initial_node = left_context_node
-        self.final_node = right_context_node
+        self.final_node = end_node
         self.codon_nodes = codon_nodes
 
         self.codon_nodes_by_pos = {}
@@ -230,12 +251,13 @@ class CodonGraph:
     @property
     def nodes(self) -> List[Node]:
         """
-        All nodes in the graph, including context nodes.
+        All nodes in the graph, including context and end nodes.
         """
         return [
             self.left_context_node,
             *self.codon_nodes,
             self.right_context_node,
+            self.end_node,
         ]
 
     def pin_codons(self, pinned_codons: Dict[int, str]) -> None:
