@@ -159,10 +159,14 @@ class CodonGraph:
         self.end_node = None
 
         self.codon_nodes = []
-        self.codon_nodes_by_pos = {}
+        self.codon_nodes_by_pos = {pos: [] for pos in range(1, len(self.aa_seq) + 1)}
 
         self.initial_node = None
         self.final_node = None
+
+        self.node_counts = {}
+        self.descendants_by_node = {}
+        self.n_valid_sequences = 0
 
         self._validate_codon_restrictions()
         self.initialise_graph()
@@ -202,8 +206,6 @@ class CodonGraph:
         right_context_node = ContextNode(self.context_r)
         end_node = EndNode()
 
-        codon_nodes = []
-
         for ix, aa in enumerate(self.aa_seq):
             pos = ix + 1
 
@@ -213,27 +215,27 @@ class CodonGraph:
                 codons = self.ct.aa_to_codons[aa]
 
             node = CodonNode(pos, aa, codons)
-            codon_nodes.append(node)
+            self.add_codon_node(node)
 
         # Left context -> first codon node
         left_context_node.transitions = {
-            left_context_node.sequence: codon_nodes[0]
+            left_context_node.sequence: self.codon_nodes[0]
         }
-        codon_nodes[0].parents.add(
+        self.codon_nodes[0].parents.add(
             (left_context_node, left_context_node.sequence)
         )
 
         # Codon node -> next codon node
-        for i in range(1, len(codon_nodes)):
-            previous = codon_nodes[i - 1]
-            current = codon_nodes[i]
+        for i in range(1, len(self.codon_nodes)):
+            previous = self.codon_nodes[i - 1]
+            current = self.codon_nodes[i]
 
             for codon in previous.codons:
                 previous.transitions[codon] = current
                 current.parents.add((previous, codon))
 
         # Last codon node -> right context
-        last_codon_node = codon_nodes[-1]
+        last_codon_node = self.codon_nodes[-1]
         for codon in last_codon_node.codons:
             last_codon_node.transitions[codon] = right_context_node
             right_context_node.parents.add((last_codon_node, codon))
@@ -252,7 +254,6 @@ class CodonGraph:
 
         self.initial_node = left_context_node
         self.final_node = end_node
-        self.codon_nodes = codon_nodes
 
         self.compile()
 
@@ -340,17 +341,19 @@ class CodonGraph:
 
         return pinned
 
-    def _index_codon_nodes(self) -> None:
+    def add_codon_node(self, node: CodonNode) -> None:
         """
-        Creates and stores a dictionary mapping amino acid position to the codon
-        nodes at that position. This is calculated/recalculated during compilation.
+        Add a codon node and update codon-node indexes.
         """
-        codon_nodes_by_pos = {pos: [] for pos in range(1, len(self.aa_seq) + 1)}
+        self.codon_nodes.append(node)
+        self.codon_nodes_by_pos.setdefault(node.pos, []).append(node)
 
-        for node in self.codon_nodes:
-            codon_nodes_by_pos[node.pos].append(node)
-
-        self.codon_nodes_by_pos = codon_nodes_by_pos
+    def remove_codon_node(self, node: CodonNode) -> None:
+        """
+        Remove a codon node and update codon-node indexes.
+        """
+        self.codon_nodes.remove(node)
+        self.codon_nodes_by_pos[node.pos].remove(node)
 
     def _update_descendant_counts(self) -> None:
         """
@@ -395,13 +398,10 @@ class CodonGraph:
         self.descendants_by_node = descendants_by_node
         self.n_valid_sequences = node_counts[self.initial_node]
 
-    def compile(self):
+    def compile(self) -> None:
         """
         Calculate all graph properties that are derived from its structure.
-        Call this any time the internal structure of the graph changes. Don't forget!
+        Remember to do this after editing the graph!
         """
-        # Node housekeeping
-        self._index_codon_nodes()
-
         # Calculate descendant counts!
         self._update_descendant_counts()
