@@ -92,8 +92,8 @@ def test_sg_rejects_out_of_range_pin():
 def test_sg_sample_excludes_context_by_default():
     sg = SequenceSpace(
         aa_seq="MF",
-        flank_l="AAAA",
-        flank_r="CCCC",
+        context_l="AAAA",
+        context_r="CCCC",
     )
 
     cds = sg.sample()
@@ -106,8 +106,8 @@ def test_sg_sample_excludes_context_by_default():
 def test_sg_sample_can_include_context():
     sg = SequenceSpace(
         aa_seq="MF",
-        flank_l="AAAA",
-        flank_r="CCCC",
+        context_l="AAAA",
+        context_r="CCCC",
     )
 
     generated = {sg.sample(include_context=True) for _ in range(1000)}
@@ -121,8 +121,8 @@ def test_sg_sample_can_include_context():
 def test_sg_sample_with_context_still_translates_cds_region():
     sg = SequenceSpace(
         aa_seq="MIKEY",
-        flank_l="AAAA",
-        flank_r="CCCC",
+        context_l="AAAA",
+        context_r="CCCC",
     )
 
     full_seq = sg.sample(include_context=True)

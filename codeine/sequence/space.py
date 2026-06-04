@@ -12,8 +12,8 @@ class SequenceSpace:
             self,
             aa_seq: str,
             codon_restrictions: Optional[Dict[int, str]] = None,
-            flank_l: str = '',
-            flank_r: str = '',
+            context_l: str = '',
+            context_r: str = '',
     ) -> None:
         """
         Constructor for the SequenceSpace class.
@@ -24,16 +24,16 @@ class SequenceSpace:
             The amino acid sequence.
         codon_restrictions
             Any codon restrictions in the format e.g. {4: 'TCC'} or {5: ['AGT', 'AGC']}
-        flank_l
+        context_l
             The context sequence to the left of the coding sequence
-        flank_r
+        context_r
             The context sequence to the right of the coding sequence
         """
         self.graph = CodonGraph(
             aa_seq,
             codon_restrictions=codon_restrictions,
-            flank_l=flank_l,
-            flank_r=flank_r,
+            flank_l=context_l,
+            flank_r=context_r,
         )
 
     def sample(self, include_context: bool = False) -> str:
