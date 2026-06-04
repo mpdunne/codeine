@@ -1,6 +1,6 @@
 import pytest
 
-from codeine.sequence.graph import CodonGraph, CodonNode, InitialNode, FinalNode
+from codeine.sequence.graph import CodonGraph, CodonNode, ContextNode
 
 
 def test_empty_sequence_raises():
@@ -119,14 +119,14 @@ def test_graph_rejects_pin_outside_codon_restrictions():
 
 def test_graph_has_initial_and_final_nodes():
     graph = CodonGraph('MIKEY')
-    assert isinstance(graph.initial_node, InitialNode)
-    assert isinstance(graph.final_node, FinalNode)
+    assert isinstance(graph.initial_node, ContextNode)
+    assert isinstance(graph.final_node, ContextNode)
 
 
 def test_initial_and_final_nodes_store_flanks():
     graph = CodonGraph('MIKEY', flank_l='AAA', flank_r='TTT')
-    assert graph.initial_node.flank_l == 'AAA'
-    assert graph.final_node.flank_r == 'TTT'
+    assert graph.initial_node.sequence == 'AAA'
+    assert graph.final_node.sequence == 'TTT'
 
 
 def test_initial_node_has_no_parents():
@@ -136,13 +136,7 @@ def test_initial_node_has_no_parents():
 
 def test_final_node_has_no_transitions():
     graph = CodonGraph('MIKEY')
-    assert not hasattr(graph.final_node, 'transitions')
-
-
-def test_initial_node_child_is_first_codon_node():
-    graph = CodonGraph('MIKEY')
-    assert graph.initial_node.child is graph.codon_nodes[0]
-    assert graph.initial_node in graph.codon_nodes[0].parents
+    assert graph.final_node.transitions == {}
 
 
 def test_last_codon_node_points_to_final_node():
@@ -163,3 +157,9 @@ def test_codon_nodes_excludes_initial_and_final_nodes():
     assert all(isinstance(node, CodonNode) for node in graph.codon_nodes)
     assert graph.initial_node not in graph.codon_nodes
     assert graph.final_node not in graph.codon_nodes
+
+
+def test_only_two_context_nodes():
+    graph = CodonGraph('MIKEY')
+    non_codon_nodes = [node for node in graph.nodes if not isinstance(node, CodonNode)]
+    assert len(non_codon_nodes) == 2

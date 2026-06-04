@@ -19,22 +19,51 @@ class Node:
         Constructor for the Node class.
         """
         self.parents = set()
+        self.transitions = {}
+
+
+class ContextNode(Node):
+    """
+    Basic class representing a sequence context node on the codon graph.
+    This refers to the sequence either to the left of or to the right of
+    the coding sequence, and can be empty.
+    """
+
+    def __init__(self, sequence: str) -> None:
+        """
+        Constructor for the ContextNode class.
+
+        Parameters
+        ----------
+        sequence
+            The context sequence emitted by this node.
+        """
+        super().__init__()
+
+        # Basic info.
+        self.sequence = sequence
+
+        # Set an ID for this node.
+        self.id = f"context-{uuid.uuid4().hex[:8]}"
 
 
 class CodonNode(Node):
     """
     Basic class representing a codon node on the codon graph.
     """
+
     def __init__(self, pos: int, aa: str, codons: List[str]) -> None:
         """
-        Constructor for the CodonNode class
+        Constructor for the CodonNode class.
 
         Parameters
         ----------
         pos
-            The aa position (0-based).
+            The aa position. Positioning is 1-based.
         aa
             The aa identity.
+        codons
+            The possible codons for this node.
         """
         super().__init__()
 
@@ -45,34 +74,31 @@ class CodonNode(Node):
         # Set an ID for this node.
         self.id = f"{aa}{pos}-{uuid.uuid4().hex[:8]}"
 
-        # Initialise the basic attributes
+        # Initialise the basic attributes.
         self.codons = codons
-        self.probabilities = [1] * len(codons)
+        self.probabilities = [1] * len(self.codons)
 
-        # Create the sampler
+        # Create the sampler.
         self.sampler = Sampler(self.codons, self.probabilities)
 
-        # Option to pin (temporarily fix) a specfic codon
+        # Option to pin (temporarily fix) a specific codon.
         self.pinned_codon = None
 
-        # Graph stuff.
-        self.transitions = {}
-
-    def pin_codon(self, codon : str):
+    def pin_codon(self, codon: str) -> None:
         """
         Pin (temporarily fix) a codon for this node.
 
         Parameters
         ----------
-        codon:
-            The codon to pin
+        codon
+            The codon to pin.
         """
         codon = codon.upper()
         if codon not in self.codons:
             raise ValueError(f'Pinned codon {codon} is not a valid codon for position {self.pos}')
         self.pinned_codon = codon
 
-    def unpin_codon(self):
+    def unpin_codon(self) -> None:
         """
         Unpin any codons that are pinned on this node.
         """
@@ -80,7 +106,7 @@ class CodonNode(Node):
 
     def sample_codon(self) -> str:
         """
-        Sample a codon according to the stored weights!
+        Sample a codon according to the stored weights.
 
         Returns
         -------
@@ -89,50 +115,6 @@ class CodonNode(Node):
         if self.pinned_codon is not None:
             return self.pinned_codon
         return self.sampler.sample()
-
-
-class InitialNode(Node):
-    """
-    Initial node for the codon graph.
-
-    Stores the sequence immediately upstream of the coding sequence and points
-    to the first codon node.
-    """
-
-    def __init__(self, flank_l: str = '') -> None:
-        """
-        Constructor for the InitialNode class.
-
-        Parameters
-        ----------
-        flank_l:
-            The sequence immediately upstream of the coding sequence.
-        """
-        super().__init__()
-        self.flank_l = flank_l
-        self.id = f'initial-{uuid.uuid4().hex[:8]}'
-        self.child = None
-
-
-class FinalNode(Node):
-    """
-    Final node for the codon graph.
-
-    Stores the sequence immediately downstream of the coding sequence.
-    """
-
-    def __init__(self, flank_r: str = '') -> None:
-        """
-        Constructor for the FinalNode class.
-
-        Parameters
-        ----------
-        flank_r:
-            The sequence immediately downstream of the coding sequence.
-        """
-        super().__init__()
-        self.flank_r = flank_r
-        self.id = f'final-{uuid.uuid4().hex[:8]}'
 
 
 class CodonGraph:
@@ -154,13 +136,17 @@ class CodonGraph:
         self.codon_restrictions = codon_restrictions or {}
         self.ct = CodonTable()
 
-        self.flank_l = flank_l
-        self.flank_r = flank_r
+        self.flank_l = flank_l.upper()
+        self.flank_r = flank_r.upper()
+
+        self.left_context_node = None
+        self.right_context_node = None
 
         self.codon_nodes = []
         self.codon_nodes_by_pos = {}
-        self._initial_node = None
-        self._final_node = None
+
+        self.initial_node = None
+        self.final_node = None
 
         self._validate_codon_restrictions()
         self.initialise_graph()
@@ -196,8 +182,8 @@ class CodonGraph:
         """
         Initialise the codon graph.
         """
-        initial_node = InitialNode(flank_l=self.flank_l)
-        final_node = FinalNode(flank_r=self.flank_r)
+        left_context_node = ContextNode(self.flank_l)
+        right_context_node = ContextNode(self.flank_r)
 
         codon_nodes = []
 
@@ -211,8 +197,10 @@ class CodonGraph:
             node = CodonNode(pos, aa, codons)
             codon_nodes.append(node)
 
-        initial_node.child = codon_nodes[0]
-        codon_nodes[0].parents.add(initial_node)
+        left_context_node.transitions = {
+            left_context_node.sequence: codon_nodes[0]
+        }
+        codon_nodes[0].parents.add(left_context_node)
 
         for i in range(1, len(codon_nodes)):
             previous = codon_nodes[i - 1]
@@ -225,13 +213,16 @@ class CodonGraph:
 
         last_codon_node = codon_nodes[-1]
         last_codon_node.transitions = {
-            codon: final_node
+            codon: right_context_node
             for codon in last_codon_node.codons
         }
-        final_node.parents.add(last_codon_node)
+        right_context_node.parents.add(last_codon_node)
 
-        self._initial_node = initial_node
-        self._final_node = final_node
+        self.left_context_node = left_context_node
+        self.right_context_node = right_context_node
+
+        self.initial_node = left_context_node
+        self.final_node = right_context_node
         self.codon_nodes = codon_nodes
 
         self.codon_nodes_by_pos = {}
@@ -239,33 +230,15 @@ class CodonGraph:
             self.codon_nodes_by_pos.setdefault(node.pos, []).append(node)
 
     @property
-    def initial_node(self) -> InitialNode:
-        """
-        The initial node in the graph. There's always only one initial node!
-
-        Returns
-        -------
-        The initial node.
-        """
-        return self._initial_node
-
-    @property
-    def final_node(self) -> FinalNode:
-        """
-        The initial node in the graph. There's always only one initial node!
-
-        Returns
-        -------
-        The initial node.
-        """
-        return self._final_node
-
-    @property
     def nodes(self) -> List[Node]:
         """
-        All nodes in the graph, including initial and final nodes.
+        All nodes in the graph, including context nodes.
         """
-        return [self.initial_node, *self.codon_nodes, self.final_node]
+        return [
+            self.left_context_node,
+            *self.codon_nodes,
+            self.right_context_node,
+        ]
 
     def pin_codons(self, pinned_codons: Dict[int, str]) -> None:
         """
@@ -273,8 +246,8 @@ class CodonGraph:
 
         Parameters
         ----------
-        pinned_codons:
-            A dict specifying which codons to pin, by pos: codon
+        pinned_codons
+            A dict specifying which codons to pin, by pos: codon.
         """
         for pos, codon in pinned_codons.items():
             if pos not in self.codon_nodes_by_pos:
@@ -289,8 +262,8 @@ class CodonGraph:
 
         Parameters
         ----------
-        positions:
-            A list of positions
+        positions
+            A list of positions.
         """
         for pos in positions:
             if pos not in self.codon_nodes_by_pos:
