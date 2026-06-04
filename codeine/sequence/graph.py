@@ -141,8 +141,8 @@ class CodonGraph:
         self,
         aa_seq: str,
         codon_restrictions: Optional[Dict[int, CodonRestriction]] = None,
-        flank_l: str = '',
-        flank_r: str = '',
+        context_l: str = '',
+        context_r: str = '',
     ) -> None:
         if len(aa_seq) == 0:
             raise ValueError('Please provide non-empty sequence!')
@@ -151,8 +151,8 @@ class CodonGraph:
         self.codon_restrictions = codon_restrictions or {}
         self.ct = CodonTable()
 
-        self.flank_l = flank_l.upper()
-        self.flank_r = flank_r.upper()
+        self.context_l = context_l.upper()
+        self.context_r = context_r.upper()
 
         self.left_context_node = None
         self.right_context_node = None
@@ -198,8 +198,8 @@ class CodonGraph:
         """
         Initialise the codon graph.
         """
-        left_context_node = ContextNode(self.flank_l)
-        right_context_node = ContextNode(self.flank_r)
+        left_context_node = ContextNode(self.context_l)
+        right_context_node = ContextNode(self.context_r)
         end_node = EndNode()
 
         codon_nodes = []

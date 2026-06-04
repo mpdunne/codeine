@@ -124,7 +124,7 @@ def test_graph_has_initial_and_final_nodes():
 
 
 def test_context_nodes_store_flanks():
-    graph = CodonGraph('MIKEY', flank_l='AAA', flank_r='TTT')
+    graph = CodonGraph('MIKEY', context_l='AAA', context_r='TTT')
     assert graph.left_context_node.sequence == 'AAA'
     assert graph.right_context_node.sequence == 'TTT'
 
@@ -140,11 +140,11 @@ def test_final_node_has_no_transitions():
 
 
 def test_left_context_node_points_to_first_codon_node():
-    graph = CodonGraph('MIKEY', flank_l='AAA')
+    graph = CodonGraph('MIKEY', context_l='AAA')
     first_node = graph.codon_nodes[0]
 
     assert graph.left_context_node.transitions == {'AAA': first_node}
-    assert graph.left_context_node in first_node.parents
+    assert (graph.left_context_node, 'AAA') in first_node.parents
 
 
 def test_last_codon_node_points_to_right_context_node():
@@ -157,7 +157,7 @@ def test_last_codon_node_points_to_right_context_node():
 
 
 def test_right_context_node_points_to_final_node():
-    graph = CodonGraph('MIKEY', flank_r='TTT')
+    graph = CodonGraph('MIKEY', context_r='TTT')
 
     assert graph.right_context_node.transitions == {'TTT': graph.final_node}
     assert graph.right_context_node in graph.final_node.parents
