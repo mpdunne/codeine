@@ -1,7 +1,6 @@
 import pytest
 
-from codeine.sequence.graph import CodonGraph, CodonNode
-
+from codeine.sequence.graph import CodonGraph, CodonNode, InitialNode, FinalNode
 
 
 def test_empty_sequence_raises():
@@ -38,23 +37,18 @@ def test_codon_restrictions_are_uppercased():
 
 def test_single_codon_restriction_is_applied():
     graph = CodonGraph('MIKEY', codon_restrictions={3: 'AAA'})
-    assert graph.nodes[2].codons == ['AAA']
+    assert graph.codon_nodes[2].codons == ['AAA']
 
 
 def test_multiple_codon_restriction_is_applied():
     graph = CodonGraph('MIKEY', codon_restrictions={3: ['AAA', 'AAG']})
-    assert graph.nodes[2].codons == ['AAA', 'AAG']
+    assert graph.codon_nodes[2].codons == ['AAA', 'AAG']
 
 
 def test_lowercase_sequence_is_accepted():
     graph = CodonGraph("mikey", codon_restrictions={3: "aaa"})
     assert graph.aa_seq == "MIKEY"
     assert graph.codon_restrictions[3] == ["AAA"]
-
-
-def test_initial_node_exists():
-    graph = CodonGraph("MIKEY")
-    assert graph.initial_node is not None
 
 
 def test_node_can_pin_codon():
@@ -89,22 +83,22 @@ def test_node_cannot_pin_invalid_codon():
 def test_graph_can_pin_codons():
     graph = CodonGraph('MIKEY')
     graph.pin_codons({3: 'AAA'})
-    assert graph.nodes[2].pinned_codon == 'AAA'
-    assert graph.nodes[2].sample_codon() == 'AAA'
+    assert graph.codon_nodes[2].pinned_codon == 'AAA'
+    assert graph.codon_nodes[2].sample_codon() == 'AAA'
 
 
 def test_graph_can_unpin_codons():
     graph = CodonGraph('MIKEY')
     graph.pin_codons({3: 'AAA'})
     graph.unpin_codons([3])
-    assert graph.nodes[2].pinned_codon is None
+    assert graph.codon_nodes[2].pinned_codon is None
 
 
 def test_graph_can_clear_pins():
     graph = CodonGraph('MIKEY')
     graph.pin_codons({3: 'AAA', 5: 'TAT'})
     graph.clear_pins()
-    assert all(node.pinned_codon is None for node in graph.nodes)
+    assert all(node.pinned_codon is None for node in graph.codon_nodes)
 
 
 def test_graph_rejects_out_of_range_pin():
@@ -121,3 +115,51 @@ def test_graph_rejects_pin_outside_codon_restrictions():
     graph = CodonGraph('MIKEY', codon_restrictions={3: ['AAA']})
     with pytest.raises(ValueError):
         graph.pin_codons({3: 'AAG'})
+
+
+def test_graph_has_initial_and_final_nodes():
+    graph = CodonGraph('MIKEY')
+    assert isinstance(graph.initial_node, InitialNode)
+    assert isinstance(graph.final_node, FinalNode)
+
+
+def test_initial_and_final_nodes_store_flanks():
+    graph = CodonGraph('MIKEY', flank_l='AAA', flank_r='TTT')
+    assert graph.initial_node.flank_l == 'AAA'
+    assert graph.final_node.flank_r == 'TTT'
+
+
+def test_initial_node_has_no_parents():
+    graph = CodonGraph('MIKEY')
+    assert graph.initial_node.parents == set()
+
+
+def test_final_node_has_no_transitions():
+    graph = CodonGraph('MIKEY')
+    assert not hasattr(graph.final_node, 'transitions')
+
+
+def test_initial_node_child_is_first_codon_node():
+    graph = CodonGraph('MIKEY')
+    assert graph.initial_node.child is graph.codon_nodes[0]
+    assert graph.initial_node in graph.codon_nodes[0].parents
+
+
+def test_last_codon_node_points_to_final_node():
+    graph = CodonGraph('MIKEY')
+    last_node = graph.codon_nodes[-1]
+    assert set(last_node.transitions) == set(last_node.codons)
+    assert all(target is graph.final_node for target in last_node.transitions.values())
+    assert last_node in graph.final_node.parents
+
+
+def test_codon_nodes_by_pos_excludes_initial_and_final_nodes():
+    graph = CodonGraph('MIKEY')
+    assert set(graph.codon_nodes_by_pos) == {1, 2, 3, 4, 5}
+
+
+def test_codon_nodes_excludes_initial_and_final_nodes():
+    graph = CodonGraph('MIKEY')
+    assert all(isinstance(node, CodonNode) for node in graph.codon_nodes)
+    assert graph.initial_node not in graph.codon_nodes
+    assert graph.final_node not in graph.codon_nodes

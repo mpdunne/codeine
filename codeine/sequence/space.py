@@ -1,6 +1,6 @@
 from typing import Dict, Optional
 
-from codeine.sequence.graph import CodonGraph
+from codeine.sequence.graph import CodonGraph, InitialNode, CodonNode, FinalNode
 
 
 class SequenceSpace:
@@ -30,17 +30,19 @@ class SequenceSpace:
         -------
         A valid coding sequence.
         """
-        initial_node = self.graph.initial_node
-        node = initial_node
+        node = self.graph.initial_node
         codons = []
-        while True:
+
+        while node is not self.graph.final_node:
+            if isinstance(node, InitialNode):
+                node = node.child
+                continue
+
             codon = node.sample_codon()
             codons.append(codon)
-            if node.terminal:
-                return ''.join(codons)
-            else:
-                next_node = node.transitions[codon]
-                node = next_node
+            node = node.transitions[codon]
+
+        return ''.join(codons)
 
     def pin_codons(self, pinned_codons):
         """
