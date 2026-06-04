@@ -244,10 +244,6 @@ class CodonGraph:
         self.final_node = end_node
         self.codon_nodes = codon_nodes
 
-        self.codon_nodes_by_pos = {}
-        for node in codon_nodes:
-            self.codon_nodes_by_pos.setdefault(node.pos, []).append(node)
-
         self.compile()
 
     @property
@@ -334,12 +330,22 @@ class CodonGraph:
 
         return pinned
 
+    def _index_codon_nodes(self) -> None:
+        """
+        Creates and stores a dictionary mapping amino acid position to the codon
+        nodes at that position. This is calculated/recalculated during compilation.
+        rebuilt during compilation.
+        """
+        self.codon_nodes_by_pos = {}
+        for node in self.codon_nodes:
+            self.codon_nodes_by_pos.setdefault(node.pos, []).append(node)
+
     def compile(self):
         """
         Calculate all graph properties that are derived from its structure.
         Call this any time the internal structure of the graph changes. Don't forget!
         """
-        # Update dict of codon nodes keyed by pos
-        self.codon_nodes_by_pos = {}
-        for node in self.codon_nodes:
+        # Node housekeeping
+        self._index_codon_nodes()
+
             self.codon_nodes_by_pos.setdefault(node.pos, []).append(node)

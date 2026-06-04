@@ -153,14 +153,16 @@ def test_last_codon_node_points_to_right_context_node():
 
     assert set(last_node.transitions) == set(last_node.codons)
     assert all(target is graph.right_context_node for target in last_node.transitions.values())
-    assert last_node in graph.right_context_node.parents
+    assert len(graph.right_context_node.parents) == 2
+    assert (last_node, 'TAC') in graph.right_context_node.parents
+    assert (last_node, 'TAT') in graph.right_context_node.parents
 
 
 def test_right_context_node_points_to_final_node():
     graph = CodonGraph('MIKEY', context_r='TTT')
 
     assert graph.right_context_node.transitions == {'TTT': graph.final_node}
-    assert graph.right_context_node in graph.final_node.parents
+    assert (graph.right_context_node, 'TTT') in graph.final_node.parents
 
 
 def test_codon_nodes_by_pos_excludes_context_and_final_nodes():
