@@ -206,6 +206,7 @@ class CodonGraph:
 
         for ix, aa in enumerate(self.aa_seq):
             pos = ix + 1
+
             if pos in self.codon_restrictions:
                 codons = self.codon_restrictions[pos]
             else:
@@ -214,27 +215,36 @@ class CodonGraph:
             node = CodonNode(pos, aa, codons)
             codon_nodes.append(node)
 
-        left_context_node.transitions = {left_context_node.sequence: codon_nodes[0]}
-        codon_nodes[0].parents.add(left_context_node)
+        # Left context -> first codon node
+        left_context_node.transitions = {
+            left_context_node.sequence: codon_nodes[0]
+        }
+        codon_nodes[0].parents.add(
+            (left_context_node, left_context_node.sequence)
+        )
 
+        # Codon node -> next codon node
         for i in range(1, len(codon_nodes)):
             previous = codon_nodes[i - 1]
             current = codon_nodes[i]
-            previous.transitions = {
-                codon: current
-                for codon in previous.codons
-            }
-            current.parents.add(previous)
 
+            for codon in previous.codons:
+                previous.transitions[codon] = current
+                current.parents.add((previous, codon))
+
+        # Last codon node -> right context
         last_codon_node = codon_nodes[-1]
-        last_codon_node.transitions = {
-            codon: right_context_node
-            for codon in last_codon_node.codons
-        }
-        right_context_node.parents.add(last_codon_node)
+        for codon in last_codon_node.codons:
+            last_codon_node.transitions[codon] = right_context_node
+            right_context_node.parents.add((last_codon_node, codon))
 
-        right_context_node.transitions = {right_context_node.sequence: end_node}
-        end_node.parents.add(right_context_node)
+        # Right context -> end
+        right_context_node.transitions = {
+            right_context_node.sequence: end_node
+        }
+        end_node.parents.add(
+            (right_context_node, right_context_node.sequence)
+        )
 
         self.left_context_node = left_context_node
         self.right_context_node = right_context_node
@@ -334,11 +344,56 @@ class CodonGraph:
         """
         Creates and stores a dictionary mapping amino acid position to the codon
         nodes at that position. This is calculated/recalculated during compilation.
-        rebuilt during compilation.
         """
-        self.codon_nodes_by_pos = {}
+        codon_nodes_by_pos = {pos: [] for pos in range(1, len(self.aa_seq) + 1)}
+
         for node in self.codon_nodes:
-            self.codon_nodes_by_pos.setdefault(node.pos, []).append(node)
+            codon_nodes_by_pos[node.pos].append(node)
+
+        self.codon_nodes_by_pos = codon_nodes_by_pos
+
+    def _update_descendant_counts(self) -> None:
+        """
+        Calculate descendant counts for each node and outgoing transition.
+        Assumes a strictly layered graph:
+
+            left context -> codon positions -> right context -> end
+
+        where all transitions move exactly one layer forwards.
+        """
+        node_counts = {self.end_node: 1}
+        descendants_by_node = {}
+
+        # Right context -> end
+        transition_counts = {
+            emitted: node_counts[child]
+            for emitted, child in self.right_context_node.transitions.items()
+        }
+        descendants_by_node[self.right_context_node] = transition_counts
+        node_counts[self.right_context_node] = sum(transition_counts.values())
+
+        # Codon positions, backwards
+        for pos in range(len(self.aa_seq), 0, -1):
+            for node in self.codon_nodes_by_pos[pos]:
+                transition_counts = {
+                    emitted: node_counts[child]
+                    for emitted, child in node.transitions.items()
+                }
+
+                descendants_by_node[node] = transition_counts
+                node_counts[node] = sum(transition_counts.values())
+
+        # Left context -> first codon position
+        transition_counts = {
+            emitted: node_counts[child]
+            for emitted, child in self.left_context_node.transitions.items()
+        }
+        descendants_by_node[self.left_context_node] = transition_counts
+        node_counts[self.left_context_node] = sum(transition_counts.values())
+
+        self.node_counts = node_counts
+        self.descendants_by_node = descendants_by_node
+        self.n_valid_sequences = node_counts[self.initial_node]
 
     def compile(self):
         """
@@ -348,4 +403,5 @@ class CodonGraph:
         # Node housekeeping
         self._index_codon_nodes()
 
-            self.codon_nodes_by_pos.setdefault(node.pos, []).append(node)
+        # Calculate descendant counts!
+        self._update_descendant_counts()
