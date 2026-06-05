@@ -149,7 +149,10 @@ class CodonGraph:
 
         self.aa_seq = aa_seq.upper()
         self.codon_restrictions = codon_restrictions or {}
-        self.ct = CodonTable()
+
+        if codon_table is None:
+            codon_table = CodonTable()
+        self.ct = codon_table
 
         self.context_l = context_l.upper()
         self.context_r = context_r.upper()

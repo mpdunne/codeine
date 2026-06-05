@@ -12,6 +12,7 @@ class SequenceSpace:
             self,
             aa_seq: str,
             codon_restrictions: Optional[Dict[int, str]] = None,
+            codon_table: CodonTable = None,
             context_l: str = '',
             context_r: str = '',
     ) -> None:
@@ -24,6 +25,8 @@ class SequenceSpace:
             The amino acid sequence.
         codon_restrictions
             Any codon restrictions in the format e.g. {4: 'TCC'} or {5: ['AGT', 'AGC']}
+        codon_table
+            The codon table to use. Leave blank to use standard table.
         context_l
             The context sequence to the left of the coding sequence
         context_r
@@ -32,6 +35,7 @@ class SequenceSpace:
         self.graph = CodonGraph(
             aa_seq,
             codon_restrictions=codon_restrictions,
+            codon_table=codon_table,
             context_l=context_l,
             context_r=context_r,
         )
