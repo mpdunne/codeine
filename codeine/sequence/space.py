@@ -32,8 +32,8 @@ class SequenceSpace:
         self.graph = CodonGraph(
             aa_seq,
             codon_restrictions=codon_restrictions,
-            flank_l=context_l,
-            flank_r=context_r,
+            context_l=context_l,
+            context_r=context_r,
         )
 
     def sample(self, include_context: bool = False) -> str:

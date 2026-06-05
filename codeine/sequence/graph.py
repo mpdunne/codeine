@@ -141,8 +141,8 @@ class CodonGraph:
         self,
         aa_seq: str,
         codon_restrictions: Optional[Dict[int, CodonRestriction]] = None,
-        flank_l: str = '',
-        flank_r: str = '',
+        context_l: str = '',
+        context_r: str = '',
     ) -> None:
         if len(aa_seq) == 0:
             raise ValueError('Please provide non-empty sequence!')
@@ -151,18 +151,22 @@ class CodonGraph:
         self.codon_restrictions = codon_restrictions or {}
         self.ct = CodonTable()
 
-        self.flank_l = flank_l.upper()
-        self.flank_r = flank_r.upper()
+        self.context_l = context_l.upper()
+        self.context_r = context_r.upper()
 
         self.left_context_node = None
         self.right_context_node = None
         self.end_node = None
 
         self.codon_nodes = []
-        self.codon_nodes_by_pos = {}
+        self.codon_nodes_by_pos = {pos: [] for pos in range(1, len(self.aa_seq) + 1)}
 
         self.initial_node = None
         self.final_node = None
+
+        self.node_counts = {}
+        self.descendants_by_node = {}
+        self.n_valid_sequences = 0
 
         self._validate_codon_restrictions()
         self.initialise_graph()
@@ -198,43 +202,51 @@ class CodonGraph:
         """
         Initialise the codon graph.
         """
-        left_context_node = ContextNode(self.flank_l)
-        right_context_node = ContextNode(self.flank_r)
+        left_context_node = ContextNode(self.context_l)
+        right_context_node = ContextNode(self.context_r)
         end_node = EndNode()
-
-        codon_nodes = []
 
         for ix, aa in enumerate(self.aa_seq):
             pos = ix + 1
+
             if pos in self.codon_restrictions:
                 codons = self.codon_restrictions[pos]
             else:
                 codons = self.ct.aa_to_codons[aa]
 
             node = CodonNode(pos, aa, codons)
-            codon_nodes.append(node)
+            self.add_codon_node(node)
 
-        left_context_node.transitions = {left_context_node.sequence: codon_nodes[0]}
-        codon_nodes[0].parents.add(left_context_node)
-
-        for i in range(1, len(codon_nodes)):
-            previous = codon_nodes[i - 1]
-            current = codon_nodes[i]
-            previous.transitions = {
-                codon: current
-                for codon in previous.codons
-            }
-            current.parents.add(previous)
-
-        last_codon_node = codon_nodes[-1]
-        last_codon_node.transitions = {
-            codon: right_context_node
-            for codon in last_codon_node.codons
+        # Left context -> first codon node
+        left_context_node.transitions = {
+            left_context_node.sequence: self.codon_nodes[0]
         }
-        right_context_node.parents.add(last_codon_node)
+        self.codon_nodes[0].parents.add(
+            (left_context_node, left_context_node.sequence)
+        )
 
-        right_context_node.transitions = {right_context_node.sequence: end_node}
-        end_node.parents.add(right_context_node)
+        # Codon node -> next codon node
+        for i in range(1, len(self.codon_nodes)):
+            previous = self.codon_nodes[i - 1]
+            current = self.codon_nodes[i]
+
+            for codon in previous.codons:
+                previous.transitions[codon] = current
+                current.parents.add((previous, codon))
+
+        # Last codon node -> right context
+        last_codon_node = self.codon_nodes[-1]
+        for codon in last_codon_node.codons:
+            last_codon_node.transitions[codon] = right_context_node
+            right_context_node.parents.add((last_codon_node, codon))
+
+        # Right context -> end
+        right_context_node.transitions = {
+            right_context_node.sequence: end_node
+        }
+        end_node.parents.add(
+            (right_context_node, right_context_node.sequence)
+        )
 
         self.left_context_node = left_context_node
         self.right_context_node = right_context_node
@@ -242,11 +254,8 @@ class CodonGraph:
 
         self.initial_node = left_context_node
         self.final_node = end_node
-        self.codon_nodes = codon_nodes
 
-        self.codon_nodes_by_pos = {}
-        for node in codon_nodes:
-            self.codon_nodes_by_pos.setdefault(node.pos, []).append(node)
+        self.compile()
 
     @property
     def nodes(self) -> List[Node]:
@@ -259,6 +268,20 @@ class CodonGraph:
             self.right_context_node,
             self.end_node,
         ]
+
+    def add_codon_node(self, node: CodonNode) -> None:
+        """
+        Add a codon node and update codon-node indexes.
+        """
+        self.codon_nodes.append(node)
+        self.codon_nodes_by_pos.setdefault(node.pos, []).append(node)
+
+    def remove_codon_node(self, node: CodonNode) -> None:
+        """
+        Remove a codon node and update codon-node indexes.
+        """
+        self.codon_nodes.remove(node)
+        self.codon_nodes_by_pos[node.pos].remove(node)
 
     def pin_codons(self, pinned_codons: Dict[int, str]) -> None:
         """
@@ -276,6 +299,8 @@ class CodonGraph:
             for node in self.codon_nodes_by_pos[pos]:
                 node.pin_codon(codon)
 
+        self.compile()
+
     def unpin_codons(self, positions: List[int]) -> None:
         """
         Unpin codon nodes by pos.
@@ -292,12 +317,16 @@ class CodonGraph:
             for node in self.codon_nodes_by_pos[pos]:
                 node.unpin_codon()
 
+        self.compile()
+
     def clear_pins(self) -> None:
         """
         Remove all codon pins from this graph.
         """
         for node in self.codon_nodes:
             node.unpin_codon()
+
+        self.compile()
 
     @property
     def pinned_codons(self) -> Dict[int, str]:
@@ -325,3 +354,55 @@ class CodonGraph:
                 )
 
         return pinned
+
+    def _update_descendant_counts(self) -> None:
+        """
+        Calculate valid path counts for each outgoing transition.
+        """
+        valid_paths_by_choice = {}
+
+        # Right context has one choice, leading to end.
+        right_choice = self.right_context_node.sequence
+        valid_paths_by_choice[self.right_context_node] = {right_choice: 1}
+        next_counts = {self.right_context_node: 1}
+
+        # Codon positions
+        for pos in range(len(self.aa_seq), 0, -1):
+            current_counts = {}
+
+            for node in self.codon_nodes_by_pos[pos]:
+                choice_counts = {}
+                total = 0
+
+                if node.pinned_codon is not None:
+                    child = node.transitions[node.pinned_codon]
+                    count = next_counts[child]
+                    choice_counts[node.pinned_codon] = count
+                    total += count
+                else:
+                    for choice, child in node.transitions.items():
+                        count = next_counts[child]
+                        choice_counts[choice] = count
+                        total += count
+
+                valid_paths_by_choice[node] = choice_counts
+                current_counts[node] = total
+
+            next_counts = current_counts
+
+        # Left context has one choice, leading to first codon layer.
+        left_choice = self.left_context_node.sequence
+        left_child = self.left_context_node.transitions[left_choice]
+        total = next_counts[left_child]
+        valid_paths_by_choice[self.left_context_node] = {left_choice: total}
+
+        self.valid_paths_by_choice = valid_paths_by_choice
+        self.n_valid_sequences = total
+
+    def compile(self) -> None:
+        """
+        Calculate all graph properties that are derived from its structure.
+        Remember to do this after editing the graph!
+        """
+        # Calculate descendant counts!
+        self._update_descendant_counts()

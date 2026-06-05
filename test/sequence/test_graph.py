@@ -1,5 +1,7 @@
 import pytest
 
+from itertools import product
+
 from codeine.sequence.graph import CodonGraph, CodonNode, ContextNode, EndNode
 
 
@@ -124,7 +126,7 @@ def test_graph_has_initial_and_final_nodes():
 
 
 def test_context_nodes_store_flanks():
-    graph = CodonGraph('MIKEY', flank_l='AAA', flank_r='TTT')
+    graph = CodonGraph('MIKEY', context_l='AAA', context_r='TTT')
     assert graph.left_context_node.sequence == 'AAA'
     assert graph.right_context_node.sequence == 'TTT'
 
@@ -140,11 +142,11 @@ def test_final_node_has_no_transitions():
 
 
 def test_left_context_node_points_to_first_codon_node():
-    graph = CodonGraph('MIKEY', flank_l='AAA')
+    graph = CodonGraph('MIKEY', context_l='AAA')
     first_node = graph.codon_nodes[0]
 
     assert graph.left_context_node.transitions == {'AAA': first_node}
-    assert graph.left_context_node in first_node.parents
+    assert (graph.left_context_node, 'AAA') in first_node.parents
 
 
 def test_last_codon_node_points_to_right_context_node():
@@ -153,14 +155,16 @@ def test_last_codon_node_points_to_right_context_node():
 
     assert set(last_node.transitions) == set(last_node.codons)
     assert all(target is graph.right_context_node for target in last_node.transitions.values())
-    assert last_node in graph.right_context_node.parents
+    assert len(graph.right_context_node.parents) == 2
+    assert (last_node, 'TAC') in graph.right_context_node.parents
+    assert (last_node, 'TAT') in graph.right_context_node.parents
 
 
 def test_right_context_node_points_to_final_node():
-    graph = CodonGraph('MIKEY', flank_r='TTT')
+    graph = CodonGraph('MIKEY', context_r='TTT')
 
     assert graph.right_context_node.transitions == {'TTT': graph.final_node}
-    assert graph.right_context_node in graph.final_node.parents
+    assert (graph.right_context_node, 'TTT') in graph.final_node.parents
 
 
 def test_codon_nodes_by_pos_excludes_context_and_final_nodes():
@@ -186,3 +190,83 @@ def test_graph_has_one_end_node():
     graph = CodonGraph('MIKEY')
     end_nodes = [node for node in graph.nodes if isinstance(node, EndNode)]
     assert len(end_nodes) == 1
+
+
+@pytest.fixture
+def standard_codon_table():
+    return {
+        'F': ['TTT', 'TTC'],
+        'L': ['TTA', 'TTG', 'CTT', 'CTC', 'CTA', 'CTG'],
+        'S': ['TCT', 'TCC', 'TCA', 'TCG', 'AGT', 'AGC'],
+        'Y': ['TAT', 'TAC'],
+        'C': ['TGT', 'TGC'],
+        'W': ['TGG'],
+        'P': ['CCT', 'CCC', 'CCA', 'CCG'],
+        'H': ['CAT', 'CAC'],
+        'Q': ['CAA', 'CAG'],
+        'R': ['CGT', 'CGC', 'CGA', 'CGG', 'AGA', 'AGG'],
+        'I': ['ATT', 'ATC', 'ATA'],
+        'M': ['ATG'],
+        'T': ['ACT', 'ACC', 'ACA', 'ACG'],
+        'N': ['AAT', 'AAC'],
+        'K': ['AAA', 'AAG'],
+        'V': ['GTT', 'GTC', 'GTA', 'GTG'],
+        'A': ['GCT', 'GCC', 'GCA', 'GCG'],
+        'D': ['GAT', 'GAC'],
+        'E': ['GAA', 'GAG'],
+        'G': ['GGT', 'GGC', 'GGA', 'GGG']
+    }
+
+
+def helper_enumerate_sequences(aa_seq, aa_to_codons):
+    codon_choices = [aa_to_codons[aa] for aa in aa_seq]
+    seqs = [''.join(choices) for choices in product(*codon_choices)]
+    return seqs
+
+
+@pytest.mark.parametrize('aa_seq',
+                         (
+                                 'MIKEY',
+                                 'MIKEY',
+                                 'M' * 1000,
+                                 'SSSSSS',
+                                 'M',
+                                 'MILDRED',
+                                 'ELEPHANT',
+                                 'REGINALD',
+                         )
+                         )
+def test_n_valid_sequences_no_restrictions(aa_seq, standard_codon_table):
+    graph = CodonGraph(aa_seq)
+    expected_n_all_seqs = len(helper_enumerate_sequences(aa_seq, standard_codon_table))
+    assert graph.n_valid_sequences == expected_n_all_seqs
+
+
+def test_n_valid_sequences_fixed_codon(standard_codon_table):
+    aa_seq = 'MIKEY'
+    codon_restrictions = {2: 'ATC'}
+    graph = CodonGraph(aa_seq, codon_restrictions=codon_restrictions)
+
+    sequences_all = helper_enumerate_sequences(aa_seq, standard_codon_table)
+    sequences_restricted = [s for s in sequences_all if s[3:6] == 'ATC']
+
+    assert len(sequences_restricted) != len(sequences_all)
+    assert len(sequences_restricted) == graph.n_valid_sequences
+
+
+def test_n_valid_sequences_pinning_and_unpinning(standard_codon_table):
+    aa_seq = 'MIKEY'
+    graph = CodonGraph(aa_seq)
+
+    sequences_all = helper_enumerate_sequences(aa_seq, standard_codon_table)
+    assert len(sequences_all) == graph.n_valid_sequences
+
+    codon_restrictions = {2: 'ATC'}
+    sequences_restricted = [s for s in sequences_all if s[3:6] == 'ATC']
+    assert len(sequences_restricted) != len(sequences_all)
+
+    graph.pin_codons(codon_restrictions)
+    assert len(sequences_restricted) == graph.n_valid_sequences
+
+    graph.clear_pins()
+    assert len(sequences_all) == graph.n_valid_sequences
