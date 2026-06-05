@@ -1,6 +1,7 @@
 from typing import Dict, Optional
 
 from codeine.sequence.graph import CodonGraph, CodonNode
+from codeine.translation.tables import CodonTable
 
 
 class SequenceSpace:
