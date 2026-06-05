@@ -13,52 +13,46 @@ class CodonTable:
     """
 
     def __init__(self, rna: bool = False) -> None:
-        self.rna = rna
+        """
+        Constructor for the CodonTable class.
 
-        dna_to_aa = dict(
-            TranslationTable.unambiguous_dna_by_name["Standard"].forward_table
-        )
-
-        aa_to_dna: dict[str, list[str]] = {}
+        Parameters
+        ----------
+        rna
+            Whether to use RNA. Default is no (False), i.e. use DNA.
+        """
+        dna_to_aa = TranslationTable.unambiguous_dna_by_name["Standard"].forward_table
+        aa_to_dna = {}
         for codon, aa in dna_to_aa.items():
             aa_to_dna.setdefault(aa, []).append(codon)
 
-        if rna:
-            codons_to_aa = {
-                self._normalise_codon(codon, rna=True): aa
-                for codon, aa in dna_to_aa.items()
-            }
-            aa_to_codons = {
-                aa: tuple(
-                    self._normalise_codon(codon, rna=True)
-                    for codon in codons
-                )
-                for aa, codons in aa_to_dna.items()
-            }
-        else:
-            codons_to_aa = {
-                self._normalise_codon(codon, rna=False): aa
-                for codon, aa in dna_to_aa.items()
-            }
-            aa_to_codons = {
-                aa: tuple(
-                    self._normalise_codon(codon, rna=False)
-                    for codon in codons
-                )
-                for aa, codons in aa_to_dna.items()
-            }
+        self._rna = rna
+
+        codons_to_aa = {
+            self._normalise_codon(codon, rna=rna): aa
+            for codon, aa in dna_to_aa.items()
+        }
+
+        aa_to_codons = {
+            aa: tuple(
+                self._normalise_codon(codon, rna=rna)
+                for codon in codons
+            )
+            for aa, codons in aa_to_dna.items()
+        }
 
         codon_probabilities = {
-            aa: {
-                codon: 1 / len(codons)
-                for codon in codons
-            }
+            aa: {codon: 1 / len(codons) for codon in codons}
             for aa, codons in aa_to_codons.items()
         }
 
         self.codons_to_aa = self._freeze_dict(codons_to_aa)
         self.aa_to_codons = self._freeze_dict(aa_to_codons)
         self.codon_probabilities = self._freeze_nested_dict(codon_probabilities)
+
+    @property
+    def rna(self) -> bool:
+        return self._rna
 
     @staticmethod
     def _normalise_codon(codon: str, rna: bool = False) -> str:
