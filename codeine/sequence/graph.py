@@ -269,6 +269,20 @@ class CodonGraph:
             self.end_node,
         ]
 
+    def add_codon_node(self, node: CodonNode) -> None:
+        """
+        Add a codon node and update codon-node indexes.
+        """
+        self.codon_nodes.append(node)
+        self.codon_nodes_by_pos.setdefault(node.pos, []).append(node)
+
+    def remove_codon_node(self, node: CodonNode) -> None:
+        """
+        Remove a codon node and update codon-node indexes.
+        """
+        self.codon_nodes.remove(node)
+        self.codon_nodes_by_pos[node.pos].remove(node)
+
     def pin_codons(self, pinned_codons: Dict[int, str]) -> None:
         """
         Pin (temporarily fix) a codon in the codon graph.
@@ -341,62 +355,49 @@ class CodonGraph:
 
         return pinned
 
-    def add_codon_node(self, node: CodonNode) -> None:
-        """
-        Add a codon node and update codon-node indexes.
-        """
-        self.codon_nodes.append(node)
-        self.codon_nodes_by_pos.setdefault(node.pos, []).append(node)
-
-    def remove_codon_node(self, node: CodonNode) -> None:
-        """
-        Remove a codon node and update codon-node indexes.
-        """
-        self.codon_nodes.remove(node)
-        self.codon_nodes_by_pos[node.pos].remove(node)
-
     def _update_descendant_counts(self) -> None:
         """
-        Calculate descendant counts for each node and outgoing transition.
-        Assumes a strictly layered graph:
-
-            left context -> codon positions -> right context -> end
-
-        where all transitions move exactly one layer forwards.
+        Calculate valid path counts for each outgoing transition.
         """
-        node_counts = {self.end_node: 1}
-        descendants_by_node = {}
+        valid_paths_by_choice = {}
 
-        # Right context -> end
-        transition_counts = {
-            emitted: node_counts[child]
-            for emitted, child in self.right_context_node.transitions.items()
-        }
-        descendants_by_node[self.right_context_node] = transition_counts
-        node_counts[self.right_context_node] = sum(transition_counts.values())
+        # Right context has one choice, leading to end.
+        right_choice = self.right_context_node.sequence
+        valid_paths_by_choice[self.right_context_node] = {right_choice: 1}
+        next_counts = {self.right_context_node: 1}
 
-        # Codon positions, backwards
+        # Codon positions
         for pos in range(len(self.aa_seq), 0, -1):
+            current_counts = {}
+
             for node in self.codon_nodes_by_pos[pos]:
-                transition_counts = {
-                    emitted: node_counts[child]
-                    for emitted, child in node.transitions.items()
-                }
+                choice_counts = {}
+                total = 0
 
-                descendants_by_node[node] = transition_counts
-                node_counts[node] = sum(transition_counts.values())
+                if node.pinned_codon is not None:
+                    child = node.transitions[node.pinned_codon]
+                    count = next_counts[child]
+                    choice_counts[node.pinned_codon] = count
+                    total += count
+                else:
+                    for choice, child in node.transitions.items():
+                        count = next_counts[child]
+                        choice_counts[choice] = count
+                        total += count
 
-        # Left context -> first codon position
-        transition_counts = {
-            emitted: node_counts[child]
-            for emitted, child in self.left_context_node.transitions.items()
-        }
-        descendants_by_node[self.left_context_node] = transition_counts
-        node_counts[self.left_context_node] = sum(transition_counts.values())
+                valid_paths_by_choice[node] = choice_counts
+                current_counts[node] = total
 
-        self.node_counts = node_counts
-        self.descendants_by_node = descendants_by_node
-        self.n_valid_sequences = node_counts[self.initial_node]
+            next_counts = current_counts
+
+        # Left context has one choice, leading to first codon layer.
+        left_choice = self.left_context_node.sequence
+        left_child = self.left_context_node.transitions[left_choice]
+        total = next_counts[left_child]
+        valid_paths_by_choice[self.left_context_node] = {left_choice: total}
+
+        self.valid_paths_by_choice = valid_paths_by_choice
+        self.n_valid_sequences = total
 
     def compile(self) -> None:
         """
