@@ -141,6 +141,7 @@ class CodonGraph:
         self,
         aa_seq: str,
         codon_restrictions: Optional[Dict[int, CodonRestriction]] = None,
+        codon_table: CodonTable = None,
         context_l: str = '',
         context_r: str = '',
     ) -> None:
