@@ -147,6 +147,19 @@ def test_mutation_space_raises_if_seq_is_invalid():
         _ = ss.mutants('ATGATTAAAGAATATATG', [1, 2])
 
 
+def test_mutation_space_raises_if_positions_are_invalid():
+    ss = SequenceSpace('MIKEY')
+
+    with pytest.raises(ValueError):
+        _ = ss.mutants('ATGATTAAAGAATATATG', [0])
+
+    with pytest.raises(ValueError):
+        _ = ss.mutants('ATGATTAAAGAATATATG', [-1])
+
+    with pytest.raises(ValueError):
+        _ = ss.mutants('ATGATTAAAGAATATATG', [1, 6])
+
+
 @pytest.mark.parametrize('aa_seq,positions',
                          (
                                  ('MIKEY', [2, 3]),

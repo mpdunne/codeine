@@ -141,6 +141,10 @@ class SequenceSpace:
             raise ValueError("Parent sequence is not contained in this sequence space.")
 
         positions = set(positions)
+
+        if any(pos < 1 or pos > len(self.view.aa_seq) for pos in positions):
+            raise ValueError('Mutation positions out of range.')
+
         mutation_pins = {}
 
         for pos in range(1, len(self.view.aa_seq) + 1):
