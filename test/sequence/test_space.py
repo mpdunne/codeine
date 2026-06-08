@@ -207,6 +207,12 @@ def test_sequence_space_len():
     assert len(ss) == 1
 
 
+def test_view_iter():
+    ss = SequenceSpace("MIKEY")
+    seqs = [*ss]
+    assert len(seqs) == len(set(seqs)) == 24
+
+
 def test_sequence_space_enumerate():
     ss = SequenceSpace("F")
     assert list(ss.enumerate()) == ["TTT", "TTC"]

@@ -303,6 +303,12 @@ def test_view_len():
     assert len(view) == 2
 
 
+def test_view_iter():
+    view = CodonGraph("MIKEY").view()
+    seqs = [*view]
+    assert len(seqs) == len(set(seqs)) == 24
+
+
 @pytest.mark.parametrize('aa_seq',
                          (
                                  'MIKEY',

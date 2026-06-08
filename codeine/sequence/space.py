@@ -77,6 +77,17 @@ class SequenceSpace:
         """
         return self.n_valid_sequences
 
+    def __iter__(self) -> Generator[str, None, None]:
+        """
+        Iterate over all valid sequences in this sequence space.
+        Be aware that "all valid sequences" can be astronomically many!
+
+        Yields
+        ----------
+        All valid sequences in the sequence space, in order.
+        """
+        yield from self.view
+
     def sample(self) -> str:
         """
         Sample a DNA sequence from this sequence space.
