@@ -59,13 +59,13 @@ class CodonTable:
             aa_to_dna.setdefault(aa, []).append(codon)
 
         codons_to_aa = {
-            self._normalise_codon(codon, rna=rna): aa
+            self.normalise_codon(codon, rna=rna): aa
             for codon, aa in dna_to_aa.items()
         }
 
         aa_to_codons = {
             aa: tuple(
-                self._normalise_codon(codon, rna=rna)
+                self.normalise_codon(codon, rna=rna)
                 for codon in codons
             )
             for aa, codons in aa_to_dna.items()
@@ -94,6 +94,6 @@ class CodonTable:
         object.__setattr__(self, name, value)
 
     @staticmethod
-    def _normalise_codon(codon: str, rna: bool = False) -> str:
+    def normalise_codon(codon: str, rna: bool = False) -> str:
         codon = codon.upper()
         return codon.replace("T", "U") if rna else codon.replace("U", "T")

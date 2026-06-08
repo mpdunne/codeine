@@ -53,70 +53,40 @@ def test_lowercase_sequence_is_accepted():
     assert graph.codon_restrictions[3] == ["AAA"]
 
 
-def test_node_can_pin_codon():
-    node = CodonNode(pos=1, aa='M', codons=['ATG'])
-    node.pin_codon('ATG')
-    assert node.pinned_codon == 'ATG'
-    assert node.sample_codon() == 'ATG'
+def test_view_can_pin_codons():
+    view = CodonGraph('MIKEY').view()
+    view.pin_codons({3: 'AAA'})
+    assert view.pinned_codons[3] == ['AAA']
 
 
-def test_node_can_unpin_codon():
-    node = CodonNode(pos=3, aa='K', codons=['AAA', 'AAG'])
-    node.pin_codon('AAA')
-    node.unpin_codon()
-    assert node.pinned_codon is None
-    sampled_codons = {node.sample_codon() for _ in range(100)}
-    assert sampled_codons == {'AAA', 'AAG'}
+def test_view_can_unpin_codons():
+    view = CodonGraph('MIKEY').view()
+    view.pin_codons({3: 'AAA'})
+    view.unpin_codons([3])
+    assert 3 not in view.pinned_codons
 
 
-def test_node_pin_codon_uppercases():
-    node = CodonNode(pos=3, aa='K', codons=['AAA', 'AAG'])
-    node.pin_codon('aaa')
-    assert node.pinned_codon == 'AAA'
-    assert node.sample_codon() == 'AAA'
+def test_view_can_clear_pins():
+    view = CodonGraph('MIKEY').view()
+    view.pin_codons({3: 'AAA', 5: 'TAT'})
+    view.clear_pins()
+    assert view.pinned_codons == {}
 
 
-def test_node_cannot_pin_invalid_codon():
-    node = CodonNode(pos=3, aa='K', codons=['AAA', 'AAG'])
-    with pytest.raises(ValueError):
-        node.pin_codon('GCT')
-
-
-def test_graph_can_pin_codons():
-    graph = CodonGraph('MIKEY')
-    graph.pin_codons({3: 'AAA'})
-    assert graph.codon_nodes[2].pinned_codon == 'AAA'
-    assert graph.codon_nodes[2].sample_codon() == 'AAA'
-
-
-def test_graph_can_unpin_codons():
-    graph = CodonGraph('MIKEY')
-    graph.pin_codons({3: 'AAA'})
-    graph.unpin_codons([3])
-    assert graph.codon_nodes[2].pinned_codon is None
-
-
-def test_graph_can_clear_pins():
-    graph = CodonGraph('MIKEY')
-    graph.pin_codons({3: 'AAA', 5: 'TAT'})
-    graph.clear_pins()
-    assert all(node.pinned_codon is None for node in graph.codon_nodes)
-
-
-def test_graph_rejects_out_of_range_pin():
-    graph = CodonGraph('MIKEY')
+def test_view_rejects_out_of_range_pin():
+    view = CodonGraph('MIKEY').view()
 
     with pytest.raises(ValueError):
-        graph.pin_codons({0: 'ATG'})
+        view.pin_codons({0: 'ATG'})
 
     with pytest.raises(ValueError):
-        graph.pin_codons({6: 'ATG'})
+        view.pin_codons({6: 'ATG'})
 
 
-def test_graph_rejects_pin_outside_codon_restrictions():
-    graph = CodonGraph('MIKEY', codon_restrictions={3: ['AAA']})
+def test_view_rejects_pin_outside_codon_restrictions():
+    view = CodonGraph('MIKEY', codon_restrictions={3: ['AAA']}).view()
     with pytest.raises(ValueError):
-        graph.pin_codons({3: 'AAG'})
+        view.pin_codons({3: 'AAG'})
 
 
 def test_graph_has_initial_and_final_nodes():
@@ -237,36 +207,86 @@ def helper_enumerate_sequences(aa_seq, aa_to_codons):
                          )
                          )
 def test_n_valid_sequences_no_restrictions(aa_seq, standard_codon_table):
-    graph = CodonGraph(aa_seq)
+    view = CodonGraph(aa_seq).view()
     expected_n_all_seqs = len(helper_enumerate_sequences(aa_seq, standard_codon_table))
-    assert graph.n_valid_sequences == expected_n_all_seqs
+    assert view.n_valid_sequences == expected_n_all_seqs
 
 
 def test_n_valid_sequences_fixed_codon(standard_codon_table):
     aa_seq = 'MIKEY'
     codon_restrictions = {2: 'ATC'}
-    graph = CodonGraph(aa_seq, codon_restrictions=codon_restrictions)
+    view = CodonGraph(aa_seq, codon_restrictions=codon_restrictions).view()
 
     sequences_all = helper_enumerate_sequences(aa_seq, standard_codon_table)
     sequences_restricted = [s for s in sequences_all if s[3:6] == 'ATC']
 
     assert len(sequences_restricted) != len(sequences_all)
-    assert len(sequences_restricted) == graph.n_valid_sequences
+    assert len(sequences_restricted) == view.n_valid_sequences
 
 
 def test_n_valid_sequences_pinning_and_unpinning(standard_codon_table):
     aa_seq = 'MIKEY'
-    graph = CodonGraph(aa_seq)
+    view = CodonGraph(aa_seq).view()
 
     sequences_all = helper_enumerate_sequences(aa_seq, standard_codon_table)
-    assert len(sequences_all) == graph.n_valid_sequences
+    assert len(sequences_all) == view.n_valid_sequences
 
     codon_restrictions = {2: 'ATC'}
     sequences_restricted = [s for s in sequences_all if s[3:6] == 'ATC']
     assert len(sequences_restricted) != len(sequences_all)
 
-    graph.pin_codons(codon_restrictions)
-    assert len(sequences_restricted) == graph.n_valid_sequences
+    view.pin_codons(codon_restrictions)
+    assert len(sequences_restricted) == view.n_valid_sequences
 
-    graph.clear_pins()
-    assert len(sequences_all) == graph.n_valid_sequences
+    view.clear_pins()
+    assert len(sequences_all) == view.n_valid_sequences
+
+
+@pytest.mark.parametrize('aa_seq',
+                         (
+                                 'M'
+                                 'MIKEY',
+                                 'MILDRED',
+                                 'ELEPHANT',
+                                 'REGINALD',
+                         )
+                         )
+def test_contains_passes_on_valid_sequences(aa_seq, standard_codon_table):
+    view = CodonGraph(aa_seq).view()
+    expected_all_seqs = helper_enumerate_sequences(aa_seq, standard_codon_table)
+    for seq in expected_all_seqs:
+        assert view.contains(seq)
+
+
+def test_contains_fails_on_wrong_length_sequences():
+    view = CodonGraph("MIKEY").view()
+    assert not view.contains("")
+    assert not view.contains("ATG")
+    assert not view.contains("ATG" * 10)
+    assert not view.contains("ATGA")  # not multiple of 3
+
+
+@pytest.mark.parametrize(
+    "aa_seq, invalid_seq",
+    (
+        ("M", "ATT"),
+        ("MIKEY", "ATGATCAAAGAGTAA"),
+    ),
+)
+def test_contains_fails_on_invalid_sequences(aa_seq, invalid_seq):
+    view = CodonGraph(aa_seq).view()
+    assert not view.contains(invalid_seq)
+
+
+def test_contains_respects_pinning():
+    view = CodonGraph("MS").view()
+    assert view.contains("ATGTCT")
+    assert view.contains("ATGTCC")
+
+    view.pin_codons({2: "TCT"})
+    assert view.contains("ATGTCT")
+    assert not view.contains("ATGTCC")
+
+    view.clear_pins()
+    assert view.contains("ATGTCT")
+    assert view.contains("ATGTCC")

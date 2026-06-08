@@ -78,44 +78,6 @@ class CodonNode(Node):
         self.codons = codons
         self.probabilities = [1] * len(self.codons)
 
-        # Create the sampler.
-        self.sampler = Sampler(self.codons, self.probabilities)
-
-        # Option to pin (temporarily fix) a specific codon.
-        self.pinned_codon = None
-
-    def pin_codon(self, codon: str) -> None:
-        """
-        Pin (temporarily fix) a codon for this node.
-
-        Parameters
-        ----------
-        codon
-            The codon to pin.
-        """
-        codon = codon.upper()
-        if codon not in self.codons:
-            raise ValueError(f'Pinned codon {codon} is not a valid codon for position {self.pos}')
-        self.pinned_codon = codon
-
-    def unpin_codon(self) -> None:
-        """
-        Unpin any codons that are pinned on this node.
-        """
-        self.pinned_codon = None
-
-    def sample_codon(self) -> str:
-        """
-        Sample a codon according to the stored weights.
-
-        Returns
-        -------
-        A sampled codon.
-        """
-        if self.pinned_codon is not None:
-            return self.pinned_codon
-        return self.sampler.sample()
-
 
 class EndNode(Node):
     """
@@ -149,11 +111,13 @@ class CodonGraph:
             raise ValueError('Please provide non-empty sequence!')
 
         self.aa_seq = aa_seq.upper()
-        self.codon_restrictions = codon_restrictions or {}
 
         if codon_table is None:
             codon_table = CodonTable()
         self.ct = codon_table
+
+        self.codon_restrictions = {}
+        self.codon_restrictions = self.validate_codon_restrictions(codon_restrictions)
 
         self.context_l = context_l.upper()
         self.context_r = context_r.upper()
@@ -168,20 +132,18 @@ class CodonGraph:
         self.initial_node = None
         self.final_node = None
 
-        self.node_counts = {}
-        self.descendants_by_node = {}
-        self.n_valid_sequences = 0
-
-        self._validate_codon_restrictions()
         self.initialise_graph()
 
-    def _validate_codon_restrictions(self) -> None:
+    def validate_codon_restrictions(self, codon_restrictions: Dict[int, CodonRestriction]) -> Dict[int, List[str]]:
         """
         Check the inputted codon restrictions make sense!
         """
-        for pos, codon_restriction in self.codon_restrictions.items():
+        codon_restrictions = codon_restrictions or {}
+        normalised = {}
+
+        for pos, codon_restriction in codon_restrictions.items():
             if pos < 1 or pos > len(self.aa_seq):
-                raise ValueError(f"Codon restriction position {pos} is out of range.")
+                raise ValueError(f"Restricted position {pos} is out of range.")
 
             if isinstance(codon_restriction, str):
                 codons = [codon_restriction]
@@ -194,13 +156,19 @@ class CodonGraph:
             codons = [codon.upper() for codon in codons]
 
             aa = self.aa_seq[pos - 1]
-            allowed_codons = self.ct.aa_to_codons[aa]
+
+            if pos in self.codon_restrictions:
+                allowed_codons = [self.ct.normalise_codon(codon) for codon in self.codon_restrictions[pos]]
+            else:
+                allowed_codons = self.ct.aa_to_codons[aa]
 
             for codon in codons:
                 if codon not in allowed_codons:
                     raise ValueError(f'Codon {codon} is not valid for amino acid {aa} at position {pos}.')
 
-            self.codon_restrictions[pos] = codons
+            normalised[pos] = codons
+
+        return normalised
 
     def initialise_graph(self) -> None:
         """
@@ -259,8 +227,6 @@ class CodonGraph:
         self.initial_node = left_context_node
         self.final_node = end_node
 
-        self.compile()
-
     @property
     def nodes(self) -> List[Node]:
         """
@@ -287,77 +253,120 @@ class CodonGraph:
         self.codon_nodes.remove(node)
         self.codon_nodes_by_pos[node.pos].remove(node)
 
-    def pin_codons(self, pinned_codons: Dict[int, str]) -> None:
+    def view(self) -> "CodonGraphView":
         """
-        Pin (temporarily fix) a codon in the codon graph.
+        Return a constrained view over this graph.
+        """
+        return CodonGraphView(self)
+
+
+class CodonGraphView:
+    """
+    View of a codon graph. The view allows optional temporary constraints to be added without
+    affecting the underlying codon graph. It is on this object that most operations take place.
+    """
+
+    def __init__(self,
+                 graph: CodonGraph,
+                 ) -> None:
+        """
+        Constructor for the CodonGraphView
+
+        Parameters
+        ----------
+        graph
+            The underlying codon graph.
+        """
+        self.graph = graph
+        self.pinned_codons: Dict[int, List[str]] = {}
+
+        self.valid_paths_by_choice = {}
+        self.n_valid_sequences = None
+        self.samplers = {}
+
+        self.compile()
+
+    def pin_codons(self, pinned_codons: Dict[int, CodonRestriction]) -> None:
+        """
+        Pin (temporarily fix) a codon in this codon graph view
 
         Parameters
         ----------
         pinned_codons
             A dict specifying which codons to pin, by pos: codon.
         """
-        for pos, codon in pinned_codons.items():
-            if pos not in self.codon_nodes_by_pos:
-                raise ValueError(f'Pinned codon position {pos} is out of range.')
-
-            for node in self.codon_nodes_by_pos[pos]:
-                node.pin_codon(codon)
-
+        pinned_codons = self.graph.validate_codon_restrictions(pinned_codons)
+        self.pinned_codons.update(pinned_codons)
         self.compile()
 
-    def unpin_codons(self, positions: List[int]) -> None:
+    def unpin_codons(self, positions: Sequence[int]) -> None:
         """
         Unpin codon nodes by pos.
 
         Parameters
         ----------
         positions
-            A list of positions.
+            A list of positions to unpin.
         """
         for pos in positions:
-            if pos not in self.codon_nodes_by_pos:
+            if pos not in self.graph.codon_nodes_by_pos:
                 raise ValueError(f'Pinned codon position {pos} is out of range.')
 
-            for node in self.codon_nodes_by_pos[pos]:
-                node.unpin_codon()
+            self.pinned_codons.pop(pos, None)
 
         self.compile()
 
     def clear_pins(self) -> None:
         """
-        Remove all codon pins from this graph.
+        Remove all codon pins from this graph view
         """
-        for node in self.codon_nodes:
-            node.unpin_codon()
-
+        self.pinned_codons.clear()
         self.compile()
 
-    @property
-    def pinned_codons(self) -> Dict[int, str]:
+    def compile(self) -> None:
         """
-        Return a list of all codons that are pinned in this graph, and their codon values.
-
-        Returns
-        -------
-        Dict keyed by pos and with codon values.
+        Calculate all graph properties that are derived from its structure plus additional
+        temporary constraints (pins). Remember to do this after editing the graph!
         """
-        pinned = {}
+        # Calculate descendant counts!
+        self._update_descendant_counts()
 
-        for pos, nodes in self.codon_nodes_by_pos.items():
-            pinned_node_codons = {
-                node.pinned_codon
-                for node in nodes
-                if node.pinned_codon is not None
-            }
+        # Update the samplers!
+        self._update_samplers()
 
-            if len(pinned_node_codons) == 1:
-                pinned[pos] = next(iter(pinned_node_codons))
-            elif len(pinned_node_codons) > 1:
-                raise RuntimeError(
-                    f'Position {pos} has inconsistent pinning across nodes.'
-                )
+    def _update_samplers(self) -> None:
+        """
+        Make samplers for each codon node given the view's constraints. The probabilities
+        are calculated by combining descendant counts and the base probabilities.
+        """
+        samplers = {}
 
-        return pinned
+        for node, choice_counts in self.valid_paths_by_choice.items():
+            if not isinstance(node, CodonNode):
+                continue
+
+            probability_by_codon = dict(zip(node.codons, node.probabilities))
+
+            codons = []
+            weights = []
+
+            for codon, descendant_count in choice_counts.items():
+                codons.append(codon)
+                weights.append(probability_by_codon[codon] * descendant_count)
+
+            if codons:
+                samplers[node] = Sampler(codons, weights)
+
+        self.samplers = samplers
+
+    def _choices_for_node(self, node: CodonNode) -> List[str]:
+        """
+        Return codon choices available to this node in this view.
+        """
+        if node.pos in self.pinned_codons:
+            return self.pinned_codons[node.pos]
+
+        return node.codons
 
     def _update_descendant_counts(self) -> None:
         """
@@ -365,27 +374,22 @@ class CodonGraph:
         """
         valid_paths_by_choice = {}
 
-        # Right context has one choice, leading to end.
-        right_choice = self.right_context_node.sequence
-        valid_paths_by_choice[self.right_context_node] = {right_choice: 1}
-        next_counts = {self.right_context_node: 1}
+        right_choice = self.graph.right_context_node.sequence
+        valid_paths_by_choice[self.graph.right_context_node] = {right_choice: 1}
+        next_counts = {self.graph.right_context_node: 1}
 
-        # Codon positions
-        for pos in range(len(self.aa_seq), 0, -1):
+        for pos in range(len(self.graph.aa_seq), 0, -1):
             current_counts = {}
 
-            for node in self.codon_nodes_by_pos[pos]:
+            for node in self.graph.codon_nodes_by_pos[pos]:
                 choice_counts = {}
                 total = 0
 
-                if node.pinned_codon is not None:
-                    child = node.transitions[node.pinned_codon]
-                    count = next_counts[child]
-                    choice_counts[node.pinned_codon] = count
-                    total += count
-                else:
-                    for choice, child in node.transitions.items():
-                        count = next_counts[child]
+                for choice in self._choices_for_node(node):
+                    child = node.transitions[choice]
+                    count = next_counts.get(child, 0)
+
+                    if count:
                         choice_counts[choice] = count
                         total += count
 
@@ -394,19 +398,93 @@ class CodonGraph:
 
             next_counts = current_counts
 
-        # Left context has one choice, leading to first codon layer.
-        left_choice = self.left_context_node.sequence
-        left_child = self.left_context_node.transitions[left_choice]
-        total = next_counts[left_child]
-        valid_paths_by_choice[self.left_context_node] = {left_choice: total}
+        left_choice = self.graph.left_context_node.sequence
+        left_child = self.graph.left_context_node.transitions[left_choice]
+        total = next_counts.get(left_child, 0)
+
+        valid_paths_by_choice[self.graph.left_context_node] = {left_choice: total}
 
         self.valid_paths_by_choice = valid_paths_by_choice
         self.n_valid_sequences = total
 
-    def compile(self) -> None:
+    @property
+    def aa_seq(self):
         """
-        Calculate all graph properties that are derived from its structure.
-        Remember to do this after editing the graph!
+        The amino acid sequence on the underlying graph.
+
+        Returns
+        -------
+        The aa seq.
         """
-        # Calculate descendant counts!
-        self._update_descendant_counts()
+        return self.graph.aa_seq
+
+    def contains(self, seq: str) -> bool:
+        """
+        Check whether a DNA sequence is contained in this view.
+
+        Parameters
+        ----------
+        seq
+            The sequence to check
+
+        Returns
+        -------
+        True if and only if the sequence is contained in this sequence space.
+        """
+        seq = seq.upper()
+
+        if len(seq) != len(self.graph.aa_seq) * 3:
+            return False
+
+        current_node = self.graph.initial_node.transitions[self.graph.initial_node.sequence]
+
+        while current_node is not self.graph.right_context_node:
+            pos = current_node.pos
+            codon = seq[(pos - 1) * 3: pos * 3]
+
+            if pos in self.pinned_codons:
+                if codon not in self.pinned_codons[pos]:
+                    return False
+
+            elif codon not in current_node.codons:
+                return False
+
+            current_node = current_node.transitions[codon]
+
+        return True
+
+    def sample(self, include_context: bool = False) -> str:
+        """
+        Sample a DNA sequence from this graph view.
+        """
+        node = self.graph.initial_node
+        sequence = []
+
+        while node is not self.graph.final_node:
+            if not node.transitions:
+                raise RuntimeError(f"Reached non-final node {node.id} with no outgoing transitions.")
+
+            if isinstance(node, CodonNode):
+                emitted = self.samplers[node].sample()
+                sequence.append(emitted)
+
+            else:
+                emitted = node.sequence
+                if include_context:
+                    sequence.append(emitted)
+
+            node = node.transitions[emitted]
+
+        return ''.join(sequence)
+
+    def copy(self) -> "CodonGraphView":
+        """
+        Copy this view and all its constraints.
+
+        Returns
+        -------
+        A copy of the view.
+        """
+        view = self.graph.view()
+        view.pin_codons(self.pinned_codons.copy())
+        return view

@@ -1,4 +1,4 @@
-from typing import Dict, Optional
+from typing import Dict, Optional, Sequence
 
 from codeine.sequence.graph import CodonGraph, CodonNode
 from codeine.translation.tables import CodonTable
@@ -33,13 +33,23 @@ class SequenceSpace:
         context_r
             The context sequence to the right of the coding sequence
         """
-        self.graph = CodonGraph(
+        self.view = CodonGraph(
             aa_seq,
             codon_restrictions=codon_restrictions,
             codon_table=codon_table,
             context_l=context_l,
             context_r=context_r,
-        )
+        ).view()
+
+    @classmethod
+    def from_graph(cls, graph: CodonGraph) -> "SequenceSpace":
+        return cls.from_view(graph.view())
+
+    @classmethod
+    def from_view(cls, view) -> "SequenceSpace":
+        obj = cls.__new__(cls)
+        obj.view = view
+        return obj
 
     def sample(self, include_context: bool = False) -> str:
         """
@@ -54,25 +64,7 @@ class SequenceSpace:
         -------
         A sampled sequence. By default, only the coding sequence is returned.
         """
-        node = self.graph.initial_node
-        sequence = []
-
-        while node is not self.graph.final_node:
-            if not node.transitions:
-                raise RuntimeError(f"Reached non-final node {node.id} with no outgoing transitions.")
-
-            if isinstance(node, CodonNode):
-                emitted = node.sample_codon()
-                sequence.append(emitted)
-
-            else:
-                emitted = node.sequence
-                if include_context:
-                    sequence.append(emitted)
-
-            node = node.transitions[emitted]
-
-        return ''.join(sequence)
+        return self.view.sample(include_context=include_context)
 
     def pin_codons(self, pinned_codons):
         """
@@ -83,7 +75,7 @@ class SequenceSpace:
         pinned_codons:
             A dict specifying which codons to pin, by pos: codon
         """
-        self.graph.pin_codons(pinned_codons)
+        self.view.pin_codons(pinned_codons)
 
     def unpin_codons(self, positions):
         """
@@ -94,10 +86,73 @@ class SequenceSpace:
         positions:
             A list of positions
         """
-        self.graph.unpin_codons(positions)
+        self.view.unpin_codons(positions)
 
     def clear_pins(self):
         """
         Remove all codon pins from the generator.
         """
-        self.graph.clear_pins()
+        self.view.clear_pins()
+
+    def contains(self, seq: str) -> bool:
+        """
+        Check whether a DNA sequence is contained in this sequence space.
+
+        Parameters
+        ----------
+        seq
+            The sequence to check
+
+        Returns
+        -------
+        True if and only if the sequence is contained in this sequence space.
+        """
+        return self.view.contains(seq)
+
+    @property
+    def n_valid_sequences(self) -> int:
+        """
+        The number of valid sequences in this space.
+
+        Returns
+        -------
+        The number of valid sequences in this space.
+        """
+        return self.view.n_valid_sequences
+
+    def mutants(self,
+                seq: str,
+                positions: Sequence[int],
+                ) -> "SequenceSpace":
+        """
+        Return a space of mutants relative to a given coding sequence, i.e. a space derived
+        from this one but which fixes the sequence on all but the specified positions.
+
+        Parameters
+        ----------
+        seq
+            The sequence to mutate.
+        positions
+            The positions that are allowed to vary.
+        """
+        seq = seq.upper()
+
+        if not self.contains(seq):
+            raise ValueError("Parent sequence is not contained in this sequence space.")
+
+        positions = set(positions)
+
+        if any(pos < 1 or pos > len(self.view.aa_seq) for pos in positions):
+            raise ValueError('Mutation positions out of range.')
+
+        mutation_pins = {}
+
+        for pos in range(1, len(self.view.aa_seq) + 1):
+            if pos not in positions:
+                start = (pos - 1) * 3
+                mutation_pins[pos] = seq[start:start + 3]
+
+        view = self.view.copy()
+        view.pin_codons(mutation_pins)
+
+        return SequenceSpace.from_view(view)
