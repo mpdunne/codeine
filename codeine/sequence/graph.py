@@ -353,6 +353,16 @@ class CodonGraphView:
         """
         return self.n_valid_sequences
 
+    def __iter__(self) -> Generator[str, None, None]:
+        """
+        Iterate over all valid sequences in this graph view.
+
+        Yields
+        ----------
+        All valid sequences in the graph, in order.
+        """
+        yield from self.enumerate()
+
     def pin_codons(self, pinned_codons: Dict[int, CodonRestriction]) -> None:
         """
         Pin (temporarily fix) a codon in this codon graph view
@@ -447,14 +457,9 @@ class CodonGraphView:
 
         return ''.join(sequence)
 
-    def enumerate(self, include_context: bool = False) -> Generator[str, None, None]:
+    def enumerate(self) -> Generator[str, None, None]:
         """
         Enumerate all valid sequences in this view.
-
-        Parameters
-        ----------
-        include_context
-            Whether to include left and right context sequences.
 
         Yields
         ------
@@ -462,7 +467,7 @@ class CodonGraphView:
             A valid DNA sequence.
         """
         for index in range(self.n_valid_sequences):
-            yield self.__getitem__(index)
+            yield self[index]
 
     def copy(self) -> "CodonGraphView":
         """
