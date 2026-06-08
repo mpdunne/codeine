@@ -353,6 +353,16 @@ class CodonGraphView:
         """
         return self.n_valid_sequences
 
+    def __iter__(self) -> Generator[str, None, None]:
+        """
+        Iterate over all valid sequences in this graph view.
+
+        Yields
+        ----------
+        All valid sequences in the graph, in order.
+        """
+        yield from self.enumerate()
+
     def pin_codons(self, pinned_codons: Dict[int, CodonRestriction]) -> None:
         """
         Pin (temporarily fix) a codon in this codon graph view
