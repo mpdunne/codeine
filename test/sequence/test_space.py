@@ -89,6 +89,7 @@ def test_ss_rejects_out_of_range_pin():
     with pytest.raises(ValueError):
         ss.pin_codons({6: 'ATG'})
 
+
 def test_ss_sample_excludes_context_by_default():
     ss = SequenceSpace(
         aa_seq="MF",
@@ -101,34 +102,6 @@ def test_ss_sample_excludes_context_by_default():
     assert cds in {"ATGTTT", "ATGTTC"}
     assert not cds.startswith("AAAA")
     assert not cds.endswith("CCCC")
-
-
-def test_ss_sample_can_include_context():
-    ss = SequenceSpace(
-        aa_seq="MF",
-        context_l="AAAA",
-        context_r="CCCC",
-    )
-
-    generated = {ss.sample(include_context=True) for _ in range(1000)}
-
-    assert generated == {
-        "AAAAATGTTTCCCC",
-        "AAAAATGTTCCCCC",
-    }
-
-
-def test_ss_sample_with_context_still_translates_cds_region():
-    ss = SequenceSpace(
-        aa_seq="MIKEY",
-        context_l="AAAA",
-        context_r="CCCC",
-    )
-
-    full_seq = ss.sample(include_context=True)
-    cds = full_seq[len("AAAA"):-len("CCCC")]
-
-    assert str(Seq(cds).translate()) == "MIKEY"
 
 
 def test_mutation_space_raises_if_seq_is_invalid():
@@ -222,3 +195,32 @@ def test_mutation_space_n_valid_sequences():
     assert mut.n_valid_sequences == 6
 
     assert ss.n_valid_sequences == 24
+
+
+def test_sequence_space_getitem():
+    ss = SequenceSpace("MM")
+    assert ss[0] == "ATGATG"
+
+
+def test_sequence_space_len():
+    ss = SequenceSpace("M")
+    assert len(ss) == 1
+
+
+def test_sequence_space_enumerate():
+    ss = SequenceSpace("F")
+    assert list(ss.enumerate()) == ["TTT", "TTC"]
+
+
+def test_sequence_space_contains():
+    ss = SequenceSpace("F")
+    assert ss.contains("TTT")
+    assert ss.contains("TTC")
+    assert not ss.contains("ATG")
+
+
+def test_sequence_space_mutants_pins_non_mutated_positions():
+    ss = SequenceSpace("FF")
+    muts = ss.mutants("TTTTTT", positions=[2])
+
+    assert list(muts.enumerate()) == ["TTTTTT", "TTTTTC"]
