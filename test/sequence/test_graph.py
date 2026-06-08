@@ -270,3 +270,53 @@ def test_n_valid_sequences_pinning_and_unpinning(standard_codon_table):
 
     graph.clear_pins()
     assert len(sequences_all) == graph.n_valid_sequences
+
+
+@pytest.mark.parametrize('aa_seq',
+                         (
+                                 'M'
+                                 'MIKEY',
+                                 'MILDRED',
+                                 'ELEPHANT',
+                                 'REGINALD',
+                         )
+                         )
+def test_contains_passes_on_valid_sequences(aa_seq, standard_codon_table):
+    graph = CodonGraph(aa_seq)
+    expected_all_seqs = helper_enumerate_sequences(aa_seq, standard_codon_table)
+    for seq in expected_all_seqs:
+        assert graph.contains(seq)
+
+
+def test_contains_fails_on_wrong_length_sequences():
+    graph = CodonGraph("MIKEY")
+    assert not graph.contains("")
+    assert not graph.contains("ATG")
+    assert not graph.contains("ATG" * 10)
+    assert not graph.contains("ATGA")  # not multiple of 3
+
+
+@pytest.mark.parametrize(
+    "aa_seq, invalid_seq",
+    (
+        ("M", "ATT"),
+        ("MIKEY", "ATGATCAAAGAGTAA"),
+    ),
+)
+def test_contains_fails_on_invalid_sequences(aa_seq, invalid_seq):
+    graph = CodonGraph(aa_seq)
+    assert not graph.contains(invalid_seq)
+
+
+def test_contains_respects_pinning():
+    graph = CodonGraph("MS")
+    assert graph.contains("ATGTCT")
+    assert graph.contains("ATGTCC")
+
+    graph.pin_codons({2: "TCT"})
+    assert graph.contains("ATGTCT")
+    assert not graph.contains("ATGTCC")
+
+    graph.clear_pins()
+    assert graph.contains("ATGTCT")
+    assert graph.contains("ATGTCC")

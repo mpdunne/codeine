@@ -359,6 +359,40 @@ class CodonGraph:
 
         return pinned
 
+    def contains(self, seq: str) -> bool:
+        """
+        Check whether a DNA sequence is contained in this codon graph.
+
+        Parameters
+        ----------
+        seq
+            The sequence to check
+
+        Returns
+        -------
+        True if and only if the sequence is contained in this sequence space.
+        """
+        seq = seq.upper()
+
+        if len(seq) != len(self.aa_seq) * 3:
+            return False
+
+        current_node = self.initial_node.transitions[self.initial_node.sequence]
+
+        while current_node is not self.right_context_node:
+            codon = seq[(current_node.pos - 1) * 3: current_node.pos * 3]
+
+            if current_node.pinned_codon is not None:
+                if codon != current_node.pinned_codon:
+                    return False
+
+            elif codon not in current_node.codons:
+                return False
+
+            current_node = current_node.transitions[codon]
+
+        return True
+
     def _update_descendant_counts(self) -> None:
         """
         Calculate valid path counts for each outgoing transition.

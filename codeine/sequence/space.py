@@ -101,3 +101,18 @@ class SequenceSpace:
         Remove all codon pins from the generator.
         """
         self.graph.clear_pins()
+
+    def contains(self, seq: str) -> bool:
+        """
+        Check whether a DNA sequence is contained in this sequence space.
+
+        Parameters
+        ----------
+        seq
+            The sequence to check
+
+        Returns
+        -------
+        True if and only if the sequence is contained in this sequence space.
+        """
+        return self.graph.contains(seq)
