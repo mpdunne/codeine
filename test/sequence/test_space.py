@@ -129,3 +129,86 @@ def test_sg_sample_with_context_still_translates_cds_region():
     cds = full_seq[len("AAAA"):-len("CCCC")]
 
     assert str(Seq(cds).translate()) == "MIKEY"
+
+
+def test_mutation_mode_raises_if_seq_is_invalid():
+    with pytest.raises(ValueError):
+        ss = SequenceSpace('MIKEY')
+        ss.enter_mutation_mode('', [1, 2])
+
+    with pytest.raises(ValueError):
+        ss = SequenceSpace('MIKEY')
+        ss.enter_mutation_mode('ATG', [1, 2])
+
+    with pytest.raises(ValueError):
+        ss = SequenceSpace('MIKEY')
+        ss.enter_mutation_mode('ATTATTAAAGAATAT', [1, 2])
+
+    with pytest.raises(ValueError):
+        ss = SequenceSpace('MIKEY')
+        ss.enter_mutation_mode('ATGATTAAAGAATATATG', [1, 2])
+
+
+@pytest.mark.parametrize('aa_seq,positions',
+                         (
+                                 ('MIKEY', [2, 3]),
+                                 ('MILDRED', [2, 3, 4]),
+                                 ('STEVEN', [1, 2]),
+                                 ('WILLIAM', [2, 5, 7]),
+                         ))
+def test_mutation_mode_mutates_only_specified_positions(aa_seq, positions):
+    ss = SequenceSpace(aa_seq)
+    ref_cds = ss.sample()
+
+    ss.enter_mutation_mode(ref_cds, positions)
+    sampled_seqs = [ss.sample() for _ in range(1000)]
+    assert all(ss.contains(s) for s in sampled_seqs)
+
+    fixed_positions = [pos for pos in range(1, len(aa_seq) + 1) if pos not in positions]
+
+    values_at_fixed_positions = [tuple(seq[(pos - 1) * 3: pos * 3] for pos in fixed_positions) for seq in sampled_seqs]
+    values_at_unfixed_positions = [tuple(seq[(pos - 1) * 3: pos * 3] for pos in positions) for seq in sampled_seqs]
+
+    assert len(set(values_at_fixed_positions)) == 1
+    assert len(set(values_at_unfixed_positions)) != 1
+
+
+def test_can_exit_mutation_mode():
+    aa_seq = 'MIKEY'
+    ref_cds = 'ATGATTAAAGAATAT'
+
+    ss = SequenceSpace(aa_seq)
+
+    ss.enter_mutation_mode(ref_cds, [2])
+    sampled_seqs = [ss.sample() for _ in range(1000)]
+    assert all(s[6:] == ref_cds[6:] for s in sampled_seqs)
+    assert not all(s[3:6] == ref_cds[3:6] for s in sampled_seqs)
+
+    ss.exit_mutation_mode()
+    sampled_seqs = [ss.sample() for _ in range(1000)]
+    assert not all(s[6:] == ref_cds[6:] for s in sampled_seqs)
+    assert not all(s[3:6] == ref_cds[3:6] for s in sampled_seqs)
+
+
+def test_mutation_mode_updates_n_valid_sequences():
+    aa_seq = 'MIKEY'
+    ref_cds = 'ATGATTAAAGAATAT'
+
+    ss = SequenceSpace(aa_seq)
+    assert ss.graph.n_valid_sequences == 24
+
+    ss.enter_mutation_mode(ref_cds, [1])
+    assert ss.graph.n_valid_sequences == 1
+    ss.exit_mutation_mode()
+
+    ss.enter_mutation_mode(ref_cds, [2])
+    assert ss.graph.n_valid_sequences == 3
+
+    ss.exit_mutation_mode()
+    ss.enter_mutation_mode(ref_cds, [1, 2, 3])
+    assert ss.graph.n_valid_sequences == 6
+
+    ss.exit_mutation_mode()
+    assert ss.graph.n_valid_sequences == 24
+
+

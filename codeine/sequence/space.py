@@ -1,4 +1,4 @@
-from typing import Dict, Optional
+from typing import Dict, Optional, Sequence
 
 from codeine.sequence.graph import CodonGraph, CodonNode
 from codeine.translation.tables import CodonTable
@@ -41,6 +41,9 @@ class SequenceSpace:
             context_r=context_r,
         )
 
+        self.user_pins = {}
+        self.mutation_pins = {}
+
     def sample(self, include_context: bool = False) -> str:
         """
         Sample a DNA sequence from this sequence space.
@@ -74,6 +77,17 @@ class SequenceSpace:
 
         return ''.join(sequence)
 
+    def _update_graph_pins(self) -> None:
+        """
+        Update all active pins on the underlying graph.
+        """
+        self.graph.clear_pins()
+
+        self.graph.pin_codons({
+            **self.user_pins,
+            **self.mutation_pins,
+        })
+
     def pin_codons(self, pinned_codons):
         """
         Pin (temporarily fix) a codon in the codon graph.
@@ -83,7 +97,8 @@ class SequenceSpace:
         pinned_codons:
             A dict specifying which codons to pin, by pos: codon
         """
-        self.graph.pin_codons(pinned_codons)
+        self.user_pins.update(pinned_codons)
+        self._update_graph_pins()
 
     def unpin_codons(self, positions):
         """
@@ -94,13 +109,17 @@ class SequenceSpace:
         positions:
             A list of positions
         """
-        self.graph.unpin_codons(positions)
+        for pos in positions:
+            self.user_pins.pop(pos, None)
+
+        self._update_graph_pins()
 
     def clear_pins(self):
         """
         Remove all codon pins from the generator.
         """
-        self.graph.clear_pins()
+        self.user_pins.clear()
+        self._update_graph_pins()
 
     def contains(self, seq: str) -> bool:
         """
@@ -116,3 +135,37 @@ class SequenceSpace:
         True if and only if the sequence is contained in this sequence space.
         """
         return self.graph.contains(seq)
+
+    def enter_mutation_mode(self, seq: str, positions: Sequence[int]) -> None:
+        """
+        Enter mutation mode, fixing the sequence on all but the specified positions
+
+        Parameters
+        ----------
+        seq
+            The sequence to mutate.
+        positions
+            The positions that are allowed to vary.
+        """
+        seq = seq.upper()
+
+        if not self.contains(seq):
+            raise ValueError("Parent sequence is not contained in this sequence space.")
+
+        positions = set(positions)
+        mutation_pins = {}
+
+        for pos in range(1, len(self.graph.aa_seq) + 1):
+            if pos not in positions:
+                start = (pos - 1) * 3
+                mutation_pins[pos] = seq[start:start + 3]
+
+        self.mutation_pins = mutation_pins
+        self._update_graph_pins()
+
+    def exit_mutation_mode(self) -> None:
+        """
+        Clear all mutation restrictions and sample normally.
+        """
+        self.mutation_pins.clear()
+        self._update_graph_pins()
