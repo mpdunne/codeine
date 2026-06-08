@@ -3,7 +3,7 @@ import uuid
 from codeine.translation.tables import CodonTable
 from codeine.utils.sampling import Sampler
 
-from typing import Dict, List, Optional, Sequence, Union
+from typing import Dict, Generator, List, Optional, Sequence, Union
 
 
 CodonRestriction = Union[str, Sequence[str]]
@@ -286,6 +286,73 @@ class CodonGraphView:
 
         self.compile()
 
+    @property
+    def aa_seq(self):
+        """
+        The amino acid sequence on the underlying graph.
+
+        Returns
+        -------
+        The aa seq.
+        """
+        return self.graph.aa_seq
+
+    def __getitem__(self, index: int) -> str:
+        """
+        Return the valid sequence at a given index.
+
+        Parameters
+        ----------
+        index
+            Zero-based sequence index.
+
+        Returns
+        -------
+        str
+            The indexed valid DNA sequence.
+        """
+
+        if index < 0 or index >= self.n_valid_sequences:
+            raise IndexError(f"Sequence index {index} out of range for {self.n_valid_sequences} valid sequences.")
+
+        node = self.graph.initial_node
+        sequence = []
+
+        while node is not self.graph.final_node:
+            choice_counts = self.valid_paths_by_choice[node]
+
+            if isinstance(node, CodonNode):
+                remaining = index
+
+                for choice, count in choice_counts.items():
+                    if remaining < count:
+                        emitted = choice
+                        break
+                    remaining -= count
+                else:
+                    raise RuntimeError("Failed to resolve sequence index.")
+
+                sequence.append(emitted)
+                index = remaining
+
+            else:
+                # Context nodes only have one valid outgoing choice.
+                emitted = next(iter(choice_counts))
+
+            node = node.transitions[emitted]
+
+        return ''.join(sequence)
+
+    def __len__(self):
+        """
+        The number of valid sequences in this graph.
+
+        Returns
+        -------
+        The number of valid sequences in this graph.
+        """
+        return self.n_valid_sequences
+
     def pin_codons(self, pinned_codons: Dict[int, CodonRestriction]) -> None:
         """
         Pin (temporarily fix) a codon in this codon graph view
@@ -322,6 +389,92 @@ class CodonGraphView:
         """
         self.pinned_codons.clear()
         self.compile()
+
+    def contains(self, seq: str) -> bool:
+        """
+        Check whether a DNA sequence is contained in this view.
+
+        Parameters
+        ----------
+        seq
+            The sequence to check
+
+        Returns
+        -------
+        True if and only if the sequence is contained in this sequence space.
+        """
+        seq = seq.upper()
+
+        if len(seq) != len(self.graph.aa_seq) * 3:
+            return False
+
+        current_node = self.graph.initial_node.transitions[self.graph.initial_node.sequence]
+
+        while current_node is not self.graph.right_context_node:
+            pos = current_node.pos
+            codon = seq[(pos - 1) * 3: pos * 3]
+
+            if pos in self.pinned_codons:
+                if codon not in self.pinned_codons[pos]:
+                    return False
+
+            elif codon not in current_node.codons:
+                return False
+
+            current_node = current_node.transitions[codon]
+
+        return True
+
+    def sample(self) -> str:
+        """
+        Sample a DNA sequence from this graph view.
+        """
+        node = self.graph.initial_node
+        sequence = []
+
+        while node is not self.graph.final_node:
+            if not node.transitions:
+                raise RuntimeError(f"Reached non-final node {node.id} with no outgoing transitions.")
+
+            if isinstance(node, CodonNode):
+                emitted = self.samplers[node].sample()
+                sequence.append(emitted)
+
+            else:
+                emitted = node.sequence
+
+            node = node.transitions[emitted]
+
+        return ''.join(sequence)
+
+    def enumerate(self, include_context: bool = False) -> Generator[str, None, None]:
+        """
+        Enumerate all valid sequences in this view.
+
+        Parameters
+        ----------
+        include_context
+            Whether to include left and right context sequences.
+
+        Yields
+        ------
+        str
+            A valid DNA sequence.
+        """
+        for index in range(self.n_valid_sequences):
+            yield self.__getitem__(index)
+
+    def copy(self) -> "CodonGraphView":
+        """
+        Copy this view and all its constraints.
+
+        Returns
+        -------
+        A copy of the view.
+        """
+        view = self.graph.view()
+        view.pin_codons(self.pinned_codons.copy())
+        return view
 
     def compile(self) -> None:
         """
@@ -406,85 +559,3 @@ class CodonGraphView:
 
         self.valid_paths_by_choice = valid_paths_by_choice
         self.n_valid_sequences = total
-
-    @property
-    def aa_seq(self):
-        """
-        The amino acid sequence on the underlying graph.
-
-        Returns
-        -------
-        The aa seq.
-        """
-        return self.graph.aa_seq
-
-    def contains(self, seq: str) -> bool:
-        """
-        Check whether a DNA sequence is contained in this view.
-
-        Parameters
-        ----------
-        seq
-            The sequence to check
-
-        Returns
-        -------
-        True if and only if the sequence is contained in this sequence space.
-        """
-        seq = seq.upper()
-
-        if len(seq) != len(self.graph.aa_seq) * 3:
-            return False
-
-        current_node = self.graph.initial_node.transitions[self.graph.initial_node.sequence]
-
-        while current_node is not self.graph.right_context_node:
-            pos = current_node.pos
-            codon = seq[(pos - 1) * 3: pos * 3]
-
-            if pos in self.pinned_codons:
-                if codon not in self.pinned_codons[pos]:
-                    return False
-
-            elif codon not in current_node.codons:
-                return False
-
-            current_node = current_node.transitions[codon]
-
-        return True
-
-    def sample(self, include_context: bool = False) -> str:
-        """
-        Sample a DNA sequence from this graph view.
-        """
-        node = self.graph.initial_node
-        sequence = []
-
-        while node is not self.graph.final_node:
-            if not node.transitions:
-                raise RuntimeError(f"Reached non-final node {node.id} with no outgoing transitions.")
-
-            if isinstance(node, CodonNode):
-                emitted = self.samplers[node].sample()
-                sequence.append(emitted)
-
-            else:
-                emitted = node.sequence
-                if include_context:
-                    sequence.append(emitted)
-
-            node = node.transitions[emitted]
-
-        return ''.join(sequence)
-
-    def copy(self) -> "CodonGraphView":
-        """
-        Copy this view and all its constraints.
-
-        Returns
-        -------
-        A copy of the view.
-        """
-        view = self.graph.view()
-        view.pin_codons(self.pinned_codons.copy())
-        return view

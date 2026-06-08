@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Sequence
+from typing import Dict, Generator, Optional, Sequence
 
 from codeine.sequence.graph import CodonGraph, CodonNode
 from codeine.translation.tables import CodonTable
@@ -51,20 +51,52 @@ class SequenceSpace:
         obj.view = view
         return obj
 
-    def sample(self, include_context: bool = False) -> str:
+    def __getitem__(self, index: int) -> str:
         """
-        Sample a DNA sequence from this sequence space.
+        Return the valid sequence at a given index.
 
         Parameters
         ----------
-        include_context
-            Whether to include the left and right context sequences.
+        index
+            Zero-based sequence index.
+
+        Returns
+        -------
+        str
+            The indexed valid DNA sequence.
+        """
+        return self.view[index]
+
+    def __len__(self):
+        """
+        The number of valid sequences in this graph.
+
+        Returns
+        -------
+        The number of valid sequences in this graph.
+        """
+        return self.n_valid_sequences
+
+    def __iter__(self) -> Generator[str, None, None]:
+        """
+        Iterate over all valid sequences in this sequence space.
+        Be aware that "all valid sequences" can be astronomically many!
+
+        Yields
+        ----------
+        All valid sequences in the sequence space, in order.
+        """
+        yield from self.view
+
+    def sample(self) -> str:
+        """
+        Sample a DNA sequence from this sequence space.
 
         Returns
         -------
         A sampled sequence. By default, only the coding sequence is returned.
         """
-        return self.view.sample(include_context=include_context)
+        return self.view.sample()
 
     def pin_codons(self, pinned_codons):
         """
@@ -119,6 +151,19 @@ class SequenceSpace:
         The number of valid sequences in this space.
         """
         return self.view.n_valid_sequences
+
+    def enumerate(self) -> Generator[str, None, None]:
+        """
+        Generate all sequences in this space. If there are many (and often there are
+        astronomically many), one would not expect to reach the "end". However for smaller
+        sequence spaces, such as mutation spaces, it's quite possible to get there.
+
+        Yields
+        ------
+        str
+            A valid DNA sequence.
+        """
+        yield from self.view.enumerate()
 
     def mutants(self,
                 seq: str,

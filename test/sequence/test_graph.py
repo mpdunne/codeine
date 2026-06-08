@@ -290,3 +290,75 @@ def test_contains_respects_pinning():
     view.clear_pins()
     assert view.contains("ATGTCT")
     assert view.contains("ATGTCC")
+
+
+def test_view_getitem():
+    view = CodonGraph("MF").view()
+    assert view[0] == "ATGTTT"
+    assert view[1] == "ATGTTC"
+
+
+def test_view_len():
+    view = CodonGraph("MF").view()
+    assert len(view) == 2
+
+
+def test_view_iter():
+    view = CodonGraph("MIKEY").view()
+    seqs = [*view]
+    assert len(seqs) == len(set(seqs)) == 24
+
+
+@pytest.mark.parametrize('aa_seq',
+                         (
+                                 'MIKEY',
+                                 'MIKEY',
+                                 'M' * 1000,
+                                 'SSSSSS',
+                                 'M',
+                                 'MILDRED',
+                                 'ELEPHANT',
+                                 'REGINALD',
+                         )
+                         )
+def test_enumerate_sequences(aa_seq, standard_codon_table):
+    view = CodonGraph(aa_seq).view()
+
+    generated_all_seqs = [*view.enumerate()]
+    expected_all_seqs = helper_enumerate_sequences(aa_seq, standard_codon_table)
+
+    assert view.n_valid_sequences == len(view) == len(generated_all_seqs) == len(expected_all_seqs)
+    assert len(generated_all_seqs) == len(expected_all_seqs) == len(set(expected_all_seqs))
+    assert set(generated_all_seqs) == set(expected_all_seqs)
+
+
+def test_enumerate_pinned_sequences(standard_codon_table):
+    aa_seq = 'MIKEY'
+    view = CodonGraph(aa_seq).view()
+
+    generated_all_seqs = [*view.enumerate()]
+    expected_all_seqs = helper_enumerate_sequences(aa_seq, standard_codon_table)
+
+    assert 24 == view.n_valid_sequences == len(view) == len(generated_all_seqs) == len(expected_all_seqs)
+    assert 24 == len(generated_all_seqs) == len(expected_all_seqs) == len(set(expected_all_seqs))
+    assert set(generated_all_seqs) == set(expected_all_seqs)
+
+    view.pin_codons({2: 'ATC'})
+    generated_pinned_seqs = [*view.enumerate()]
+    assert 8 == view.n_valid_sequences == len(view)
+    assert 8 == len(generated_pinned_seqs)
+    assert all(seq[3:6] == 'ATC' for seq in generated_pinned_seqs)
+
+    view.clear_pins()
+    generated_unpinned_seqs = [*view.enumerate()]
+
+    assert 24 == view.n_valid_sequences == len(view) == len(generated_unpinned_seqs) == len(expected_all_seqs)
+    assert 24 == len(generated_unpinned_seqs) == len(expected_all_seqs) == len(set(expected_all_seqs))
+    assert set(generated_unpinned_seqs) == set(expected_all_seqs)
+
+
+def test_get_works_for_very_large_sequences():
+    view = CodonGraph('MIKEY' * 1000).view()
+    _ = view[100]
+    _ = view[1000000]
+    _ = view[10**40]
