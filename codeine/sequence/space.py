@@ -5,7 +5,7 @@ from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
 
 
-class SequenceSpace:
+class CodingSpace:
     """
     Class representing coding sequence space, for sampling and mutating CDS coding sequences.
     """
@@ -20,7 +20,7 @@ class SequenceSpace:
             context_r: str = '',
     ) -> None:
         """
-        Constructor for the SequenceSpace class.
+        Constructor for the CodingSpace class.
 
         Parameters
         ----------
@@ -47,11 +47,11 @@ class SequenceSpace:
         ).view()
 
     @classmethod
-    def from_graph(cls, graph: CodonGraph) -> "SequenceSpace":
+    def from_graph(cls, graph: CodonGraph) -> "CodingSpace":
         return cls.from_view(graph.view())
 
     @classmethod
-    def from_view(cls, view) -> "SequenceSpace":
+    def from_view(cls, view) -> "CodingSpace":
         obj = cls.__new__(cls)
         obj.view = view
         return obj
@@ -84,18 +84,18 @@ class SequenceSpace:
 
     def __iter__(self) -> Generator[str, None, None]:
         """
-        Iterate over all valid sequences in this sequence space.
+        Iterate over all valid sequences in this coding space.
         Be aware that "all valid sequences" can be astronomically many!
 
         Yields
         ----------
-        All valid sequences in the sequence space, in order.
+        All valid sequences in the coding space, in order.
         """
         yield from self.view
 
     def sample(self) -> str:
         """
-        Sample a DNA sequence from this sequence space.
+        Sample a DNA sequence from this coding space.
 
         Returns
         -------
@@ -133,7 +133,7 @@ class SequenceSpace:
 
     def contains(self, seq: str) -> bool:
         """
-        Check whether a DNA sequence is contained in this sequence space.
+        Check whether a DNA sequence is contained in this coding space.
 
         Parameters
         ----------
@@ -142,7 +142,7 @@ class SequenceSpace:
 
         Returns
         -------
-        True if and only if the sequence is contained in this sequence space.
+        True if and only if the sequence is contained in this coding space.
         """
         return self.view.contains(seq)
 
@@ -173,7 +173,7 @@ class SequenceSpace:
     def mutants(self,
                 seq: str,
                 positions: Sequence[int],
-                ) -> "SequenceSpace":
+                ) -> "CodingSpace":
         """
         Return a space of mutants relative to a given coding sequence, i.e. a space derived
         from this one but which fixes the sequence on all but the specified positions.
@@ -188,7 +188,7 @@ class SequenceSpace:
         seq = seq.upper()
 
         if not self.contains(seq):
-            raise ValueError("Parent sequence is not contained in this sequence space.")
+            raise ValueError("Parent sequence is not contained in this coding space.")
 
         positions = set(positions)
 
@@ -205,4 +205,4 @@ class SequenceSpace:
         view = self.view.copy()
         view.pin_codons(mutation_pins)
 
-        return SequenceSpace.from_view(view)
+        return CodingSpace.from_view(view)

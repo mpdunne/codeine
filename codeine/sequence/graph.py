@@ -419,7 +419,7 @@ class CodonGraphView:
 
         Returns
         -------
-        True if and only if the sequence is contained in this sequence space.
+        True if and only if the sequence is contained in this coding space.
         """
         seq = seq.upper()
 

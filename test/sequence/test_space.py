@@ -2,23 +2,23 @@ import pytest
 
 from Bio.Seq import Seq
 
-from codeine.sequence.space import SequenceSpace
+from codeine.sequence.space import CodingSpace
 
 
 @pytest.mark.parametrize('aa_seq', ('MIKEY', 'MILDRED', 'STEVEN', 'WILLIAM'))
 def test_ss_sequences_translate_correctly(aa_seq):
-    ss = SequenceSpace(aa_seq=aa_seq)
+    space = CodingSpace(aa_seq=aa_seq)
     for _ in range(1000):
-        cds = ss.sample()
+        cds = space.sample()
         translated = Seq(cds).translate()
         assert translated == aa_seq
 
 
 def test_ss_fixed_codons_are_fixed():
-    ss = SequenceSpace("MIKEY", codon_restrictions={2: "ATA"})
+    space = CodingSpace("MIKEY", codon_restrictions={2: "ATA"})
 
     for _ in range(1000):
-        cds = ss.sample()
+        cds = space.sample()
         codons = [cds[i:i + 3] for i in range(0, len(cds), 3)]
 
         assert codons[1] == "ATA"
@@ -26,48 +26,48 @@ def test_ss_fixed_codons_are_fixed():
 
 
 def test_ss_generates_different_sequences():
-    ss = SequenceSpace("MIKEY")
-    generated = [ss.sample() for _ in range(1000)]
+    space = CodingSpace("MIKEY")
+    generated = [space.sample() for _ in range(1000)]
     assert len(generated) > 1
 
 
 def test_ss_generates_all_sequences_for_small_case():
-    ss = SequenceSpace("MF")
-    generated = {ss.sample() for _ in range(1000)}
+    space = CodingSpace("MF")
+    generated = {space.sample() for _ in range(1000)}
     expected = {"ATGTTT", "ATGTTC"}
     assert generated == expected
 
 
 def test_ss_pinned_codons_are_fixed():
-    ss = SequenceSpace('MIKEY')
-    ss.pin_codons({3: 'AAA'})
+    space = CodingSpace('MIKEY')
+    space.pin_codons({3: 'AAA'})
     for _ in range(100):
-        cds = ss.sample()
+        cds = space.sample()
         codons = [cds[i:i + 3] for i in range(0, len(cds), 3)]
         assert codons[2] == 'AAA'
 
 
 def test_ss_unpin_codons_restores_sampling():
-    ss = SequenceSpace('MIKEY')
-    ss.pin_codons({3: 'AAA'})
-    ss.unpin_codons([3])
+    space = CodingSpace('MIKEY')
+    space.pin_codons({3: 'AAA'})
+    space.unpin_codons([3])
     sampled = set()
     for _ in range(100):
-        cds = ss.sample()
+        cds = space.sample()
         codons = [cds[i:i + 3] for i in range(0, len(cds), 3)]
         sampled.add(codons[2])
     assert sampled == {'AAA', 'AAG'}
 
 
 def test_ss_clear_pins_restores_sampling():
-    ss = SequenceSpace('MIKEY')
+    space = CodingSpace('MIKEY')
 
-    ss.pin_codons({3: 'AAA'})
-    ss.clear_pins()
+    space.pin_codons({3: 'AAA'})
+    space.clear_pins()
 
     sampled = set()
     for _ in range(100):
-        cds = ss.sample()
+        cds = space.sample()
         codons = [cds[i:i + 3] for i in range(0, len(cds), 3)]
         sampled.add(codons[2])
 
@@ -75,29 +75,29 @@ def test_ss_clear_pins_restores_sampling():
 
 
 def test_ss_rejects_invalid_pin():
-    ss = SequenceSpace('MIKEY')
+    space = CodingSpace('MIKEY')
     with pytest.raises(ValueError):
-        ss.pin_codons({3: 'GCT'})
+        space.pin_codons({3: 'GCT'})
 
 
 def test_ss_rejects_out_of_range_pin():
-    ss = SequenceSpace('MIKEY')
+    space = CodingSpace('MIKEY')
 
     with pytest.raises(ValueError):
-        ss.pin_codons({0: 'ATG'})
+        space.pin_codons({0: 'ATG'})
 
     with pytest.raises(ValueError):
-        ss.pin_codons({6: 'ATG'})
+        space.pin_codons({6: 'ATG'})
 
 
 def test_ss_sample_excludes_context_by_default():
-    ss = SequenceSpace(
+    space = CodingSpace(
         aa_seq="MF",
         context_l="AAAA",
         context_r="CCCC",
     )
 
-    cds = ss.sample()
+    cds = space.sample()
 
     assert cds in {"ATGTTT", "ATGTTC"}
     assert not cds.startswith("AAAA")
@@ -105,32 +105,32 @@ def test_ss_sample_excludes_context_by_default():
 
 
 def test_mutation_space_raises_if_seq_is_invalid():
-    ss = SequenceSpace('MIKEY')
+    space = CodingSpace('MIKEY')
     
     with pytest.raises(ValueError):
-        _ = ss.mutants('', [1, 2])
+        _ = space.mutants('', [1, 2])
 
     with pytest.raises(ValueError):
-        _ = ss.mutants('ATG', [1, 2])
+        _ = space.mutants('ATG', [1, 2])
 
     with pytest.raises(ValueError):
-        _ = ss.mutants('ATTATTAAAGAATAT', [1, 2])
+        _ = space.mutants('ATTATTAAAGAATAT', [1, 2])
 
     with pytest.raises(ValueError):
-        _ = ss.mutants('ATGATTAAAGAATATATG', [1, 2])
+        _ = space.mutants('ATGATTAAAGAATATATG', [1, 2])
 
 
 def test_mutation_space_raises_if_positions_are_invalid():
-    ss = SequenceSpace('MIKEY')
+    space = CodingSpace('MIKEY')
 
     with pytest.raises(ValueError):
-        _ = ss.mutants('ATGATTAAAGAATATATG', [0])
+        _ = space.mutants('ATGATTAAAGAATATATG', [0])
 
     with pytest.raises(ValueError):
-        _ = ss.mutants('ATGATTAAAGAATATATG', [-1])
+        _ = space.mutants('ATGATTAAAGAATATATG', [-1])
 
     with pytest.raises(ValueError):
-        _ = ss.mutants('ATGATTAAAGAATATATG', [1, 6])
+        _ = space.mutants('ATGATTAAAGAATATATG', [1, 6])
 
 
 @pytest.mark.parametrize('aa_seq,positions',
@@ -141,12 +141,12 @@ def test_mutation_space_raises_if_positions_are_invalid():
                                  ('WILLIAM', [2, 5, 7]),
                          ))
 def test_mutation_space_mutates_only_specified_positions(aa_seq, positions):
-    ss = SequenceSpace(aa_seq)
-    ref_cds = ss.sample()
+    space = CodingSpace(aa_seq)
+    ref_cds = space.sample()
 
-    mut = ss.mutants(ref_cds, positions)
+    mut = space.mutants(ref_cds, positions)
     sampled_seqs = [mut.sample() for _ in range(1000)]
-    assert all(ss.contains(s) for s in sampled_seqs)
+    assert all(space.contains(s) for s in sampled_seqs)
     assert all(mut.contains(s) for s in sampled_seqs)
 
     fixed_positions = [pos for pos in range(1, len(aa_seq) + 1) if pos not in positions]
@@ -162,18 +162,18 @@ def test_base_space_remains_unchanged_after_making_mutation_space():
     aa_seq = 'MIKEY'
     ref_cds = 'ATGATTAAAGAATAT'
 
-    ss = SequenceSpace(aa_seq)
+    space = CodingSpace(aa_seq)
 
-    sampled_seqs = [ss.sample() for _ in range(1000)]
+    sampled_seqs = [space.sample() for _ in range(1000)]
     assert not all(s[6:] == ref_cds[6:] for s in sampled_seqs)
     assert not all(s[3:6] == ref_cds[3:6] for s in sampled_seqs)
 
-    mut = ss.mutants(ref_cds, [2])
+    mut = space.mutants(ref_cds, [2])
     sampled_seqs = [mut.sample() for _ in range(1000)]
     assert all(s[6:] == ref_cds[6:] for s in sampled_seqs)
     assert not all(s[3:6] == ref_cds[3:6] for s in sampled_seqs)
 
-    sampled_seqs = [ss.sample() for _ in range(1000)]
+    sampled_seqs = [space.sample() for _ in range(1000)]
     assert not all(s[6:] == ref_cds[6:] for s in sampled_seqs)
     assert not all(s[3:6] == ref_cds[3:6] for s in sampled_seqs)
 
@@ -182,51 +182,51 @@ def test_mutation_space_n_valid_sequences():
     aa_seq = 'MIKEY'
     ref_cds = 'ATGATTAAAGAATAT'
 
-    ss = SequenceSpace(aa_seq)
-    assert ss.n_valid_sequences == 24
+    space = CodingSpace(aa_seq)
+    assert space.n_valid_sequences == 24
 
-    mut = ss.mutants(ref_cds, [1])
+    mut = space.mutants(ref_cds, [1])
     assert mut.n_valid_sequences == 1
 
-    mut = ss.mutants(ref_cds, [2])
+    mut = space.mutants(ref_cds, [2])
     assert mut.n_valid_sequences == 3
 
-    mut = ss.mutants(ref_cds, [1, 2, 3])
+    mut = space.mutants(ref_cds, [1, 2, 3])
     assert mut.n_valid_sequences == 6
 
-    assert ss.n_valid_sequences == 24
+    assert space.n_valid_sequences == 24
 
 
 def test_sequence_space_getitem():
-    ss = SequenceSpace("MM")
-    assert ss[0] == "ATGATG"
+    space = CodingSpace("MM")
+    assert space[0] == "ATGATG"
 
 
 def test_sequence_space_len():
-    ss = SequenceSpace("M")
-    assert len(ss) == 1
+    space = CodingSpace("M")
+    assert len(space) == 1
 
 
 def test_view_iter():
-    ss = SequenceSpace("MIKEY")
-    seqs = [*ss]
+    space = CodingSpace("MIKEY")
+    seqs = [*space]
     assert len(seqs) == len(set(seqs)) == 24
 
 
 def test_sequence_space_enumerate():
-    ss = SequenceSpace("F")
-    assert list(ss.enumerate()) == ["TTT", "TTC"]
+    space = CodingSpace("F")
+    assert list(space.enumerate()) == ["TTT", "TTC"]
 
 
 def test_sequence_space_contains():
-    ss = SequenceSpace("F")
-    assert ss.contains("TTT")
-    assert ss.contains("TTC")
-    assert not ss.contains("ATG")
+    space = CodingSpace("F")
+    assert space.contains("TTT")
+    assert space.contains("TTC")
+    assert not space.contains("ATG")
 
 
 def test_sequence_space_mutants_pins_non_mutated_positions():
-    ss = SequenceSpace("FF")
-    muts = ss.mutants("TTTTTT", positions=[2])
+    space = CodingSpace("FF")
+    muts = space.mutants("TTTTTT", positions=[2])
 
     assert list(muts.enumerate()) == ["TTTTTT", "TTTTTC"]
