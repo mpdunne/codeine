@@ -4,133 +4,93 @@ from codeine.translation.tables import TranslationTable
 
 
 def test_default_codon_table_works_as_expected():
-    ct = TranslationTable()
+    tt = TranslationTable()
 
-    assert ct.rna is False
+    assert tt.rna is False
 
-    assert ct.codons_to_aa["ATG"] == "M"
-    assert ct.codons_to_aa["CCC"] == "P"
-    assert ct.codons_to_aa["GAC"] == "D"
+    assert tt.codons_to_aa["ATG"] == "M"
+    assert tt.codons_to_aa["CCC"] == "P"
+    assert tt.codons_to_aa["GAC"] == "D"
 
-    assert ct.aa_to_codons["M"] == ("ATG",)
-    assert set(ct.aa_to_codons["P"]) == {"CCT", "CCC", "CCA", "CCG"}
-    assert set(ct.aa_to_codons["D"]) == {"GAT", "GAC"}
-
-    assert "TAA" not in ct.codons_to_aa
-    assert "TAG" not in ct.codons_to_aa
-    assert "TGA" not in ct.codons_to_aa
+    assert tt.aa_to_codons["M"] == ("ATG",)
+    assert set(tt.aa_to_codons["P"]) == {"CCT", "CCC", "CCA", "CCG"}
+    assert set(tt.aa_to_codons["D"]) == {"GAT", "GAC"}
 
 
 def test_rna_codon_table_works_as_expected():
-    ct = TranslationTable(rna=True)
+    tt = TranslationTable(rna=True)
 
-    assert ct.rna is True
+    assert tt.rna is True
 
-    assert ct.codons_to_aa["AUG"] == "M"
-    assert ct.codons_to_aa["CCC"] == "P"
-    assert ct.codons_to_aa["GAC"] == "D"
+    assert tt.codons_to_aa["AUG"] == "M"
+    assert tt.codons_to_aa["CCC"] == "P"
+    assert tt.codons_to_aa["GAC"] == "D"
 
-    assert "ATG" not in ct.codons_to_aa
+    assert "ATG" not in tt.codons_to_aa
 
-    assert ct.aa_to_codons["M"] == ("AUG",)
-    assert set(ct.aa_to_codons["P"]) == {"CCU", "CCC", "CCA", "CCG"}
-    assert set(ct.aa_to_codons["D"]) == {"GAU", "GAC"}
-
-    assert "UAA" not in ct.codons_to_aa
-    assert "UAG" not in ct.codons_to_aa
-    assert "UGA" not in ct.codons_to_aa
+    assert tt.aa_to_codons["M"] == ("AUG",)
+    assert set(tt.aa_to_codons["P"]) == {"CCU", "CCC", "CCA", "CCG"}
+    assert set(tt.aa_to_codons["D"]) == {"GAU", "GAC"}
 
 
 def test_all_forward_codons_appear_in_reverse_table():
-    ct = TranslationTable()
+    tt = TranslationTable()
     reverse_codons = {
         codon
-        for codons in ct.aa_to_codons.values()
+        for codons in tt.aa_to_codons.values()
         for codon in codons
     }
-    assert reverse_codons == set(ct.codons_to_aa)
+    assert reverse_codons == set(tt.codons_to_aa)
 
 
 def test_all_forward_rna_codons_appear_in_reverse_table():
-    ct = TranslationTable(rna=True)
+    tt = TranslationTable(rna=True)
     reverse_codons = {
         codon
-        for codons in ct.aa_to_codons.values()
+        for codons in tt.aa_to_codons.values()
         for codon in codons
     }
-    assert reverse_codons == set(ct.codons_to_aa)
-
-
-@pytest.mark.parametrize("rna", [False, True])
-def test_codon_probabilities_sum_to_one_per_amino_acid(rna):
-    ct = TranslationTable(rna=rna)
-    for codon_probs in ct.codon_probabilities.values():
-        assert sum(codon_probs.values()) == pytest.approx(1.0)
-
-
-@pytest.mark.parametrize("rna", [False, True])
-def test_codon_probabilities_are_uniform_per_amino_acid(rna):
-    ct = TranslationTable(rna=rna)
-    for aa, codons in ct.aa_to_codons.items():
-        expected = 1 / len(codons)
-        for codon in codons:
-            assert ct.codon_probabilities[aa][codon] == pytest.approx(expected)
-
-
-@pytest.mark.parametrize("rna", [False, True])
-def test_codon_probabilities_match_reverse_table(rna):
-    ct = TranslationTable(rna=rna)
-    for aa, codon_probs in ct.codon_probabilities.items():
-        assert set(codon_probs) == set(ct.aa_to_codons[aa])
+    assert reverse_codons == set(tt.codons_to_aa)
 
 
 def test_dna_table_contains_no_rna_codons():
-    ct = TranslationTable()
-    assert all("U" not in codon for codon in ct.codons_to_aa)
+    tt = TranslationTable()
+    assert all("U" not in codon for codon in tt.codons_to_aa)
     assert all(
         "U" not in codon
-        for codons in ct.aa_to_codons.values()
+        for codons in tt.aa_to_codons.values()
         for codon in codons
     )
 
 
 def test_rna_table_contains_no_dna_thymine_codons():
-    ct = TranslationTable(rna=True)
-    assert all("T" not in codon for codon in ct.codons_to_aa)
+    tt = TranslationTable(rna=True)
+    assert all("T" not in codon for codon in tt.codons_to_aa)
     assert all(
         "T" not in codon
-        for codons in ct.aa_to_codons.values()
+        for codons in tt.aa_to_codons.values()
         for codon in codons
     )
 
 
 def test_codon_tables_are_immutable():
-    ct = TranslationTable()
+    tt = TranslationTable()
 
     with pytest.raises(TypeError):
-        ct.codons_to_aa["AAA"] = "X"
+        tt.codons_to_aa["AAA"] = "X"
 
     with pytest.raises(TypeError):
-        ct.aa_to_codons["X"] = ("AAA",)
-
-    with pytest.raises(TypeError):
-        ct.codon_probabilities["X"] = {"AAA": 1.0}
+        tt.aa_to_codons["X"] = ("AAA",)
 
 
 def test_aa_to_codons_values_are_immutable():
-    ct = TranslationTable()
-    assert isinstance(ct.aa_to_codons["M"], tuple)
+    tt = TranslationTable()
+    assert isinstance(tt.aa_to_codons["M"], tuple)
     with pytest.raises(AttributeError):
-        ct.aa_to_codons["M"].append("XXX")
-
-
-def test_nested_codon_probability_tables_are_immutable():
-    ct = TranslationTable()
-    with pytest.raises(TypeError):
-        ct.codon_probabilities["M"]["ATG"] = 0.5
+        tt.aa_to_codons["M"].append("XXX")
 
 
 def test_rna_attribute_is_read_only():
-    ct = TranslationTable(rna=True)
+    tt = TranslationTable(rna=True)
     with pytest.raises(AttributeError):
-        ct.rna = False
+        tt.rna = False

@@ -8,11 +8,19 @@ class CodonWeights:
     """
     Codon usage weights for a TranslationTable.
 
-    Stores weights as:
+    Accepts weights as:
 
         {
             'A': {'GCT': 0.25, 'GCC': 0.25, ...},
             'R': {'CGT': 0.1, 'CGC': 0.2, ...},
+            ...
+        }
+
+    Stores weights as:
+
+        {
+            'GCT': 0.25,
+            'GCC': 0.25,
             ...
         }
 
@@ -37,13 +45,14 @@ class CodonWeights:
         normalised = self._normalise_weights(weights, table)
         self._validate_weights(normalised, table)
 
-        frozen = FrozenDict({
-            aa: FrozenDict(codon_weights)
-            for aa, codon_weights in normalised.items()
-        })
+        flat = {
+            codon: weight
+            for codon_weights in normalised.values()
+            for codon, weight in codon_weights.items()
+        }
 
         object.__setattr__(self, 'table', table)
-        object.__setattr__(self, 'weights', frozen)
+        object.__setattr__(self, 'weights', FrozenDict(flat))
 
         object.__setattr__(self, '_locked', True)
 
@@ -55,14 +64,19 @@ class CodonWeights:
     def __repr__(self) -> str:
         return f'{type(self).__name__}(table={self.table!r})'
 
-    def __getitem__(self, aa: str) -> Mapping[str, float]:
-        return self.weights[aa]
+    def __getitem__(self, codon: str) -> float:
+        codon = self.table.normalise_codon(codon, rna=self.table.rna)
+        return self.weights[codon]
+
+    def for_amino_acid(self, aa: str) -> Dict[str, float]:
+        aa = aa.upper()
+        return {
+            codon: self.weights[codon]
+            for codon in self.table.aa_to_codons[aa]
+        }
 
     @classmethod
     def uniform(cls, table: Optional[TranslationTable] = None) -> 'CodonWeights':
-        """
-        Create uniform codon weights for each amino acid.
-        """
         table = table or TranslationTable()
 
         weights = {}
@@ -78,13 +92,6 @@ class CodonWeights:
         codon_weights: Mapping[str, float],
         table: Optional[TranslationTable] = None,
     ) -> 'CodonWeights':
-        """
-        Create CodonWeights from a flat mapping:
-
-            {'GCT': 0.2, 'GCC': 0.3, ...}
-
-        Codons are grouped by amino acid using the translation table.
-        """
         table = table or TranslationTable()
 
         grouped: Dict[str, Dict[str, float]] = {}
@@ -101,9 +108,6 @@ class CodonWeights:
         weights: Mapping[str, Mapping[str, float]],
         table: TranslationTable,
     ) -> Dict[str, Dict[str, float]]:
-        """
-        Normalise amino acids and codons, and rescale weights to sum to 1 per amino acid.
-        """
         normalised = {}
 
         for aa, codon_weights in weights.items():

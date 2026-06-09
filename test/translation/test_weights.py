@@ -8,23 +8,29 @@ def test_uniform_weights_sum_to_one_per_amino_acid():
     table = TranslationTable()
     weights = CodonWeights.uniform(table)
 
-    for aa, codon_weights in weights.weights.items():
-        assert sum(codon_weights.values()) == pytest.approx(1.0)
-
-
-def test_uniform_weights_contains_all_table_amino_acids():
-    table = TranslationTable()
-    weights = CodonWeights.uniform(table)
-
-    assert set(weights.weights) == set(table.aa_to_codons)
+    for aa, codons in table.aa_to_codons.items():
+        total = sum(weights[codon] for codon in codons)
+        assert total == pytest.approx(1.0)
 
 
 def test_uniform_weights_contains_all_table_codons():
     table = TranslationTable()
     weights = CodonWeights.uniform(table)
 
-    for aa, codons in table.aa_to_codons.items():
-        assert set(weights[aa]) == set(codons)
+    assert set(weights.weights) == set(table.codons_to_aa)
+
+
+def test_getitem_returns_codon_weight():
+    weights = CodonWeights.uniform()
+
+    assert weights['GCT'] == pytest.approx(0.25)
+
+
+def test_for_amino_acid_returns_all_codon_weights():
+    table = TranslationTable()
+    weights = CodonWeights.uniform(table)
+
+    assert set(weights.for_amino_acid('A')) == set(table.aa_to_codons['A'])
 
 
 def test_uniform_weights_are_equal_within_each_amino_acid():
@@ -35,7 +41,7 @@ def test_uniform_weights_are_equal_within_each_amino_acid():
         expected = 1.0 / len(codons)
 
         for codon in codons:
-            assert weights[aa][codon] == pytest.approx(expected)
+            assert weights[codon] == pytest.approx(expected)
 
 
 def test_weights_are_normalised_per_amino_acid():
@@ -48,8 +54,9 @@ def test_weights_are_normalised_per_amino_acid():
 
     weights = CodonWeights(raw, table=table)
 
-    for codon_weights in weights.weights.values():
-        assert sum(codon_weights.values()) == pytest.approx(1.0)
+    for aa, codons in table.aa_to_codons.items():
+        total = sum(weights[codon] for codon in codons)
+        assert total == pytest.approx(1.0)
 
 
 def test_rna_table_normalises_codons_to_rna():
@@ -62,10 +69,8 @@ def test_rna_table_normalises_codons_to_rna():
 
     weights = CodonWeights(raw, table=table)
 
-    for codon_weights in weights.weights.values():
-        for codon in codon_weights:
-            assert 'U' in codon or codon in {'AAA', 'CCC', 'GGG'}
-            assert 'T' not in codon
+    for codon in weights.weights:
+        assert 'T' not in codon
 
 
 def test_dna_table_normalises_codons_to_dna():
@@ -78,9 +83,8 @@ def test_dna_table_normalises_codons_to_dna():
 
     weights = CodonWeights(raw, table=table)
 
-    for codon_weights in weights.weights.values():
-        for codon in codon_weights:
-            assert 'U' not in codon
+    for codon in weights.weights:
+        assert 'U' not in codon
 
 
 def test_missing_amino_acid_raises_value_error():
@@ -166,7 +170,7 @@ def test_zero_total_weight_raises_value_error():
         CodonWeights(raw, table=table)
 
 
-def test_from_codon_weights_groups_by_amino_acid():
+def test_from_codon_weights_stores_flat_weights():
     table = TranslationTable()
 
     flat = {
@@ -176,10 +180,7 @@ def test_from_codon_weights_groups_by_amino_acid():
 
     weights = CodonWeights.from_codon_weights(flat, table=table)
 
-    assert set(weights.weights) == set(table.aa_to_codons)
-
-    for aa, codons in table.aa_to_codons.items():
-        assert set(weights[aa]) == set(codons)
+    assert set(weights.weights) == set(table.codons_to_aa)
 
 
 def test_from_codon_weights_normalises_per_amino_acid():
@@ -192,8 +193,9 @@ def test_from_codon_weights_normalises_per_amino_acid():
 
     weights = CodonWeights.from_codon_weights(flat, table=table)
 
-    for codon_weights in weights.weights.values():
-        assert sum(codon_weights.values()) == pytest.approx(1.0)
+    for aa, codons in table.aa_to_codons.items():
+        total = sum(weights[codon] for codon in codons)
+        assert total == pytest.approx(1.0)
 
 
 def test_from_codon_weights_unknown_codon_raises_key_error():
@@ -216,10 +218,18 @@ def test_codon_weights_is_immutable():
         weights.weights = {}
 
 
-def test_nested_weights_are_immutable():
+def test_weights_mapping_is_immutable():
     weights = CodonWeights.uniform()
+
     with pytest.raises(TypeError):
-        weights['A']['GCT'] = 0.5
+        weights.weights['GCT'] = 0.5
+
+
+def test_getitem_normalises_input_codon():
+    table = TranslationTable(rna=False)
+    weights = CodonWeights.uniform(table)
+
+    assert weights['GCU'] == weights['GCT']
 
 
 def test_repr():
