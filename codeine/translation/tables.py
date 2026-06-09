@@ -66,6 +66,9 @@ class TranslationTable:
     def __repr__(self) -> str:
         return f"{type(self).__name__}(table_id={self.table_id}, rna={self.rna})"
 
+    def __getitem__(self, codon: str) -> str:
+        return self.codons_to_aa[codon]
+
     def normalise_codon(self, codon: str) -> str:
         """
         Format a codon in the format specified by this codon table, i.e. convert to

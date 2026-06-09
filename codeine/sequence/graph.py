@@ -119,6 +119,7 @@ class CodonGraph:
 
         if weights is None:
             weights = CodonWeights.uniform(table=translation_table)
+
         self.cw = weights
 
         self.codon_restrictions = {}
@@ -529,7 +530,7 @@ class CodonGraphView:
 
     def _update_descendant_counts(self) -> None:
         """
-        Calculate valid path counts for each outgoing transition.
+        Calculate valid path counts and weight masses for each outgoing transition.
         """
         valid_paths_by_choice = {}
         weight_mass_by_choice = {}

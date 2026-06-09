@@ -126,3 +126,27 @@ def test_normalise_codon():
     assert tt.normalise_codon('ATg') == 'AUG'
     assert tt.normalise_codon('ccc') == 'CCC'
     assert tt.normalise_codon('ggg') == 'GGG'
+
+
+def test_getitem_returns_amino_acid():
+    tt = TranslationTable()
+    assert tt['ATG'] == 'M'
+    assert tt['CCC'] == 'P'
+    assert tt['GAC'] == 'D'
+
+
+def test_getitem_bad_key_raises():
+    tt = TranslationTable()
+
+    with pytest.raises(KeyError):
+        _ = tt['ATt']
+
+    with pytest.raises(KeyError):
+        _ = tt['x']
+
+    with pytest.raises(KeyError):
+        _ = tt['AUG']
+
+    tt_rna = TranslationTable(rna=True)
+    with pytest.raises(KeyError):
+        _ = tt_rna['ATG']
