@@ -179,7 +179,7 @@ class CodonWeights:
     @classmethod
     def yeast(cls, rna: bool = False) -> 'CodonWeights':
         """
-        Construct a CodonWeights object with codon probabilities corresponding to "yeast".
+        Construct a CodonWeights object with codon probabilities corresponding to 'yeast'.
 
         Weights are obtained from GenScript https://www.genscript.com/tools/codon-frequency-table
 

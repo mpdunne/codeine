@@ -59,12 +59,12 @@ class TranslationTable:
         self._locked = True
 
     def __setattr__(self, name: str, value: Any) -> None:
-        if getattr(self, "_locked", False) and name != "_locked":
-            raise AttributeError(f"{type(self).__name__} is immutable")
+        if getattr(self, '_locked', False) and name != '_locked':
+            raise AttributeError(f'{type(self).__name__} is immutable')
         object.__setattr__(self, name, value)
 
     def __repr__(self) -> str:
-        return f"{type(self).__name__}(table_id={self.table_id}, rna={self.rna})"
+        return f'{type(self).__name__}(table_id={self.table_id}, rna={self.rna})'
 
     def __getitem__(self, codon: str) -> str:
         return self.codons_to_aa[codon]
@@ -84,4 +84,4 @@ class TranslationTable:
         The normalised codon.
         """
         codon = codon.upper()
-        return codon.replace("T", "U") if self.rna else codon.replace("U", "T")
+        return codon.replace('T', 'U') if self.rna else codon.replace('U', 'T')

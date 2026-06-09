@@ -47,11 +47,11 @@ class CodingSpace:
         ).view()
 
     @classmethod
-    def from_graph(cls, graph: CodonGraph) -> "CodingSpace":
+    def from_graph(cls, graph: CodonGraph) -> 'CodingSpace':
         return cls.from_view(graph.view())
 
     @classmethod
-    def from_view(cls, view) -> "CodingSpace":
+    def from_view(cls, view) -> 'CodingSpace':
         obj = cls.__new__(cls)
         obj.view = view
         return obj
@@ -160,7 +160,7 @@ class CodingSpace:
     def enumerate(self) -> Generator[str, None, None]:
         """
         Generate all sequences in this space. If there are many (and often there are
-        astronomically many), one would not expect to reach the "end". However for smaller
+        astronomically many), one would not expect to reach the 'end'. However for smaller
         sequence spaces, such as mutation spaces, it's quite possible to get there.
 
         Yields
@@ -173,7 +173,7 @@ class CodingSpace:
     def mutants(self,
                 seq: str,
                 positions: Sequence[int],
-                ) -> "CodingSpace":
+                ) -> 'CodingSpace':
         """
         Return a space of mutants relative to a given coding sequence, i.e. a space derived
         from this one but which fixes the sequence on all but the specified positions.
@@ -188,7 +188,7 @@ class CodingSpace:
         seq = seq.upper()
 
         if not self.contains(seq):
-            raise ValueError("Parent sequence is not contained in this coding space.")
+            raise ValueError('Parent sequence is not contained in this coding space.')
 
         positions = set(positions)
 

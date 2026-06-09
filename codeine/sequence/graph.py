@@ -45,7 +45,7 @@ class ContextNode(Node):
         self.sequence = sequence
 
         # Set an ID for this node.
-        self.id = f"context-{uuid.uuid4().hex[:8]}"
+        self.id = f'context-{uuid.uuid4().hex[:8]}'
 
 
 class CodonNode(Node):
@@ -73,7 +73,7 @@ class CodonNode(Node):
         self.aa = aa
 
         # Set an ID for this node.
-        self.id = f"{aa}{pos}-{uuid.uuid4().hex[:8]}"
+        self.id = f'{aa}{pos}-{uuid.uuid4().hex[:8]}'
 
         # Initialise the basic attributes.
         self.codons = codons
@@ -91,7 +91,7 @@ class EndNode(Node):
         Constructor for the EndNode class.
         """
         super().__init__()
-        self.id = f"end-{uuid.uuid4().hex[:8]}"
+        self.id = f'end-{uuid.uuid4().hex[:8]}'
 
 
 class CodonGraph:
@@ -149,7 +149,7 @@ class CodonGraph:
 
         for pos, codon_restriction in codon_restrictions.items():
             if pos < 1 or pos > len(self.aa_seq):
-                raise ValueError(f"Restricted position {pos} is out of range.")
+                raise ValueError(f'Restricted position {pos} is out of range.')
 
             if isinstance(codon_restriction, str):
                 codons = [codon_restriction]
@@ -157,7 +157,7 @@ class CodonGraph:
                 codons = list(codon_restriction)
 
             if len(codons) == 0:
-                raise ValueError(f"Codon restriction at position {pos} cannot be empty.")
+                raise ValueError(f'Codon restriction at position {pos} cannot be empty.')
 
             codons = [codon.upper() for codon in codons]
 
@@ -259,7 +259,7 @@ class CodonGraph:
         self.codon_nodes.remove(node)
         self.codon_nodes_by_pos[node.pos].remove(node)
 
-    def view(self) -> "CodonGraphView":
+    def view(self) -> 'CodonGraphView':
         """
         Return a constrained view over this graph.
         """
@@ -321,7 +321,7 @@ class CodonGraphView:
         """
 
         if index < 0 or index >= self.n_valid_sequences:
-            raise IndexError(f"Sequence index {index} out of range for {self.n_valid_sequences} valid sequences.")
+            raise IndexError(f'Sequence index {index} out of range for {self.n_valid_sequences} valid sequences.')
 
         node = self.graph.initial_node
         sequence = []
@@ -338,7 +338,7 @@ class CodonGraphView:
                         break
                     remaining -= count
                 else:
-                    raise RuntimeError("Failed to resolve sequence index.")
+                    raise RuntimeError('Failed to resolve sequence index.')
 
                 sequence.append(emitted)
                 index = remaining
@@ -452,7 +452,7 @@ class CodonGraphView:
 
         while node is not self.graph.final_node:
             if not node.transitions:
-                raise RuntimeError(f"Reached non-final node {node.id} with no outgoing transitions.")
+                raise RuntimeError(f'Reached non-final node {node.id} with no outgoing transitions.')
 
             if isinstance(node, CodonNode):
                 emitted = self.samplers[node].sample()
@@ -477,7 +477,7 @@ class CodonGraphView:
         for index in range(self.n_valid_sequences):
             yield self[index]
 
-    def copy(self) -> "CodonGraphView":
+    def copy(self) -> 'CodonGraphView':
         """
         Copy this view and all its constraints.
 
