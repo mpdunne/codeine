@@ -1,6 +1,7 @@
 import uuid
 
-from codeine.translation.tables import CodonTable
+from codeine.translation.tables import TranslationTable
+from codeine.translation.weights import CodonWeights
 from codeine.utils.sampling import Sampler
 
 from typing import Dict, Generator, List, Optional, Sequence, Union
@@ -76,7 +77,6 @@ class CodonNode(Node):
 
         # Initialise the basic attributes.
         self.codons = codons
-        self.probabilities = [1] * len(self.codons)
 
 
 class EndNode(Node):
@@ -103,7 +103,8 @@ class CodonGraph:
         self,
         aa_seq: str,
         codon_restrictions: Optional[Dict[int, CodonRestriction]] = None,
-        codon_table: CodonTable = None,
+        translation_table: TranslationTable = None,
+        weights: CodonWeights = None,
         context_l: str = '',
         context_r: str = '',
     ) -> None:
@@ -112,9 +113,14 @@ class CodonGraph:
 
         self.aa_seq = aa_seq.upper()
 
-        if codon_table is None:
-            codon_table = CodonTable()
-        self.ct = codon_table
+        if translation_table is None:
+            translation_table = TranslationTable(table_id=1, rna=False)
+        self.tt = translation_table
+
+        if weights is None:
+            weights = CodonWeights.uniform(table=translation_table)
+
+        self.cw = weights
 
         self.codon_restrictions = {}
         self.codon_restrictions = self.validate_codon_restrictions(codon_restrictions)
@@ -158,9 +164,9 @@ class CodonGraph:
             aa = self.aa_seq[pos - 1]
 
             if pos in self.codon_restrictions:
-                allowed_codons = [self.ct.normalise_codon(codon) for codon in self.codon_restrictions[pos]]
+                allowed_codons = [self.tt.normalise_codon(codon) for codon in self.codon_restrictions[pos]]
             else:
-                allowed_codons = self.ct.aa_to_codons[aa]
+                allowed_codons = self.tt.aa_to_codons[aa]
 
             for codon in codons:
                 if codon not in allowed_codons:
@@ -184,7 +190,7 @@ class CodonGraph:
             if pos in self.codon_restrictions:
                 codons = self.codon_restrictions[pos]
             else:
-                codons = self.ct.aa_to_codons[aa]
+                codons = self.tt.aa_to_codons[aa]
 
             node = CodonNode(pos, aa, codons)
             self.add_codon_node(node)
@@ -281,6 +287,8 @@ class CodonGraphView:
         self.pinned_codons: Dict[int, List[str]] = {}
 
         self.valid_paths_by_choice = {}
+        self.weight_mass_by_choice = {}
+
         self.n_valid_sequences = None
         self.samplers = {}
 
@@ -499,18 +507,12 @@ class CodonGraphView:
         """
         samplers = {}
 
-        for node, choice_counts in self.valid_paths_by_choice.items():
+        for node, choice_masses in self.weight_mass_by_choice.items():
             if not isinstance(node, CodonNode):
                 continue
 
-            probability_by_codon = dict(zip(node.codons, node.probabilities))
-
-            codons = []
-            weights = []
-
-            for codon, descendant_count in choice_counts.items():
-                codons.append(codon)
-                weights.append(probability_by_codon[codon] * descendant_count)
+            codons = list(choice_masses)
+            weights = [choice_masses[codon] for codon in codons]
 
             if codons:
                 samplers[node] = Sampler(codons, weights)
@@ -528,39 +530,61 @@ class CodonGraphView:
 
     def _update_descendant_counts(self) -> None:
         """
-        Calculate valid path counts for each outgoing transition.
+        Calculate valid path counts and weight masses for each outgoing transition.
         """
         valid_paths_by_choice = {}
+        weight_mass_by_choice = {}
 
         right_choice = self.graph.right_context_node.sequence
+
         valid_paths_by_choice[self.graph.right_context_node] = {right_choice: 1}
+        weight_mass_by_choice[self.graph.right_context_node] = {right_choice: 1.0}
+
         next_counts = {self.graph.right_context_node: 1}
+        next_masses = {self.graph.right_context_node: 1.0}
 
         for pos in range(len(self.graph.aa_seq), 0, -1):
             current_counts = {}
+            current_masses = {}
 
             for node in self.graph.codon_nodes_by_pos[pos]:
                 choice_counts = {}
-                total = 0
+                choice_masses = {}
+                total_count = 0
+                total_mass = 0.0
 
-                for choice in self._choices_for_node(node):
-                    child = node.transitions[choice]
+                for codon in self._choices_for_node(node):
+                    child = node.transitions[codon]
+
                     count = next_counts.get(child, 0)
+                    mass = self.graph.cw[codon] * next_masses.get(child, 0.0)
 
                     if count:
-                        choice_counts[choice] = count
-                        total += count
+                        choice_counts[codon] = count
+                        total_count += count
+
+                    if mass:
+                        choice_masses[codon] = mass
+                        total_mass += mass
 
                 valid_paths_by_choice[node] = choice_counts
-                current_counts[node] = total
+                weight_mass_by_choice[node] = choice_masses
+
+                current_counts[node] = total_count
+                current_masses[node] = total_mass
 
             next_counts = current_counts
+            next_masses = current_masses
 
         left_choice = self.graph.left_context_node.sequence
         left_child = self.graph.left_context_node.transitions[left_choice]
-        total = next_counts.get(left_child, 0)
 
-        valid_paths_by_choice[self.graph.left_context_node] = {left_choice: total}
+        total_count = next_counts.get(left_child, 0)
+        total_mass = next_masses.get(left_child, 0.0)
+
+        valid_paths_by_choice[self.graph.left_context_node] = {left_choice: total_count}
+        weight_mass_by_choice[self.graph.left_context_node] = {left_choice: total_mass}
 
         self.valid_paths_by_choice = valid_paths_by_choice
-        self.n_valid_sequences = total
+        self.weight_mass_by_choice = weight_mass_by_choice
+        self.n_valid_sequences = total_count

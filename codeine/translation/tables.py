@@ -1,99 +1,87 @@
-from collections.abc import Mapping
-from typing import Any, Iterator
+from typing import Any
 
-from Bio.Data import CodonTable as TranslationTable
+from Bio.Data import CodonTable
+
+from codeine.utils.dict import FrozenDict
 
 
-class FrozenDict(Mapping):
+class TranslationTable:
     """
-    Immutable mapping with a normal dict-like repr.
-    """
-
-    def __init__(self, data: Mapping) -> None:
-        self._data = dict(data)
-
-    def __getitem__(self, key: Any) -> Any:
-        return self._data[key]
-
-    def __iter__(self) -> Iterator:
-        return iter(self._data)
-
-    def __len__(self) -> int:
-        return len(self._data)
-
-    def __repr__(self) -> str:
-        return repr(self._data)
-
-
-class CodonTable:
-    """
-    Basic codon table using the standard translation table.
-
-    Uses DNA by default. If rna=True, codons are represented with U instead of T.
-    Codon probabilities are uniform within each amino acid.
+    Translation table. Organises information from BioPython's CodonTable. Here we use the
+    NCBI translation table IDs (see https://www.ncbi.nlm.nih.gov/Taxonomy/Utils/wprintgc.cgi)
+    Uses DNA by default. If rna=True, uses RNA, i.e. codons are represented with U instead of T.
     """
 
-    __slots__ = (
-        "_locked",
-        "rna",
-        "codons_to_aa",
-        "aa_to_codons",
-        "codon_probabilities",
-    )
-
-    def __init__(self, rna: bool = False) -> None:
+    def __init__(self, table_id: int = 1, rna: bool = False) -> None:
         """
-        Constructor for the CodonTable class.
+        Constructor for the TranslationTable class. This class is immutable after construction!
 
         Parameters
         ----------
+        table_id
+            Which translation table to use. Default is 1.
         rna
             Whether to use RNA. Default is no (False), i.e. use DNA.
         """
-        object.__setattr__(self, "_locked", False)
+        self._locked = False
 
-        dna_to_aa = TranslationTable.unambiguous_dna_by_name["Standard"].forward_table
+        self.table_id = table_id
+        self.rna = rna
+
+        try:
+            biopython_table = CodonTable.unambiguous_dna_by_id[table_id]
+        except KeyError:
+            raise ValueError(f'Unknown NCBI translation table ID: {table_id}.')
+
+        dna_to_aa = biopython_table.forward_table
+        dna_to_aa = {**dna_to_aa, **{stop: '*' for stop in biopython_table.stop_codons}}
 
         aa_to_dna = {}
         for codon, aa in dna_to_aa.items():
             aa_to_dna.setdefault(aa, []).append(codon)
 
         codons_to_aa = {
-            self.normalise_codon(codon, rna=rna): aa
+            self.normalise_codon(codon): aa
             for codon, aa in dna_to_aa.items()
         }
 
         aa_to_codons = {
             aa: tuple(
-                self.normalise_codon(codon, rna=rna)
+                self.normalise_codon(codon)
                 for codon in codons
             )
             for aa, codons in aa_to_dna.items()
         }
 
-        codon_probabilities = {
-            aa: {codon: 1 / len(codons) for codon in codons}
-            for aa, codons in aa_to_codons.items()
-        }
+        self.codons_to_aa = FrozenDict(codons_to_aa)
+        self.aa_to_codons = FrozenDict(aa_to_codons)
 
-        object.__setattr__(self, "rna", rna)
-        object.__setattr__(self, "codons_to_aa", FrozenDict(codons_to_aa))
-        object.__setattr__(self, "aa_to_codons", FrozenDict(aa_to_codons))
-        object.__setattr__(self, "codon_probabilities",
-                           FrozenDict({
-                               aa: FrozenDict(probs)
-                               for aa, probs in codon_probabilities.items()
-                           }),
-        )
-
-        object.__setattr__(self, "_locked", True)
+        self._locked = True
 
     def __setattr__(self, name: str, value: Any) -> None:
-        if getattr(self, "_locked", False):
+        if getattr(self, "_locked", False) and name != "_locked":
             raise AttributeError(f"{type(self).__name__} is immutable")
         object.__setattr__(self, name, value)
 
-    @staticmethod
-    def normalise_codon(codon: str, rna: bool = False) -> str:
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}(table_id={self.table_id}, rna={self.rna})"
+
+    def __getitem__(self, codon: str) -> str:
+        return self.codons_to_aa[codon]
+
+    def normalise_codon(self, codon: str) -> str:
+        """
+        Format a codon in the format specified by this codon table, i.e. convert to
+        RNA/DNA and cast to upper case.
+
+        Parameters
+        ----------
+        codon
+            The inputted codon.
+
+        Returns
+        -------
+        The normalised codon.
+        """
         codon = codon.upper()
-        return codon.replace("T", "U") if rna else codon.replace("U", "T")
+        return codon.replace("T", "U") if self.rna else codon.replace("U", "T")
