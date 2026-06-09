@@ -153,3 +153,94 @@ class CodonWeights:
         }
 
         return cls(uniform_weights, table=table)
+
+    @classmethod
+    def ecoli(cls, rna: bool = False) -> 'CodonWeights':
+        """
+        Construct a CodonWeights object with codon probabilities corresponding to E. coli.
+
+        Weights are obtained from GenScript https://www.genscript.com/tools/codon-frequency-table
+
+        Parameters
+        ----------
+        rna
+            Whether to use RNA.
+
+        Returns
+        -------
+        A CodonWeights object corresponding to E. Coli
+        """
+        from codeine.translation.data import ECOLI_WEIGHTS
+
+        table = TranslationTable(rna=rna)
+        weights = cls._format_weights_for_table(ECOLI_WEIGHTS, table)
+        return cls(weights, table=table)
+
+    @classmethod
+    def yeast(cls, rna: bool = False) -> 'CodonWeights':
+        """
+        Construct a CodonWeights object with codon probabilities corresponding to "yeast".
+
+        Weights are obtained from GenScript https://www.genscript.com/tools/codon-frequency-table
+
+        Parameters
+        ----------
+        rna
+            Whether to use RNA.
+
+        Returns
+        -------
+        A CodonWeights object corresponding to S. cerevisiea
+        """
+        from codeine.translation.data import YEAST_WEIGHTS
+
+        table = TranslationTable(rna=rna)
+        weights = cls._format_weights_for_table(YEAST_WEIGHTS, table)
+        return cls(weights, table=table)
+
+    @classmethod
+    def human(cls, rna: bool = False) -> 'CodonWeights':
+        """
+        Construct a CodonWeights object with codon probabilities corresponding to Human.
+
+        Weights are obtained from GenScript https://www.genscript.com/tools/codon-frequency-table
+
+        Parameters
+        ----------
+        rna
+            Whether to use RNA.
+
+        Returns
+        -------
+        A CodonWeights object corresponding to Human.
+        """
+        from codeine.translation.data import HUMAN_WEIGHTS
+
+        table = TranslationTable(rna=rna)
+        weights = cls._format_weights_for_table(HUMAN_WEIGHTS, table)
+        return cls(weights, table=table)
+
+    @staticmethod
+    def _format_weights_for_table(weights: WeightDict, table: TranslationTable) -> WeightDict:
+        """
+        Helper function to match locally stored weights to the right format as specified
+        by the given translation table. Mostly used for RNA/DNA conversion.
+
+        Parameters
+        ----------
+        weights
+            The weights as stored.
+        table
+            The table to use.
+        Returns
+        -------
+        Weights, in the right format.
+        """
+        weights = {
+            aa: {
+                table.normalise_codon(codon): weight
+                for codon, weight in codon_weights.items()
+            }
+            for aa, codon_weights in weights.items()
+        }
+        return weights

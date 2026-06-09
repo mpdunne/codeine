@@ -187,3 +187,58 @@ def test_getitem_is_strict():
     with pytest.raises(KeyError):
         _ = weights_rna['gcu']
 
+
+@pytest.mark.parametrize(
+    'constructor',
+    [
+        CodonWeights.ecoli,
+        CodonWeights.yeast,
+        CodonWeights.human,
+    ],
+)
+def test_builtin_weights_are_valid_dna(constructor):
+    weights = constructor()
+
+    assert weights.table.rna is False
+    assert set(weights.weights) == set(weights.table.codons_to_aa)
+
+    for codons in weights.table.aa_to_codons.values():
+        total = sum(weights[codon] for codon in codons)
+        assert total == pytest.approx(1.0)
+
+
+@pytest.mark.parametrize(
+    'constructor',
+    [
+        CodonWeights.ecoli,
+        CodonWeights.yeast,
+        CodonWeights.human,
+    ],
+)
+def test_builtin_weights_are_valid_rna(constructor):
+    weights = constructor(rna=True)
+
+    assert weights.table.rna is True
+    assert set(weights.weights) == set(weights.table.codons_to_aa)
+    assert all('T' not in codon for codon in weights.weights)
+
+    for codons in weights.table.aa_to_codons.values():
+        total = sum(weights[codon] for codon in codons)
+        assert total == pytest.approx(1.0)
+
+
+@pytest.mark.parametrize(
+    'constructor',
+    [
+        CodonWeights.ecoli,
+        CodonWeights.yeast,
+        CodonWeights.human,
+    ],
+)
+def test_builtin_dna_and_rna_weights_match_after_codon_conversion(constructor):
+    dna_weights = constructor()
+    rna_weights = constructor(rna=True)
+
+    for dna_codon, dna_weight in dna_weights.weights.items():
+        rna_codon = dna_codon.replace('T', 'U')
+        assert rna_weights[rna_codon] == pytest.approx(dna_weight)
