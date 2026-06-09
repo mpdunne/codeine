@@ -1,11 +1,12 @@
 from typing import Dict, Generator, Optional, Sequence
 
+from codeine.sequence.display import format_count, format_restrictions, format_banned_sequences
 from codeine.sequence.graph import CodonGraph
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
 
 
-class SequenceSpace:
+class CodingSpace:
     """
     Class representing coding sequence space, for sampling and mutating CDS coding sequences.
     """
@@ -20,7 +21,7 @@ class SequenceSpace:
             context_r: str = '',
     ) -> None:
         """
-        Constructor for the SequenceSpace class.
+        Constructor for the CodingSpace class.
 
         Parameters
         ----------
@@ -47,11 +48,11 @@ class SequenceSpace:
         ).view()
 
     @classmethod
-    def from_graph(cls, graph: CodonGraph) -> "SequenceSpace":
+    def from_graph(cls, graph: CodonGraph) -> 'CodingSpace':
         return cls.from_view(graph.view())
 
     @classmethod
-    def from_view(cls, view) -> "SequenceSpace":
+    def from_view(cls, view) -> 'CodingSpace':
         obj = cls.__new__(cls)
         obj.view = view
         return obj
@@ -84,18 +85,67 @@ class SequenceSpace:
 
     def __iter__(self) -> Generator[str, None, None]:
         """
-        Iterate over all valid sequences in this sequence space.
+        Iterate over all valid sequences in this coding space.
         Be aware that "all valid sequences" can be astronomically many!
 
         Yields
         ----------
-        All valid sequences in the sequence space, in order.
+        All valid sequences in the coding space, in order.
         """
         yield from self.view
 
+    def __repr__(self) -> str:
+        molecule = 'RNA' if self.translation_table.rna else 'DNA'
+
+        lines = [
+            f'{type(self).__name__}',
+            '',
+            f'Translation table: {self.translation_table.table_id} ({self.translation_table.name})',
+            f'Molecule type: {molecule}',
+            '',
+            f'Amino acid sequence ({len(self.view.aa_seq)} aa)',
+            f'{self.view.aa_seq}',
+            '']
+
+        if self.view.graph.codon_restrictions:
+            lines += [
+                'Codon restrictions:',
+                *format_restrictions(
+                    self.view.graph.codon_restrictions,
+                    label='restricted positions',
+                    max_lines=4,
+                ),
+                '',
+                ]
+
+        if self.view.graph.banned_sequences:
+            lines += [
+                'Banned sequences:',
+                *format_banned_sequences(
+                    self.view.graph.banned_sequences,
+                    max_lines=4,
+                ),
+                '',
+                ]
+
+        if self.view.pinned_codons:
+            lines += [
+                'Temporary pins:',
+                *format_restrictions(
+                    self.view.pinned_codons,
+                    label='pinned positions',
+                    max_lines=4,
+                ),
+                '',
+                ]
+
+        lines.append(f'Num. valid coding sequences: {format_count(self.n_valid_sequences)}')
+
+        return '\n'.join(lines)
+
     def sample(self) -> str:
         """
-        Sample a DNA sequence from this sequence space.
+        Sample a DNA sequence from this coding space.
 
         Returns
         -------
@@ -133,7 +183,7 @@ class SequenceSpace:
 
     def contains(self, seq: str) -> bool:
         """
-        Check whether a DNA sequence is contained in this sequence space.
+        Check whether a DNA sequence is contained in this coding space.
 
         Parameters
         ----------
@@ -142,7 +192,7 @@ class SequenceSpace:
 
         Returns
         -------
-        True if and only if the sequence is contained in this sequence space.
+        True if and only if the sequence is contained in this coding space.
         """
         return self.view.contains(seq)
 
@@ -157,10 +207,32 @@ class SequenceSpace:
         """
         return self.view.n_valid_sequences
 
+    @property
+    def translation_table(self) -> TranslationTable:
+        """
+        The translation table being used in this space.
+
+        Returns
+        -------
+        The TranslationTable being used.
+        """
+        return self.view.graph.tt
+
+    @property
+    def codon_weights(self) -> CodonWeights:
+        """
+        The codon weights being used in this space.
+
+        Returns
+        -------
+        The CodonWeights being used.
+        """
+        return self.view.graph.cw
+
     def enumerate(self) -> Generator[str, None, None]:
         """
         Generate all sequences in this space. If there are many (and often there are
-        astronomically many), one would not expect to reach the "end". However for smaller
+        astronomically many), one would not expect to reach the 'end'. However for smaller
         sequence spaces, such as mutation spaces, it's quite possible to get there.
 
         Yields
@@ -173,7 +245,7 @@ class SequenceSpace:
     def mutants(self,
                 seq: str,
                 positions: Sequence[int],
-                ) -> "SequenceSpace":
+                ) -> 'CodingSpace':
         """
         Return a space of mutants relative to a given coding sequence, i.e. a space derived
         from this one but which fixes the sequence on all but the specified positions.
@@ -188,7 +260,7 @@ class SequenceSpace:
         seq = seq.upper()
 
         if not self.contains(seq):
-            raise ValueError("Parent sequence is not contained in this sequence space.")
+            raise ValueError('Parent sequence is not contained in this coding space.')
 
         positions = set(positions)
 
@@ -205,4 +277,4 @@ class SequenceSpace:
         view = self.view.copy()
         view.pin_codons(mutation_pins)
 
-        return SequenceSpace.from_view(view)
+        return CodingSpace.from_view(view)

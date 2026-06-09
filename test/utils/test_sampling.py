@@ -33,7 +33,7 @@ def test_sampler_multiple_values_return_all_items():
     assert set(sampled_items) == set(items)
 
 
-@pytest.mark.parametrize("seed", [0, 5318008, 'hello', 0.401])
+@pytest.mark.parametrize('seed', [0, 5318008, 'hello', 0.401])
 def test_sample_seed_consistent(seed):
     sampled_item_lists = []
     for rep in range(10):

@@ -109,7 +109,24 @@ class CodonWeights:
         super().__setattr__(name, value)
 
     def __repr__(self) -> str:
-        return f'{type(self).__name__}(table={self.table!r})'
+        molecule = 'RNA' if self.table.rna else 'DNA'
+
+        lines = [
+            f'CodonWeights',
+            f'Translation table: {self.table.table_id} ({self.table.name})',
+            f'Molecule type: {molecule}',
+            '',
+            'Weights:',
+        ]
+
+        for aa in sorted(self.table.aa_to_codons):
+            weights = ' '.join(
+                f'{codon}={self.weights[codon]:.3f}'
+                for codon in self.table.aa_to_codons[aa]
+            )
+            lines.append(f'    {aa}: {weights}')
+
+        return '\n'.join(lines)
 
     def __getitem__(self, codon: str) -> float:
         return self.weights[codon]
@@ -179,7 +196,7 @@ class CodonWeights:
     @classmethod
     def yeast(cls, rna: bool = False) -> 'CodonWeights':
         """
-        Construct a CodonWeights object with codon probabilities corresponding to "yeast".
+        Construct a CodonWeights object with codon probabilities corresponding to 'yeast'.
 
         Weights are obtained from GenScript https://www.genscript.com/tools/codon-frequency-table
 

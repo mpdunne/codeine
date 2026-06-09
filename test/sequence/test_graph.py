@@ -3,35 +3,37 @@ import pytest
 from itertools import product
 
 from codeine.sequence.graph import CodonGraph, CodonNode, ContextNode, EndNode
+from codeine.translation.tables import TranslationTable
+from codeine.translation.weights import CodonWeights
 
 
 def test_empty_sequence_raises():
     with pytest.raises(ValueError):
-        CodonGraph("")
+        CodonGraph('')
 
 
 def test_invalid_codon_restriction_positions_raises():
     with pytest.raises(ValueError):
-        CodonGraph("MIKEY", codon_restrictions={-1: "ATG"})
+        CodonGraph('MIKEY', codon_restrictions={-1: 'ATG'})
 
     with pytest.raises(ValueError):
-        CodonGraph("MIKEY", codon_restrictions={6: "ATG"})
+        CodonGraph('MIKEY', codon_restrictions={6: 'ATG'})
 
 
 def test_invalid_codon_restriction_value_raises():
     with pytest.raises(ValueError):
-        CodonGraph("MIKEY", codon_restrictions={1: "ATT"})
+        CodonGraph('MIKEY', codon_restrictions={1: 'ATT'})
 
     with pytest.raises(ValueError):
-        CodonGraph("MIKEY", codon_restrictions={2: ["TTT"]})
+        CodonGraph('MIKEY', codon_restrictions={2: ['TTT']})
 
 
 def test_codon_restrictions_are_uppercased():
-    graph = CodonGraph("MIKEY", codon_restrictions={3: "aaa"})
-    assert graph.codon_restrictions[3] == ["AAA"]
+    graph = CodonGraph('MIKEY', codon_restrictions={3: 'aaa'})
+    assert graph.codon_restrictions[3] == ['AAA']
 
-    graph = CodonGraph("MIKEY", codon_restrictions={3: ["aaa"]})
-    assert graph.codon_restrictions[3] == ["AAA"]
+    graph = CodonGraph('MIKEY', codon_restrictions={3: ['aaa']})
+    assert graph.codon_restrictions[3] == ['AAA']
 
     graph = CodonGraph('MIKEY', codon_restrictions={3: ['aaa', 'aag']})
     assert graph.codon_restrictions[3] == ['AAA', 'AAG']
@@ -48,9 +50,9 @@ def test_multiple_codon_restriction_is_applied():
 
 
 def test_lowercase_sequence_is_accepted():
-    graph = CodonGraph("mikey", codon_restrictions={3: "aaa"})
-    assert graph.aa_seq == "MIKEY"
-    assert graph.codon_restrictions[3] == ["AAA"]
+    graph = CodonGraph('mikey', codon_restrictions={3: 'aaa'})
+    assert graph.aa_seq == 'MIKEY'
+    assert graph.codon_restrictions[3] == ['AAA']
 
 
 def test_view_can_pin_codons():
@@ -259,18 +261,18 @@ def test_contains_passes_on_valid_sequences(aa_seq, standard_codon_table):
 
 
 def test_contains_fails_on_wrong_length_sequences():
-    view = CodonGraph("MIKEY").view()
-    assert not view.contains("")
-    assert not view.contains("ATG")
-    assert not view.contains("ATG" * 10)
-    assert not view.contains("ATGA")  # not multiple of 3
+    view = CodonGraph('MIKEY').view()
+    assert not view.contains('')
+    assert not view.contains('ATG')
+    assert not view.contains('ATG' * 10)
+    assert not view.contains('ATGA')  # not multiple of 3
 
 
 @pytest.mark.parametrize(
-    "aa_seq, invalid_seq",
+    'aa_seq, invalid_seq',
     (
-        ("M", "ATT"),
-        ("MIKEY", "ATGATCAAAGAGTAA"),
+        ('M', 'ATT'),
+        ('MIKEY', 'ATGATCAAAGAGTAA'),
     ),
 )
 def test_contains_fails_on_invalid_sequences(aa_seq, invalid_seq):
@@ -279,32 +281,32 @@ def test_contains_fails_on_invalid_sequences(aa_seq, invalid_seq):
 
 
 def test_contains_respects_pinning():
-    view = CodonGraph("MS").view()
-    assert view.contains("ATGTCT")
-    assert view.contains("ATGTCC")
+    view = CodonGraph('MS').view()
+    assert view.contains('ATGTCT')
+    assert view.contains('ATGTCC')
 
-    view.pin_codons({2: "TCT"})
-    assert view.contains("ATGTCT")
-    assert not view.contains("ATGTCC")
+    view.pin_codons({2: 'TCT'})
+    assert view.contains('ATGTCT')
+    assert not view.contains('ATGTCC')
 
     view.clear_pins()
-    assert view.contains("ATGTCT")
-    assert view.contains("ATGTCC")
+    assert view.contains('ATGTCT')
+    assert view.contains('ATGTCC')
 
 
 def test_view_getitem():
-    view = CodonGraph("MF").view()
-    assert view[0] == "ATGTTT"
-    assert view[1] == "ATGTTC"
+    view = CodonGraph('MF').view()
+    assert view[0] == 'ATGTTT'
+    assert view[1] == 'ATGTTC'
 
 
 def test_view_len():
-    view = CodonGraph("MF").view()
+    view = CodonGraph('MF').view()
     assert len(view) == 2
 
 
 def test_view_iter():
-    view = CodonGraph("MIKEY").view()
+    view = CodonGraph('MIKEY').view()
     seqs = [*view]
     assert len(seqs) == len(set(seqs)) == 24
 
@@ -362,3 +364,41 @@ def test_get_works_for_very_large_sequences():
     _ = view[100]
     _ = view[1000000]
     _ = view[10**40]
+
+
+def test_can_instantiate_with_or_without_codon_weights_or_translation_table():
+    tt = TranslationTable()
+    graph = CodonGraph('MIKEY', translation_table=tt)
+    _ = graph.view()
+
+    tt = TranslationTable(rna=True)
+    graph = CodonGraph('MIKEY', translation_table=tt)
+    _ = graph.view()
+
+    weights = CodonWeights.ecoli()
+    graph = CodonGraph('MIKEY', weights=weights)
+    _ = graph.view()
+
+    weights = CodonWeights.ecoli(rna=True)
+    graph = CodonGraph('MIKEY', weights=weights)
+    _ = graph.view()
+
+    tt = TranslationTable()
+    weights = CodonWeights.ecoli()
+    graph = CodonGraph('MIKEY', translation_table=tt, weights=weights)
+    _ = graph.view()
+
+    tt = TranslationTable(rna=True)
+    weights = CodonWeights.ecoli(rna=True)
+    graph = CodonGraph('MIKEY', translation_table=tt, weights=weights)
+    _ = graph.view()
+
+    tt = TranslationTable()
+    weights = CodonWeights.ecoli(rna=True)
+    with pytest.raises(ValueError):
+        _ = CodonGraph('MIKEY', translation_table=tt, weights=weights)
+
+    tt = TranslationTable(rna=True)
+    weights = CodonWeights.ecoli()
+    with pytest.raises(ValueError):
+        _ = CodonGraph('MIKEY', translation_table=tt, weights=weights)

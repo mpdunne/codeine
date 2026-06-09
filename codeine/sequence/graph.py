@@ -1,5 +1,6 @@
 import uuid
 
+from codeine.sequence.display import format_banned_sequences, format_count, format_restrictions
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
 from codeine.utils.sampling import Sampler
@@ -45,7 +46,7 @@ class ContextNode(Node):
         self.sequence = sequence
 
         # Set an ID for this node.
-        self.id = f"context-{uuid.uuid4().hex[:8]}"
+        self.id = f'context-{uuid.uuid4().hex[:8]}'
 
 
 class CodonNode(Node):
@@ -73,7 +74,7 @@ class CodonNode(Node):
         self.aa = aa
 
         # Set an ID for this node.
-        self.id = f"{aa}{pos}-{uuid.uuid4().hex[:8]}"
+        self.id = f'{aa}{pos}-{uuid.uuid4().hex[:8]}'
 
         # Initialise the basic attributes.
         self.codons = codons
@@ -91,7 +92,7 @@ class EndNode(Node):
         Constructor for the EndNode class.
         """
         super().__init__()
-        self.id = f"end-{uuid.uuid4().hex[:8]}"
+        self.id = f'end-{uuid.uuid4().hex[:8]}'
 
 
 class CodonGraph:
@@ -114,16 +115,24 @@ class CodonGraph:
         self.aa_seq = aa_seq.upper()
 
         if translation_table is None:
-            translation_table = TranslationTable(table_id=1, rna=False)
-        self.tt = translation_table
+            if weights is not None:
+                translation_table = weights.table
+            else:
+                translation_table = TranslationTable(table_id=1, rna=False)
 
         if weights is None:
             weights = CodonWeights.uniform(table=translation_table)
 
+        if weights.table.codons_to_aa != translation_table.codons_to_aa:
+            raise ValueError('Codon weights and translation table do not match. ')
+
+        self.tt = translation_table
         self.cw = weights
 
         self.codon_restrictions = {}
         self.codon_restrictions = self.validate_codon_restrictions(codon_restrictions)
+
+        self.banned_sequences = []
 
         self.context_l = context_l.upper()
         self.context_r = context_r.upper()
@@ -140,6 +149,37 @@ class CodonGraph:
 
         self.initialise_graph()
 
+    def __repr__(self) -> str:
+        molecule = 'RNA' if self.tt.rna else 'DNA'
+
+        lines = [
+            f'{type(self).__name__}',
+            '',
+            f'Translation table: {self.tt.table_id} ({self.tt.name})',
+            f'Molecule type: {molecule}',
+            '',
+            f'Amino acid sequence ({len(self.aa_seq)} aa)',
+            f'{self.aa_seq}',
+            ''
+        ]
+        if self.codon_restrictions:
+            lines += [
+                'Codon restrictions:',
+                *format_restrictions(
+                    self.codon_restrictions,
+                    label='restricted positions',
+                ),
+                '',
+                ]
+
+        if self.banned_sequences:
+            lines += [
+                'Banned sequences:',
+                *format_banned_sequences(self.banned_sequences),
+            ]
+
+        return '\n'.join(lines)
+
     def validate_codon_restrictions(self, codon_restrictions: Dict[int, CodonRestriction]) -> Dict[int, List[str]]:
         """
         Check the inputted codon restrictions make sense!
@@ -149,7 +189,7 @@ class CodonGraph:
 
         for pos, codon_restriction in codon_restrictions.items():
             if pos < 1 or pos > len(self.aa_seq):
-                raise ValueError(f"Restricted position {pos} is out of range.")
+                raise ValueError(f'Restricted position {pos} is out of range.')
 
             if isinstance(codon_restriction, str):
                 codons = [codon_restriction]
@@ -157,7 +197,7 @@ class CodonGraph:
                 codons = list(codon_restriction)
 
             if len(codons) == 0:
-                raise ValueError(f"Codon restriction at position {pos} cannot be empty.")
+                raise ValueError(f'Codon restriction at position {pos} cannot be empty.')
 
             codons = [codon.upper() for codon in codons]
 
@@ -259,7 +299,7 @@ class CodonGraph:
         self.codon_nodes.remove(node)
         self.codon_nodes_by_pos[node.pos].remove(node)
 
-    def view(self) -> "CodonGraphView":
+    def view(self) -> 'CodonGraphView':
         """
         Return a constrained view over this graph.
         """
@@ -321,7 +361,7 @@ class CodonGraphView:
         """
 
         if index < 0 or index >= self.n_valid_sequences:
-            raise IndexError(f"Sequence index {index} out of range for {self.n_valid_sequences} valid sequences.")
+            raise IndexError(f'Sequence index {index} out of range for {self.n_valid_sequences} valid sequences.')
 
         node = self.graph.initial_node
         sequence = []
@@ -338,7 +378,7 @@ class CodonGraphView:
                         break
                     remaining -= count
                 else:
-                    raise RuntimeError("Failed to resolve sequence index.")
+                    raise RuntimeError('Failed to resolve sequence index.')
 
                 sequence.append(emitted)
                 index = remaining
@@ -370,6 +410,53 @@ class CodonGraphView:
         All valid sequences in the graph, in order.
         """
         yield from self.enumerate()
+
+    def __repr__(self) -> str:
+        molecule = 'RNA' if self.graph.tt.rna else 'DNA'
+
+        lines = [
+            f'{type(self).__name__}',
+            '',
+            f'Translation table: {self.graph.tt.table_id} ({self.graph.tt.name})',
+            f'Molecule type: {molecule}',
+            '',
+            f'Amino acid sequence ({len(self.aa_seq)} aa)',
+            f'{self.aa_seq}',
+            ''
+        ]
+
+        if self.graph.codon_restrictions:
+            lines += [
+                'Codon restrictions:',
+                *format_restrictions(
+                    self.graph.codon_restrictions,
+                    label='restricted positions',
+                ),
+                '',
+                ]
+
+        if self.graph.banned_sequences:
+            lines += [
+                'Banned sequences:',
+                *format_banned_sequences(
+                    self.graph.banned_sequences,
+                ),
+                '',
+                ]
+
+        if self.pinned_codons:
+            lines += [
+                'Temporary pins:',
+                *format_restrictions(
+                    self.pinned_codons,
+                    label='pinned positions',
+                ),
+                '',
+                ]
+
+        lines.append(f'Num. valid coding sequences: {format_count(self.n_valid_sequences)}')
+
+        return '\n'.join(lines)
 
     def pin_codons(self, pinned_codons: Dict[int, CodonRestriction]) -> None:
         """
@@ -419,7 +506,7 @@ class CodonGraphView:
 
         Returns
         -------
-        True if and only if the sequence is contained in this sequence space.
+        True if and only if the sequence is contained in this coding space.
         """
         seq = seq.upper()
 
@@ -452,7 +539,7 @@ class CodonGraphView:
 
         while node is not self.graph.final_node:
             if not node.transitions:
-                raise RuntimeError(f"Reached non-final node {node.id} with no outgoing transitions.")
+                raise RuntimeError(f'Reached non-final node {node.id} with no outgoing transitions.')
 
             if isinstance(node, CodonNode):
                 emitted = self.samplers[node].sample()
@@ -477,7 +564,7 @@ class CodonGraphView:
         for index in range(self.n_valid_sequences):
             yield self[index]
 
-    def copy(self) -> "CodonGraphView":
+    def copy(self) -> 'CodonGraphView':
         """
         Copy this view and all its constraints.
 
