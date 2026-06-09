@@ -228,5 +228,12 @@ def test_sequence_space_contains():
 def test_sequence_space_mutants_pins_non_mutated_positions():
     space = CodingSpace('FF')
     muts = space.mutants('TTTTTT', positions=[2])
-
     assert list(muts.enumerate()) == ['TTTTTT', 'TTTTTC']
+
+
+def test_space_contains():
+    space = CodingSpace('MIKEY')
+    for _ in range(100):
+        seq = space.sample()
+        assert seq in space
+        assert seq + 'ATG' not in space

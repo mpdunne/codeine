@@ -402,3 +402,11 @@ def test_can_instantiate_with_or_without_codon_weights_or_translation_table():
     weights = CodonWeights.ecoli()
     with pytest.raises(ValueError):
         _ = CodonGraph('MIKEY', translation_table=tt, weights=weights)
+
+
+def test_view_contains():
+    view = CodonGraph('MIKEY').view()
+    for _ in range(100):
+        seq = view.sample()
+        assert seq in view
+        assert seq + 'ATG' not in view
