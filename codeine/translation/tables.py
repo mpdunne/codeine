@@ -33,6 +33,8 @@ class TranslationTable:
         except KeyError:
             raise ValueError(f'Unknown NCBI translation table ID: {table_id}.')
 
+        self.name = biopython_table.names[0]
+
         dna_to_aa = biopython_table.forward_table
         dna_to_aa = {**dna_to_aa, **{stop: '*' for stop in biopython_table.stop_codons}}
 
@@ -64,7 +66,21 @@ class TranslationTable:
         object.__setattr__(self, name, value)
 
     def __repr__(self) -> str:
-        return f'{type(self).__name__}(table_id={self.table_id}, rna={self.rna})'
+        molecule = 'RNA' if self.rna else 'DNA'
+
+        lines = [
+            f'TranslationTable',
+            f'Table ID: {self.table_id} ({self.name})',
+            f'Molecule type: {molecule}',
+            '',
+            'Table:',
+        ]
+
+        for aa in sorted(self.aa_to_codons):
+            codons = ' '.join(self.aa_to_codons[aa])
+            lines.append(f'    {aa}: {codons}')
+
+        return '\n'.join(lines)
 
     def __getitem__(self, codon: str) -> str:
         return self.codons_to_aa[codon]
