@@ -157,6 +157,28 @@ class CodingSpace:
         """
         return self.view.n_valid_sequences
 
+    @property
+    def translation_table(self) -> TranslationTable:
+        """
+        The translation table being used in this space.
+
+        Returns
+        -------
+        The TranslationTable being used.
+        """
+        return self.view.graph.tt
+
+    @property
+    def codon_weights(self) -> CodonWeights:
+        """
+        The codon weights being used in this space.
+
+        Returns
+        -------
+        The CodonWeights being used.
+        """
+        return self.view.graph.cw
+
     def enumerate(self) -> Generator[str, None, None]:
         """
         Generate all sequences in this space. If there are many (and often there are
