@@ -94,6 +94,16 @@ class CodingSpace:
         """
         yield from self.view
 
+    def __contains__(self, seq: str) -> bool:
+        """
+        Does the given seq exist in this space? 
+
+        Returns
+        ----------
+        True if and only if this is a valid sequence in this space.
+        """
+        return seq in self.view
+
     def __repr__(self) -> str:
         molecule = 'RNA' if self.translation_table.rna else 'DNA'
 
