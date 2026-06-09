@@ -8,13 +8,13 @@ def test_default_codon_table_works_as_expected():
 
     assert tt.rna is False
 
-    assert tt.codons_to_aa["ATG"] == "M"
-    assert tt.codons_to_aa["CCC"] == "P"
-    assert tt.codons_to_aa["GAC"] == "D"
+    assert tt.codons_to_aa['ATG'] == 'M'
+    assert tt.codons_to_aa['CCC'] == 'P'
+    assert tt.codons_to_aa['GAC'] == 'D'
 
-    assert tt.aa_to_codons["M"] == ("ATG",)
-    assert set(tt.aa_to_codons["P"]) == {"CCT", "CCC", "CCA", "CCG"}
-    assert set(tt.aa_to_codons["D"]) == {"GAT", "GAC"}
+    assert tt.aa_to_codons['M'] == ('ATG',)
+    assert set(tt.aa_to_codons['P']) == {'CCT', 'CCC', 'CCA', 'CCG'}
+    assert set(tt.aa_to_codons['D']) == {'GAT', 'GAC'}
 
 
 def test_rna_codon_table_works_as_expected():
@@ -22,15 +22,26 @@ def test_rna_codon_table_works_as_expected():
 
     assert tt.rna is True
 
-    assert tt.codons_to_aa["AUG"] == "M"
-    assert tt.codons_to_aa["CCC"] == "P"
-    assert tt.codons_to_aa["GAC"] == "D"
+    assert tt.codons_to_aa['AUG'] == 'M'
+    assert tt.codons_to_aa['CCC'] == 'P'
+    assert tt.codons_to_aa['GAC'] == 'D'
 
-    assert "ATG" not in tt.codons_to_aa
+    assert 'ATG' not in tt.codons_to_aa
 
-    assert tt.aa_to_codons["M"] == ("AUG",)
-    assert set(tt.aa_to_codons["P"]) == {"CCU", "CCC", "CCA", "CCG"}
-    assert set(tt.aa_to_codons["D"]) == {"GAU", "GAC"}
+    assert tt.aa_to_codons['M'] == ('AUG',)
+    assert set(tt.aa_to_codons['P']) == {'CCU', 'CCC', 'CCA', 'CCG'}
+    assert set(tt.aa_to_codons['D']) == {'GAU', 'GAC'}
+
+
+def test_unknown_translation_table_raises_value_error():
+    with pytest.raises(ValueError, match='Unknown NCBI translation table'):
+        TranslationTable(table_id=999999)
+
+    with pytest.raises(ValueError, match='Unknown NCBI translation table'):
+        TranslationTable(table_id='Michael')
+
+    with pytest.raises(ValueError, match='Unknown NCBI translation table'):
+        TranslationTable(table_id='')
 
 
 def test_all_forward_codons_appear_in_reverse_table():
@@ -53,44 +64,65 @@ def test_all_forward_rna_codons_appear_in_reverse_table():
     assert reverse_codons == set(tt.codons_to_aa)
 
 
-def test_dna_table_contains_no_rna_codons():
+def test_dna_table_is_dna_only():
     tt = TranslationTable()
-    assert all("U" not in codon for codon in tt.codons_to_aa)
-    assert all(
-        "U" not in codon
-        for codons in tt.aa_to_codons.values()
-        for codon in codons
-    )
+
+    for codon in tt.codons_to_aa:
+        assert 'U' not in codon
+
+    for codons in tt.aa_to_codons.values():
+        for codon in codons:
+            assert 'U' not in codon
 
 
-def test_rna_table_contains_no_dna_thymine_codons():
+def test_rna_table_is_rna_only():
     tt = TranslationTable(rna=True)
-    assert all("T" not in codon for codon in tt.codons_to_aa)
-    assert all(
-        "T" not in codon
-        for codons in tt.aa_to_codons.values()
-        for codon in codons
-    )
+
+    for codon in tt.codons_to_aa:
+        assert 'T' not in codon
+
+    for codons in tt.aa_to_codons.values():
+        for codon in codons:
+            assert 'T' not in codon
 
 
-def test_codon_tables_are_immutable():
+def test_codon_tables_are_read_only():
     tt = TranslationTable()
 
     with pytest.raises(TypeError):
-        tt.codons_to_aa["AAA"] = "X"
+        tt.codons_to_aa['AAA'] = 'X'
 
     with pytest.raises(TypeError):
-        tt.aa_to_codons["X"] = ("AAA",)
+        tt.aa_to_codons['X'] = ('AAA',)
 
-
-def test_aa_to_codons_values_are_immutable():
-    tt = TranslationTable()
-    assert isinstance(tt.aa_to_codons["M"], tuple)
+    assert isinstance(tt.aa_to_codons['M'], tuple)
     with pytest.raises(AttributeError):
-        tt.aa_to_codons["M"].append("XXX")
+        tt.aa_to_codons['M'].append('XXX')
 
+    with pytest.raises(AttributeError):
+        tt.aa_to_codons = {'M': ('AAA',)}
 
-def test_rna_attribute_is_read_only():
-    tt = TranslationTable(rna=True)
+    with pytest.raises(AttributeError):
+        tt.codons_to_aa = {'AAA': 'M'}
+
+    with pytest.raises(AttributeError):
+        tt.chicken = 'beef'
+
     with pytest.raises(AttributeError):
         tt.rna = False
+
+
+def test_normalise_codon():
+    tt = TranslationTable(rna=False)
+    assert tt.normalise_codon('aug') == 'ATG'
+    assert tt.normalise_codon('ATG') == 'ATG'
+    assert tt.normalise_codon('ATg') == 'ATG'
+    assert tt.normalise_codon('ccc') == 'CCC'
+    assert tt.normalise_codon('ggg') == 'GGG'
+
+    tt = TranslationTable(rna=True)
+    assert tt.normalise_codon('aug') == 'AUG'
+    assert tt.normalise_codon('ATG') == 'AUG'
+    assert tt.normalise_codon('ATg') == 'AUG'
+    assert tt.normalise_codon('ccc') == 'CCC'
+    assert tt.normalise_codon('ggg') == 'GGG'
