@@ -114,12 +114,18 @@ class CodonGraph:
         self.aa_seq = aa_seq.upper()
 
         if translation_table is None:
-            translation_table = TranslationTable(table_id=1, rna=False)
-        self.tt = translation_table
+            if weights is not None:
+                translation_table = weights.table
+            else:
+                translation_table = TranslationTable(table_id=1, rna=False)
 
         if weights is None:
             weights = CodonWeights.uniform(table=translation_table)
 
+        if weights.table.codons_to_aa != translation_table.codons_to_aa:
+            raise ValueError('Codon weights and translation table do not match. ')
+
+        self.tt = translation_table
         self.cw = weights
 
         self.codon_restrictions = {}

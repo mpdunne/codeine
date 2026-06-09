@@ -3,6 +3,8 @@ import pytest
 from itertools import product
 
 from codeine.sequence.graph import CodonGraph, CodonNode, ContextNode, EndNode
+from codeine.translation.tables import TranslationTable
+from codeine.translation.weights import CodonWeights
 
 
 def test_empty_sequence_raises():
@@ -362,3 +364,41 @@ def test_get_works_for_very_large_sequences():
     _ = view[100]
     _ = view[1000000]
     _ = view[10**40]
+
+
+def test_can_instantiate_with_or_without_codon_weights_or_translation_table():
+    tt = TranslationTable()
+    graph = CodonGraph('MIKEY', translation_table=tt)
+    _ = graph.view()
+
+    tt = TranslationTable(rna=True)
+    graph = CodonGraph('MIKEY', translation_table=tt)
+    _ = graph.view()
+
+    weights = CodonWeights.ecoli()
+    graph = CodonGraph('MIKEY', weights=weights)
+    _ = graph.view()
+
+    weights = CodonWeights.ecoli(rna=True)
+    graph = CodonGraph('MIKEY', weights=weights)
+    _ = graph.view()
+
+    tt = TranslationTable()
+    weights = CodonWeights.ecoli()
+    graph = CodonGraph('MIKEY', translation_table=tt, weights=weights)
+    _ = graph.view()
+
+    tt = TranslationTable(rna=True)
+    weights = CodonWeights.ecoli(rna=True)
+    graph = CodonGraph('MIKEY', translation_table=tt, weights=weights)
+    _ = graph.view()
+
+    tt = TranslationTable()
+    weights = CodonWeights.ecoli(rna=True)
+    with pytest.raises(ValueError):
+        _ = CodonGraph('MIKEY', translation_table=tt, weights=weights)
+
+    tt = TranslationTable(rna=True)
+    weights = CodonWeights.ecoli()
+    with pytest.raises(ValueError):
+        _ = CodonGraph('MIKEY', translation_table=tt, weights=weights)
