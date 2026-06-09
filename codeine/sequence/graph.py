@@ -1,5 +1,6 @@
 import uuid
 
+from codeine.sequence.display import format_banned_sequences, format_count, format_restrictions
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
 from codeine.utils.sampling import Sampler
@@ -131,6 +132,8 @@ class CodonGraph:
         self.codon_restrictions = {}
         self.codon_restrictions = self.validate_codon_restrictions(codon_restrictions)
 
+        self.banned_sequences = []
+
         self.context_l = context_l.upper()
         self.context_r = context_r.upper()
 
@@ -145,6 +148,37 @@ class CodonGraph:
         self.final_node = None
 
         self.initialise_graph()
+
+    def __repr__(self) -> str:
+        molecule = 'RNA' if self.tt.rna else 'DNA'
+
+        lines = [
+            f'{type(self).__name__}',
+            '',
+            f'Translation table: {self.tt.table_id} ({self.tt.name})',
+            f'Molecule type: {molecule}',
+            '',
+            f'Amino acid sequence ({len(self.aa_seq)} aa)',
+            f'{self.aa_seq}',
+            ''
+        ]
+        if self.codon_restrictions:
+            lines += [
+                'Codon restrictions:',
+                *format_restrictions(
+                    self.codon_restrictions,
+                    label='restricted positions',
+                ),
+                '',
+                ]
+
+        if self.banned_sequences:
+            lines += [
+                'Banned sequences:',
+                *format_banned_sequences(self.banned_sequences),
+            ]
+
+        return '\n'.join(lines)
 
     def validate_codon_restrictions(self, codon_restrictions: Dict[int, CodonRestriction]) -> Dict[int, List[str]]:
         """
@@ -376,6 +410,53 @@ class CodonGraphView:
         All valid sequences in the graph, in order.
         """
         yield from self.enumerate()
+
+    def __repr__(self) -> str:
+        molecule = 'RNA' if self.graph.tt.rna else 'DNA'
+
+        lines = [
+            f'{type(self).__name__}',
+            '',
+            f'Translation table: {self.graph.tt.table_id} ({self.graph.tt.name})',
+            f'Molecule type: {molecule}',
+            '',
+            f'Amino acid sequence ({len(self.aa_seq)} aa)',
+            f'{self.aa_seq}',
+            ''
+        ]
+
+        if self.graph.codon_restrictions:
+            lines += [
+                'Codon restrictions:',
+                *format_restrictions(
+                    self.graph.codon_restrictions,
+                    label='restricted positions',
+                ),
+                '',
+                ]
+
+        if self.graph.banned_sequences:
+            lines += [
+                'Banned sequences:',
+                *format_banned_sequences(
+                    self.graph.banned_sequences,
+                ),
+                '',
+                ]
+
+        if self.pinned_codons:
+            lines += [
+                'Temporary pins:',
+                *format_restrictions(
+                    self.pinned_codons,
+                    label='pinned positions',
+                ),
+                '',
+                ]
+
+        lines.append(f'Num. valid coding sequences: {format_count(self.n_valid_sequences)}')
+
+        return '\n'.join(lines)
 
     def pin_codons(self, pinned_codons: Dict[int, CodonRestriction]) -> None:
         """

@@ -1,5 +1,6 @@
 from typing import Dict, Generator, Optional, Sequence
 
+from codeine.sequence.display import format_count, format_restrictions, format_banned_sequences
 from codeine.sequence.graph import CodonGraph
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
@@ -92,6 +93,55 @@ class CodingSpace:
         All valid sequences in the coding space, in order.
         """
         yield from self.view
+
+    def __repr__(self) -> str:
+        molecule = 'RNA' if self.translation_table.rna else 'DNA'
+
+        lines = [
+            f'{type(self).__name__}',
+            '',
+            f'Translation table: {self.translation_table.table_id} ({self.translation_table.name})',
+            f'Molecule type: {molecule}',
+            '',
+            f'Amino acid sequence ({len(self.view.aa_seq)} aa)',
+            f'{self.view.aa_seq}',
+            '']
+
+        if self.view.graph.codon_restrictions:
+            lines += [
+                'Codon restrictions:',
+                *format_restrictions(
+                    self.view.graph.codon_restrictions,
+                    label='restricted positions',
+                    max_lines=4,
+                ),
+                '',
+                ]
+
+        if self.view.graph.banned_sequences:
+            lines += [
+                'Banned sequences:',
+                *format_banned_sequences(
+                    self.view.graph.banned_sequences,
+                    max_lines=4,
+                ),
+                '',
+                ]
+
+        if self.view.pinned_codons:
+            lines += [
+                'Temporary pins:',
+                *format_restrictions(
+                    self.view.pinned_codons,
+                    label='pinned positions',
+                    max_lines=4,
+                ),
+                '',
+                ]
+
+        lines.append(f'Num. valid coding sequences: {format_count(self.n_valid_sequences)}')
+
+        return '\n'.join(lines)
 
     def sample(self) -> str:
         """
