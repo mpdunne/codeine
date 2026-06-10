@@ -1,11 +1,11 @@
-# Codeine
+Codeine
+=======
 
 Codeine is a Python library for representing and exploring constrained coding sequence spaces.
 
-Documentation is under construction.
+Installation
+------------
 
-## Installation
+.. code-block:: bash
 
-```bash
-pip install codeine
-```
+   pip install codeine
