@@ -309,7 +309,7 @@ class CodonGraph:
         self.initial_node = left_context_node
         self.final_node = end_node
 
-    def find_matching_subpaths(self, sequence: str) -> List[Tuple[List[Tuple[Node, str]], int]]:
+    def _find_matching_subpaths(self, sequence: str) -> List[Tuple[List[Tuple[Node, str]], int]]:
         """
         For a given sequence, find subpaths in the graph that match that sequence.
         Return each found subpath in the following format:
@@ -326,53 +326,103 @@ class CodonGraph:
         Parameters
         ----------
         sequence
-            The sequence for which to search.
+            The sequence to search for.
 
         Returns
         -------
-        List of (node, codon) pairs, followed by an int offset.
+        A tuple consisteing of a list of (node, codon) pairs, followed by the offset.
         """
+
         sequence = sequence.upper()
 
         if len(sequence) == 0:
             raise ValueError('Sequence cannot be empty.')
 
         matches = []
+        candidate_matches = []
 
-        def walk_from(node, remaining, path, offset):
-            if remaining == '':
-                matches.append((path, offset))
-                return
-
-            if node is self.final_node:
-                return
-
-            for choice, child in node.transitions.items():
-                if remaining.startswith(choice):
-                    walk_from(child, remaining[len(choice):], path + [(node, choice)], offset,)
-
-                elif choice.startswith(remaining):  # Match found!
-                    matches.append((path + [(node, choice)], offset))
-
-        def try_start(node, choice, offset):
-            initial_chunk = choice[offset:]
-
-            if sequence.startswith(initial_chunk):  # Caught a fish!
-                child = node.transitions[choice]
-                remaining = sequence[len(initial_chunk):]
-                path = [(node, choice)]
-                walk_from(child, remaining, path, offset)
-
-            elif initial_chunk.startswith(sequence):  # Bingo!
-                matches.append(([(node, choice)], offset))
-
+        # First, check which nodes we can start at.
         for node in self.nodes:
             if node is self.end_node:
                 continue
 
-            for choice in node.transitions:
+            for choice, child in node.transitions.items():
                 for offset in range(len(choice)):
-                    try_start(node, choice, offset)
+                    choice_subsequence = choice[offset:]
+
+                    if choice_subsequence.startswith(sequence):
+                        # Bingo!
+                        matches.append(([(node, choice)], offset))
+
+                    elif sequence.startswith(choice_subsequence):
+                        # Maybe bingo! Maygo!
+                        candidate_matches.append((
+                            [(node, choice)],
+                            offset,
+                            len(choice_subsequence),
+                        ))
+
+        def reinspect_candidate_matches(candidate_matches):
+            reinspect = []
+
+            for partial_path, offset, seen_length in candidate_matches:
+                previous_node, previous_choice = partial_path[-1]
+                node = previous_node.transitions[previous_choice]
+
+                remaining_sequence = sequence[seen_length:]
+
+                if remaining_sequence == '':
+                    # Fantastic!
+                    matches.append((partial_path, offset))
+                    continue
+
+                if node is self.final_node:
+                    continue
+
+                if isinstance(node, CodonNode):
+                    choice_length = 3
+                else:
+                    choice_length = len(next(iter(node.transitions)))
+
+                # Sneaky shortcut if we've crossed into the right context:
+                if isinstance(node, CodonNode):
+                    pos = node.pos
+
+                    remaining_sequence_length = len(sequence) - seen_length
+                    remaining_coding_length = 3 * (len(self.aa_seq) - pos + 1)
+
+                    if remaining_sequence_length > remaining_coding_length:
+                        sequence_end = sequence[seen_length + remaining_coding_length:]
+
+                        if not self.context_r.startswith(sequence_end):
+                            continue
+
+                for choice, child in node.transitions.items():
+
+                    if len(remaining_sequence) >= choice_length:
+
+                        if remaining_sequence.startswith(choice):
+                            # Keep going...
+                            reinspect.append((partial_path + [(node, choice)], offset, seen_length + choice_length))
+
+                        else:
+                            # Hard luck this time.
+                            continue
+
+                    else:
+
+                        if choice.startswith(remaining_sequence):
+                            # Wahoo!
+                            matches.append((partial_path + [(node, choice)], offset))
+
+                        else:
+                            # Hard luck this time.
+                            continue
+
+            return reinspect
+
+        while candidate_matches:
+            candidate_matches = reinspect_candidate_matches(candidate_matches)
 
         return matches
 
