@@ -53,85 +53,53 @@ def test_weights_are_normalised_per_amino_acid():
         for aa, codons in table.aa_to_codons.items()
     }
 
-    weights = CodonWeights(data, table=table)
-
+    weights = CodonWeights(data)
     for codons in table.aa_to_codons.values():
         total = sum(weights[codon] for codon in codons)
         assert total == pytest.approx(1.0)
 
 
-def test_rna_table_requires_rna_codons():
-    table = TranslationTable(rna=True)
+def test_rna_weights_convert_codons_to_rna():
+    table = TranslationTable()
     data = make_weights_data(table)
-
-    weights = CodonWeights(data, table=table)
-
+    weights = CodonWeights(data, rna=True)
+    assert weights.rna is True
     assert all('T' not in codon for codon in weights.weights)
+    assert 'GCU' in weights.weights
+    assert 'GCT' not in weights.weights
 
 
-def test_dna_table_requires_dna_codons():
-    table = TranslationTable(rna=False)
-    data = make_weights_data(table)
-
-    weights = CodonWeights(data, table=table)
-
-    assert all('U' not in codon for codon in weights.weights)
-
-
-def test_rna_table_rejects_dna_codons():
+def test_dna_weights_convert_codons_to_dna():
     table = TranslationTable(rna=True)
-
-    data = {
-        aa: {codon.replace('U', 'T'): 1.0 for codon in codons}
-        for aa, codons in table.aa_to_codons.items()
-    }
-
-    with pytest.raises(ValueError, match='Missing codon weights|Unexpected codons'):
-        CodonWeights(data, table=table)
+    data = make_weights_data(table)
+    weights = CodonWeights(data, rna=False)
+    assert weights.rna is False
+    assert all('U' not in codon for codon in weights.weights)
+    assert 'GCT' in weights.weights
+    assert 'GCU' not in weights.weights
 
 
-def test_dna_table_rejects_rna_codons():
+def test_uniform_can_use_rna_flag_without_table():
+    weights = CodonWeights.uniform(rna=True)
+    assert weights.rna is True
+    assert 'GCU' in weights.weights
+    assert 'GCT' not in weights.weights
+
+
+def test_uniform_uses_table_rna_if_rna_is_not_given():
+    table = TranslationTable(rna=True)
+    weights = CodonWeights.uniform(table)
+    assert weights.rna is True
+    assert 'GCU' in weights.weights
+    assert 'GCT' not in weights.weights
+
+
+def test_uniform_rna_flag_can_override_table_molecule_type():
     table = TranslationTable(rna=False)
-
-    data = {
-        aa: {codon.replace('T', 'U'): 1.0 for codon in codons}
-        for aa, codons in table.aa_to_codons.items()
-    }
-
-    with pytest.raises(ValueError, match='Missing codon weights|Unexpected codons'):
-        CodonWeights(data, table=table)
-
-
-def test_missing_amino_acid_raises_value_error():
-    table = TranslationTable()
-    data = make_weights_data(table)
-    data.pop('A')
-    with pytest.raises(ValueError, match='Missing weights'):
-        CodonWeights(data, table=table)
-
-
-def test_extra_amino_acid_raises_value_error():
-    table = TranslationTable()
-    data = make_weights_data(table)
-    data['B'] = {'BBB': 1.0}
-    with pytest.raises(ValueError, match='Unexpected amino acids'):
-        CodonWeights(data, table=table)
-
-
-def test_missing_codon_raises_value_error():
-    table = TranslationTable()
-    data = make_weights_data(table)
-    data['A'].pop('GCT')
-    with pytest.raises(ValueError, match='Missing codon weights'):
-        CodonWeights(data, table=table)
-
-
-def test_extra_codon_raises_value_error():
-    table = TranslationTable()
-    data = make_weights_data(table)
-    data['A']['TTT'] = 1.0
-    with pytest.raises(ValueError, match='Unexpected codons'):
-        CodonWeights(data, table=table)
+    weights = CodonWeights.uniform(table, rna=True)
+    assert weights.rna is True
+    assert 'GCU' in weights.weights
+    assert 'GCT' not in weights.weights
 
 
 def test_negative_weight_raises_value_error():
@@ -139,7 +107,7 @@ def test_negative_weight_raises_value_error():
     data = make_weights_data(table)
     data['A']['GCT'] = -1.0
     with pytest.raises(ValueError, match='cannot be negative'):
-        CodonWeights(data, table=table)
+        CodonWeights(data)
 
 
 def test_zero_total_weight_raises_value_error():
@@ -147,7 +115,7 @@ def test_zero_total_weight_raises_value_error():
     data = make_weights_data(table)
     data['A'] = {codon: 0.0 for codon in data['A']}
     with pytest.raises(ValueError, match='must sum to > 0'):
-        CodonWeights(data, table=table)
+        CodonWeights(data)
 
 
 def test_weights_is_immutable():
@@ -175,8 +143,7 @@ def test_getitem_is_strict():
     with pytest.raises(KeyError):
         _ = weights['gct']
 
-    table_rna = TranslationTable(rna=True)
-    weights_rna = CodonWeights.uniform(table_rna)
+    weights_rna = CodonWeights.uniform(rna=True)
 
     with pytest.raises(KeyError):
         _ = weights_rna['GCT']
@@ -197,12 +164,13 @@ def test_getitem_is_strict():
     ],
 )
 def test_builtin_weights_are_valid_dna(constructor):
+    table = TranslationTable()
     weights = constructor()
 
-    assert weights.table.rna is False
-    assert set(weights.weights) == set(weights.table.codons_to_aa)
+    assert weights.rna is False
+    assert set(weights.weights) == set(table.codons_to_aa)
 
-    for codons in weights.table.aa_to_codons.values():
+    for codons in table.aa_to_codons.values():
         total = sum(weights[codon] for codon in codons)
         assert total == pytest.approx(1.0)
 
@@ -216,13 +184,14 @@ def test_builtin_weights_are_valid_dna(constructor):
     ],
 )
 def test_builtin_weights_are_valid_rna(constructor):
+    table = TranslationTable(rna=True)
     weights = constructor(rna=True)
 
-    assert weights.table.rna is True
-    assert set(weights.weights) == set(weights.table.codons_to_aa)
+    assert weights.rna is True
+    assert set(weights.weights) == set(table.codons_to_aa)
     assert all('T' not in codon for codon in weights.weights)
 
-    for codons in weights.table.aa_to_codons.values():
+    for codons in table.aa_to_codons.values():
         total = sum(weights[codon] for codon in codons)
         assert total == pytest.approx(1.0)
 

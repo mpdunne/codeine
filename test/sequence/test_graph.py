@@ -370,28 +370,40 @@ def test_can_instantiate_with_or_without_codon_weights_or_translation_table():
     tt = TranslationTable()
     graph = CodonGraph('MIKEY', translation_table=tt)
     _ = graph.view()
+    assert not graph.tt.rna
+    assert not graph.cw.rna
 
     tt = TranslationTable(rna=True)
     graph = CodonGraph('MIKEY', translation_table=tt)
     _ = graph.view()
+    assert graph.tt.rna
+    assert graph.cw.rna
 
     weights = CodonWeights.ecoli()
     graph = CodonGraph('MIKEY', weights=weights)
     _ = graph.view()
+    assert not graph.tt.rna
+    assert not graph.cw.rna
 
     weights = CodonWeights.ecoli(rna=True)
     graph = CodonGraph('MIKEY', weights=weights)
     _ = graph.view()
+    assert graph.tt.rna
+    assert graph.cw.rna
 
     tt = TranslationTable()
     weights = CodonWeights.ecoli()
     graph = CodonGraph('MIKEY', translation_table=tt, weights=weights)
     _ = graph.view()
+    assert not graph.tt.rna
+    assert not graph.cw.rna
 
     tt = TranslationTable(rna=True)
     weights = CodonWeights.ecoli(rna=True)
     graph = CodonGraph('MIKEY', translation_table=tt, weights=weights)
     _ = graph.view()
+    assert graph.tt.rna
+    assert graph.cw.rna
 
     tt = TranslationTable()
     weights = CodonWeights.ecoli(rna=True)
