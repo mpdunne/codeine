@@ -1,7 +1,7 @@
 import uuid
 
 from collections import Counter
-from typing import Dict, Generator, List, Optional, Sequence, Union
+from typing import Dict, Generator, List, Optional, Sequence, Union, Tuple
 
 from codeine.sequence.display import format_banned_sequences, format_count, format_restrictions
 from codeine.translation.tables import TranslationTable
@@ -308,6 +308,73 @@ class CodonGraph:
 
         self.initial_node = left_context_node
         self.final_node = end_node
+
+    def find_matching_subpaths(self, sequence: str) -> List[Tuple[List[Tuple[Node, str]], int]]:
+        """
+        For a given sequence, find subpaths in the graph that match that sequence.
+        Return each found subpath in the following format:
+
+            (
+                [
+                    (node1, codon_1),
+                    (node2, codon_2),
+                    ...
+                ]
+                offset,  # Where the path starts relative to first node's codon choice.
+            )
+
+        Parameters
+        ----------
+        sequence
+            The sequence for which to search.
+
+        Returns
+        -------
+        List of (node, codon) pairs, followed by an int offset.
+        """
+        sequence = sequence.upper()
+
+        if len(sequence) == 0:
+            raise ValueError('Sequence cannot be empty.')
+
+        matches = []
+
+        def walk_from(node, remaining, path, offset):
+            if remaining == '':
+                matches.append((path, offset))
+                return
+
+            if node is self.final_node:
+                return
+
+            for choice, child in node.transitions.items():
+                if remaining.startswith(choice):
+                    walk_from(child, remaining[len(choice):], path + [(node, choice)], offset,)
+
+                elif choice.startswith(remaining):  # Match found!
+                    matches.append((path + [(node, choice)], offset))
+
+        def try_start(node, choice, offset):
+            initial_chunk = choice[offset:]
+
+            if sequence.startswith(initial_chunk):  # Caught a fish!
+                child = node.transitions[choice]
+                remaining = sequence[len(initial_chunk):]
+                path = [(node, choice)]
+                walk_from(child, remaining, path, offset)
+
+            elif initial_chunk.startswith(sequence):  # Bingo!
+                matches.append(([(node, choice)], offset))
+
+        for node in self.nodes:
+            if node is self.end_node:
+                continue
+
+            for choice in node.transitions:
+                for offset in range(len(choice)):
+                    try_start(node, choice, offset)
+
+        return matches
 
     @property
     def nodes(self) -> List[Node]:
