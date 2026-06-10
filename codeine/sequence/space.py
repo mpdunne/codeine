@@ -73,16 +73,6 @@ class CodingSpace:
         """
         return self.view[index]
 
-    def __len__(self):
-        """
-        The number of valid sequences in this graph.
-
-        Returns
-        -------
-        The number of valid sequences in this graph.
-        """
-        return self.n_valid_sequences
-
     def __iter__(self) -> Generator[str, None, None]:
         """
         Iterate over all valid sequences in this coding space.

@@ -202,11 +202,6 @@ def test_sequence_space_getitem():
     assert space[0] == 'ATGATG'
 
 
-def test_sequence_space_len():
-    space = CodingSpace('M')
-    assert len(space) == 1
-
-
 def test_view_iter():
     space = CodingSpace('MIKEY')
     seqs = [*space]

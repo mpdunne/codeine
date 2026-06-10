@@ -54,11 +54,6 @@ def test_get_works_for_very_large_sequences():
     _ = view[10**40]
 
 
-def test_view_len():
-    view = CodonGraph('MF').view()
-    assert len(view) == 2
-
-
 def test_view_iter():
     view = CodonGraph('MIKEY').view()
     seqs = [*view]
@@ -221,7 +216,7 @@ def test_enumerate_sequences(aa_seq, standard_codon_table):
     generated_all_seqs = [*view.enumerate()]
     expected_all_seqs = helper_enumerate_sequences(aa_seq, standard_codon_table)
 
-    assert view.n_valid_sequences == len(view) == len(generated_all_seqs) == len(expected_all_seqs)
+    assert view.n_valid_sequences == len(generated_all_seqs) == len(expected_all_seqs)
     assert len(generated_all_seqs) == len(expected_all_seqs) == len(set(expected_all_seqs))
     assert set(generated_all_seqs) == set(expected_all_seqs)
 
@@ -233,19 +228,19 @@ def test_enumerate_pinned_sequences(standard_codon_table):
     generated_all_seqs = [*view.enumerate()]
     expected_all_seqs = helper_enumerate_sequences(aa_seq, standard_codon_table)
 
-    assert 24 == view.n_valid_sequences == len(view) == len(generated_all_seqs) == len(expected_all_seqs)
+    assert 24 == view.n_valid_sequences == len(generated_all_seqs) == len(expected_all_seqs)
     assert 24 == len(generated_all_seqs) == len(expected_all_seqs) == len(set(expected_all_seqs))
     assert set(generated_all_seqs) == set(expected_all_seqs)
 
     view.pin_codons({2: 'ATC'})
     generated_pinned_seqs = [*view.enumerate()]
-    assert 8 == view.n_valid_sequences == len(view)
+    assert 8 == view.n_valid_sequences
     assert 8 == len(generated_pinned_seqs)
     assert all(seq[3:6] == 'ATC' for seq in generated_pinned_seqs)
 
     view.clear_pins()
     generated_unpinned_seqs = [*view.enumerate()]
 
-    assert 24 == view.n_valid_sequences == len(view) == len(generated_unpinned_seqs) == len(expected_all_seqs)
+    assert 24 == view.n_valid_sequences == len(generated_unpinned_seqs) == len(expected_all_seqs)
     assert 24 == len(generated_unpinned_seqs) == len(expected_all_seqs) == len(set(expected_all_seqs))
     assert set(generated_unpinned_seqs) == set(expected_all_seqs)
