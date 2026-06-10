@@ -76,20 +76,20 @@ class CodonGraphView:
 
                 for choice, count in choice_counts.items():
                     if remaining < count:
-                        emitted = choice
+                        chosen = choice
                         break
                     remaining -= count
                 else:
                     raise RuntimeError('Failed to resolve sequence index.')
 
-                sequence.append(emitted)
+                sequence.append(chosen)
                 index = remaining
 
             else:
                 # Context nodes only have one valid outgoing choice.
-                emitted = next(iter(choice_counts))
+                chosen = next(iter(choice_counts.keys()))
 
-            node = node.transitions[emitted]
+            node = node.transitions[chosen]
 
         return ''.join(sequence)
 
@@ -247,13 +247,13 @@ class CodonGraphView:
                 raise RuntimeError(f'Reached non-final node {node.id} with no outgoing transitions.')
 
             if isinstance(node, CodonNode):
-                emitted = self.samplers[node].sample()
-                sequence.append(emitted)
+                choice = self.samplers[node].sample()
+                sequence.append(choice)
 
             else:
-                emitted = node.sequence
+                choice = node.sequence
 
-            node = node.transitions[emitted]
+            node = node.transitions[choice]
 
         return ''.join(sequence)
 

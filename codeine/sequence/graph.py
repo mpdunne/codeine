@@ -45,7 +45,7 @@ class ContextNode(Node):
         Parameters
         ----------
         sequence
-            The context sequence emitted by this node.
+            The context sequence contained on this node.
         """
         super().__init__()
 
