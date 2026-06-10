@@ -1,11 +1,12 @@
 import uuid
 
+from collections import Counter
+from typing import Dict, Generator, List, Optional, Sequence, Union
+
 from codeine.sequence.display import format_banned_sequences, format_count, format_restrictions
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
 from codeine.utils.sampling import Sampler
-
-from typing import Dict, Generator, List, Optional, Sequence, Union
 
 
 CodonRestriction = Union[str, Sequence[str]]
@@ -115,16 +116,13 @@ class CodonGraph:
         self.aa_seq = aa_seq.upper()
 
         if translation_table is None:
-            if weights is not None:
-                translation_table = weights.table
-            else:
-                translation_table = TranslationTable(table_id=1, rna=False)
+            rna = weights.rna if weights is not None else False
+            translation_table = TranslationTable(table_id=1, rna=rna)
 
         if weights is None:
-            weights = CodonWeights.uniform(table=translation_table)
+            weights = CodonWeights.uniform(table=translation_table, rna=translation_table.rna)
 
-        if weights.table.codons_to_aa != translation_table.codons_to_aa:
-            raise ValueError('Codon weights and translation table do not match. ')
+        self.validate_codon_weights(weights, translation_table)
 
         self.tt = translation_table
         self.cw = weights
@@ -142,7 +140,10 @@ class CodonGraph:
         self.end_node = None
 
         self.codon_nodes = []
-        self.codon_nodes_by_pos = {pos: [] for pos in range(1, len(self.aa_seq) + 1)}
+        self.codon_nodes_by_pos = {
+            pos: []
+            for pos in range(1, len(self.aa_seq) + 1)
+        }
 
         self.initial_node = None
         self.final_node = None
@@ -215,6 +216,41 @@ class CodonGraph:
             normalised[pos] = codons
 
         return normalised
+
+    @staticmethod
+    def validate_codon_weights(
+            weights: CodonWeights,
+            translation_table: TranslationTable,
+    ) -> None:
+        """
+        Check that codon weights are compatible with the provided translation table.
+
+        Parameters
+        ----------
+        weights
+            The codon weights.
+        translation_table
+            The translation table.
+
+        Raises
+        -------
+        Various errors if things aren't good.
+        """
+        if weights.rna != translation_table.rna:
+            raise ValueError('Codon weights and translation table use different molecule types.')
+
+        expected_codons = {
+            aa: Counter(codons)
+            for aa, codons in translation_table.aa_to_codons.items()
+        }
+
+        actual_codons = {
+            aa: Counter(codons)
+            for aa, codons in weights.aa_to_codons.items()
+        }
+
+        if actual_codons != expected_codons:
+            raise ValueError('Codon weights and translation table do not match.')
 
     def initialise_graph(self) -> None:
         """

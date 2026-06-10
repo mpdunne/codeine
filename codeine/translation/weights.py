@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
 from codeine.translation.tables import TranslationTable
 from codeine.utils.dict import FrozenDict
@@ -34,7 +34,7 @@ class CodonWeights:
     def __init__(
         self,
         weights: WeightDict,
-        table: Optional[TranslationTable] = None,
+        rna: bool = False,
     ) -> None:
         """
             Constructor for the CodonWeights class.
@@ -53,53 +53,38 @@ class CodonWeights:
                         ...
                     }
 
-            table
-                Translation table defining the codon-AA mapping.
+            rna
+                Whether to use rna (default is False, i.e. use DNA).
             """
         self._locked = False
-
-        if table is None:
-            table = TranslationTable()
             
-        flat_weights: Dict[str, float] = {}
+        weights_flat: Dict[str, float] = {}
+        aa_to_codons: Dict[str, Tuple[str]] = {}
 
-        expected_aas = set(table.aa_to_codons)
-        actual_aas = {aa.upper() for aa in weights}
-
-        missing_aas = expected_aas - actual_aas
-        if missing_aas:
-            raise ValueError(f'Missing weights for amino acids: {sorted(missing_aas)}')
-
-        extra_aas = actual_aas - expected_aas
-        if extra_aas:
-            raise ValueError(f'Unexpected amino acids in weights: {sorted(extra_aas)}')
-
-        for aa, codons in table.aa_to_codons.items():
-            codon_weights = weights[aa]
-
-            expected_codons = set(codons)
-            actual_codons = set(codon_weights)
-
-            missing_codons = expected_codons - actual_codons
-            if missing_codons:
-                raise ValueError(f'Missing codon weights for amino acid {aa}: {sorted(missing_codons)}')
-
-            extra_codons = actual_codons - expected_codons
-            if extra_codons:
-                raise ValueError(f'Unexpected codons for amino acid {aa}: {sorted(extra_codons)}')
+        for aa, codon_weights in weights.items():
+            aa = aa.upper()
 
             total = sum(codon_weights.values())
             if total <= 0:
                 raise ValueError(f'Weights for amino acid {aa} must sum to > 0')
 
+            codons = []
+
             for codon, weight in codon_weights.items():
                 if weight < 0:
                     raise ValueError(f'Weight for codon {codon} cannot be negative')
 
-                flat_weights[codon] = float(weight) / total
+                codon = codon.upper()
+                codon = codon.replace('T', 'U') if rna else codon.replace('U', 'T')
 
-        self.table = table
-        self.weights = FrozenDict(flat_weights)
+                codons.append(codon)
+                weights_flat[codon] = float(weight) / total
+
+            aa_to_codons[aa] = tuple(codons)
+
+        self.rna = rna
+        self.aa_to_codons = FrozenDict(aa_to_codons)
+        self.weights = FrozenDict(weights_flat)
 
         self._locked = True
 
@@ -109,20 +94,19 @@ class CodonWeights:
         super().__setattr__(name, value)
 
     def __repr__(self) -> str:
-        molecule = 'RNA' if self.table.rna else 'DNA'
+        molecule = 'RNA' if self.rna else 'DNA'
 
         lines = [
             f'CodonWeights',
-            f'Translation table: {self.table.table_id} ({self.table.name})',
             f'Molecule type: {molecule}',
             '',
             'Weights:',
         ]
 
-        for aa in sorted(self.table.aa_to_codons):
+        for aa in sorted(self.aa_to_codons):
             weights = ' '.join(
                 f'{codon}={self.weights[codon]:.3f}'
-                for codon in self.table.aa_to_codons[aa]
+                for codon in self.aa_to_codons[aa]
             )
             lines.append(f'    {aa}: {weights}')
 
@@ -144,12 +128,12 @@ class CodonWeights:
         -------
         A set of codon weights keyed by codon.
         """
-        codons = self.table.aa_to_codons[aa.upper()]
+        codons = self.aa_to_codons[aa.upper()]
         weights = {codon: self.weights[codon] for codon in codons}
         return weights
 
     @classmethod
-    def uniform(cls, table: Optional[TranslationTable] = None) -> 'CodonWeights':
+    def uniform(cls, table: Optional[TranslationTable] = None, rna: bool = False) -> 'CodonWeights':
         """
         Construct a CodonWeights object with uniform codon weights for a given translation table.
 
@@ -158,18 +142,25 @@ class CodonWeights:
         table
             The reference table. If blank, use the standard genetic code.
 
+        rna
+            Whether to use RNA.
+
         Returns
         -------
         A uniform CodonWeights object.
         """
-        table = table or TranslationTable()
+        if table is None:
+            table = TranslationTable(rna=rna)
+
+        elif rna is None:
+            rna = table.rna
 
         uniform_weights: WeightDict = {
             aa: {codon: 1.0 for codon in codons}
             for aa, codons in table.aa_to_codons.items()
         }
 
-        return cls(uniform_weights, table=table)
+        return cls(uniform_weights, rna=rna)
 
     @classmethod
     def ecoli(cls, rna: bool = False) -> 'CodonWeights':
@@ -188,10 +179,7 @@ class CodonWeights:
         A CodonWeights object corresponding to E. Coli
         """
         from codeine.translation.data import ECOLI_WEIGHTS
-
-        table = TranslationTable(rna=rna)
-        weights = cls._format_weights_for_table(ECOLI_WEIGHTS, table)
-        return cls(weights, table=table)
+        return cls(ECOLI_WEIGHTS, rna=rna)
 
     @classmethod
     def yeast(cls, rna: bool = False) -> 'CodonWeights':
@@ -210,10 +198,7 @@ class CodonWeights:
         A CodonWeights object corresponding to S. cerevisiea
         """
         from codeine.translation.data import YEAST_WEIGHTS
-
-        table = TranslationTable(rna=rna)
-        weights = cls._format_weights_for_table(YEAST_WEIGHTS, table)
-        return cls(weights, table=table)
+        return cls(YEAST_WEIGHTS, rna=rna)
 
     @classmethod
     def human(cls, rna: bool = False) -> 'CodonWeights':
@@ -232,32 +217,4 @@ class CodonWeights:
         A CodonWeights object corresponding to Human.
         """
         from codeine.translation.data import HUMAN_WEIGHTS
-
-        table = TranslationTable(rna=rna)
-        weights = cls._format_weights_for_table(HUMAN_WEIGHTS, table)
-        return cls(weights, table=table)
-
-    @staticmethod
-    def _format_weights_for_table(weights: WeightDict, table: TranslationTable) -> WeightDict:
-        """
-        Helper function to match locally stored weights to the right format as specified
-        by the given translation table. Mostly used for RNA/DNA conversion.
-
-        Parameters
-        ----------
-        weights
-            The weights as stored.
-        table
-            The table to use.
-        Returns
-        -------
-        Weights, in the right format.
-        """
-        weights = {
-            aa: {
-                table.normalise_codon(codon): weight
-                for codon, weight in codon_weights.items()
-            }
-            for aa, codon_weights in weights.items()
-        }
-        return weights
+        return cls(HUMAN_WEIGHTS, rna=rna)
