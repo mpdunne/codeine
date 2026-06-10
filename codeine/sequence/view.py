@@ -61,37 +61,7 @@ class CodonGraphView:
         str
             The indexed valid DNA sequence.
         """
-
-        if index < 0 or index >= self.n_valid_sequences:
-            raise IndexError(f'Sequence index {index} out of range for {self.n_valid_sequences} valid sequences.')
-
-        node = self.graph.initial_node
-        sequence = []
-
-        while node is not self.graph.final_node:
-            choice_counts = self.valid_paths_by_choice[node]
-
-            if isinstance(node, CodonNode):
-                remaining = index
-
-                for choice, count in choice_counts.items():
-                    if remaining < count:
-                        chosen = choice
-                        break
-                    remaining -= count
-                else:
-                    raise RuntimeError('Failed to resolve sequence index.')
-
-                sequence.append(chosen)
-                index = remaining
-
-            else:
-                # Context nodes only have one valid outgoing choice.
-                chosen = next(iter(choice_counts.keys()))
-
-            node = node.transitions[chosen]
-
-        return ''.join(sequence)
+        return self.sequence_at(index)
 
     def __iter__(self) -> Generator[str, None, None]:
         """
@@ -231,6 +201,52 @@ class CodonGraphView:
             current_node = current_node.transitions[codon]
 
         return True
+
+    def sequence_at(self, index: int) -> str:
+        """
+        Return the valid sequence at a given index.
+
+        Parameters
+        ----------
+        index
+            Zero-based sequence index.
+
+        Returns
+        -------
+        str
+            The indexed valid DNA sequence.
+        """
+
+        if index < 0 or index >= self.n_valid_sequences:
+            raise IndexError(f'Sequence index {index} out of range for {self.n_valid_sequences} valid sequences.')
+
+        node = self.graph.initial_node
+        sequence = []
+
+        while node is not self.graph.final_node:
+            choice_counts = self.valid_paths_by_choice[node]
+
+            if isinstance(node, CodonNode):
+                remaining = index
+
+                for choice, count in choice_counts.items():
+                    if remaining < count:
+                        chosen = choice
+                        break
+                    remaining -= count
+                else:
+                    raise RuntimeError('Failed to resolve sequence index.')
+
+                sequence.append(chosen)
+                index = remaining
+
+            else:
+                # Context nodes only have one valid outgoing choice.
+                chosen = next(iter(choice_counts.keys()))
+
+            node = node.transitions[chosen]
+
+        return ''.join(sequence)
 
     def sample(self) -> str:
         """
