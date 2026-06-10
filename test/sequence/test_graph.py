@@ -214,14 +214,6 @@ def test_find_matching_subpaths_matches_inside_coding_sequence():
     assert graph._find_matching_subpaths('ATGATA')
 
 
-def test_find_matching_subpaths_matches_inside_coding_sequence_long():
-    graph = CodonGraph('MIKEY' * 1000)
-
-    assert graph._find_matching_subpaths('TAAAAG')
-    assert graph._find_matching_subpaths('TAAAAGAG')
-    assert graph._find_matching_subpaths('ATGATA')
-
-
 def test_find_matching_subpaths_offset_correct():
     graph = CodonGraph('MIKEY')
 
@@ -325,3 +317,429 @@ def test_find_matching_subpaths_full_sequences(aa_seq, context_l, context_r):
 
         codons = [codon.upper() for node, codon in path]
         assert seq.upper() == ''.join(codons)
+
+
+SHORT_AA_SEQUENCES = (
+    'M',
+    'MIKEY',
+    'MILDRED',
+    'ELEPHANT',
+    'REGINALD',
+)
+
+MEDIUM_AA_SEQUENCES = (
+    'MIKEY' * 10,
+    'MIKEY' * 20,
+)
+
+#TODO Improve behaviour for long sequences
+LONG_AA_SEQUENCES = (
+    'MIKEY' * 100,
+#    'MIKEY' * 250,
+#    'MIKEY' * 500,
+#    'MIKEY' * 1000,
+)
+
+CONTEXTS_L = ('', 'aaggaaggaagg')
+CONTEXTS_R = ('', 'ttccttccttcc')
+
+
+def helper_arbitrary_coding_sequence(aa_seq, translation_table):
+    return ''.join(translation_table.aa_to_codons[aa][0] for aa in aa_seq)
+
+
+def helper_banned_windows(seqs, motif_lengths, n):
+    banned_sequences = []
+
+    for seq in seqs:
+        for motif_length in motif_lengths:
+            for i in range(0, len(seq) - motif_length + 1):
+                banned_sequence = seq[i:i + motif_length]
+
+                if banned_sequence not in banned_sequences:
+                    banned_sequences.append(banned_sequence)
+
+                if len(banned_sequences) >= n:
+                    return banned_sequences
+
+    return banned_sequences
+
+
+def helper_expected_sequences(seqs, banned_sequences):
+    return {
+        seq
+        for seq in seqs
+        if all(
+            banned_sequence.upper() not in seq.upper()
+            for banned_sequence in banned_sequences
+        )
+    }
+
+
+def test_banned_sequence_entirely_in_left_context_gives_empty_space():
+    graph = CodonGraph('MIKEY', context_l='GAATTC', banned_sequences=['GAATTC'])
+    view = graph.view()
+    assert view.n_valid_sequences == 0
+
+
+def test_banned_sequence_entirely_in_right_context_gives_empty_space():
+    graph = CodonGraph('MIKEY', context_r='GAATTC', banned_sequences=['GAATTC'])
+    view = graph.view()
+    assert view.n_valid_sequences == 0
+
+
+def helper_assert_banned_sequences_correct(
+    aa_seq,
+    banned_sequences,
+    context_l='',
+    context_r='',
+    max_enumerate=10000,
+    n_samples=100,
+):
+    tt = TranslationTable()
+
+    unconstrained_graph = CodonGraph(
+        aa_seq,
+        context_l=context_l,
+        context_r=context_r,
+        translation_table=tt,
+    )
+    unconstrained_view = unconstrained_graph.view()
+
+    graph = CodonGraph(
+        aa_seq,
+        context_l=context_l,
+        context_r=context_r,
+        translation_table=tt,
+        banned_sequences=banned_sequences,
+    )
+    view = graph.view()
+
+    if unconstrained_view.n_valid_sequences <= max_enumerate:
+        unconstrained_seqs = set(unconstrained_view)
+        observed_seqs = set(view)
+
+        expected_seqs = {
+            seq
+            for seq in unconstrained_seqs
+            if all(
+                banned_sequence.upper() not in seq.upper()
+                for banned_sequence in banned_sequences
+            )
+        }
+
+        assert observed_seqs == expected_seqs
+        assert view.n_valid_sequences == len(expected_seqs)
+
+    else:
+        assert view.n_valid_sequences >= 0
+
+        for banned_sequence in banned_sequences:
+            matches = graph._find_matching_subpaths(banned_sequence)
+            assert not matches
+
+        for _ in range(n_samples):
+            seq = view.sample()
+
+            for banned_sequence in banned_sequences:
+                assert banned_sequence.upper() not in seq.upper()
+
+
+@pytest.mark.parametrize(
+    'aa_seq',
+    SHORT_AA_SEQUENCES + MEDIUM_AA_SEQUENCES + LONG_AA_SEQUENCES,
+)
+@pytest.mark.parametrize('context_l', CONTEXTS_L)
+@pytest.mark.parametrize('context_r', CONTEXTS_R)
+def test_find_matching_subpaths_full_sequences(aa_seq, context_l, context_r):
+    tt = TranslationTable()
+
+    graph = CodonGraph(
+        aa_seq,
+        context_l=context_l,
+        context_r=context_r,
+        translation_table=tt,
+    )
+
+    view = graph.view()
+    seqs = [view[i] for i in range(min(view.n_valid_sequences, 10))]
+
+    for seq in seqs:
+        matches = graph._find_matching_subpaths(seq)
+
+        assert len(matches) == 1
+
+        path, offset = matches[0]
+
+        assert offset == 0
+        assert all(isinstance(node, CodonNode) for node, codon in path)
+
+        positions = [node.pos for node, codon in path]
+        assert positions == [*range(1, 1 + (len(seq) // 3))]
+
+        codons = [codon.upper() for node, codon in path]
+        assert seq.upper() == ''.join(codons)
+
+
+@pytest.mark.parametrize('context_l', CONTEXTS_L)
+@pytest.mark.parametrize('context_r', CONTEXTS_R)
+def test_regression_banned_sequences_short_aa_sequence(context_l, context_r):
+    helper_assert_banned_sequences_correct(
+        'MIKEY',
+        [
+            'ATG',
+            'TAAAAG',
+            'AAGGAA',
+            'ATTAAGG',
+            'GAATAC',
+        ],
+        context_l=context_l,
+        context_r=context_r,
+    )
+
+
+@pytest.mark.parametrize('context_l', CONTEXTS_L)
+@pytest.mark.parametrize('context_r', CONTEXTS_R)
+def test_regression_banned_sequences_short_aa_sequence_overlapping_banned_sequences(context_l, context_r):
+    helper_assert_banned_sequences_correct(
+        'MIKEY',
+        [
+            'TAAAAG',
+            'AAAGGA',
+            'AAGGAA',
+            'GGAATA',
+        ],
+        context_l=context_l,
+        context_r=context_r,
+    )
+
+
+@pytest.mark.parametrize('aa_seq', SHORT_AA_SEQUENCES + LONG_AA_SEQUENCES)
+@pytest.mark.parametrize('context_l', CONTEXTS_L)
+@pytest.mark.parametrize('context_r', CONTEXTS_R)
+def test_regression_banned_whole_sequences(aa_seq, context_l, context_r):
+    tt = TranslationTable()
+    cds = helper_arbitrary_coding_sequence(aa_seq, tt)
+
+    unconstrained_graph = CodonGraph(
+        aa_seq,
+        context_l=context_l,
+        context_r=context_r,
+        translation_table=tt,
+    )
+
+    unconstrained_view = unconstrained_graph.view()
+
+    assert cds in unconstrained_view
+
+    unconstrained_n_sequences = unconstrained_view.n_valid_sequences
+
+    assert unconstrained_n_sequences >= 0
+
+    graph = CodonGraph(
+        aa_seq,
+        context_l=context_l,
+        context_r=context_r,
+        translation_table=tt,
+        banned_sequences=[cds],
+    )
+
+    view = graph.view()
+
+    assert cds not in view
+    assert view.n_valid_sequences == unconstrained_n_sequences - 1
+
+    seqs = [
+        unconstrained_view[i]
+        for i in range(min(unconstrained_n_sequences, 5))
+    ]
+
+    graph = CodonGraph(
+        aa_seq,
+        context_l=context_l,
+        context_r=context_r,
+        translation_table=tt,
+        banned_sequences=seqs,
+    )
+
+    view = graph.view()
+
+    for seq in seqs:
+        assert seq not in view
+
+    assert view.n_valid_sequences == unconstrained_n_sequences - len(seqs)
+
+
+@pytest.mark.parametrize('aa_seq', SHORT_AA_SEQUENCES + MEDIUM_AA_SEQUENCES)
+@pytest.mark.parametrize('context_l', CONTEXTS_L)
+@pytest.mark.parametrize('context_r', CONTEXTS_R)
+def test_regression_banned_sequences_that_arent_present_anyway(aa_seq, context_l, context_r):
+    tt = TranslationTable()
+
+    unconstrained_graph = CodonGraph(
+        aa_seq,
+        context_l=context_l,
+        context_r=context_r,
+        translation_table=tt,
+    )
+
+    unconstrained_view = unconstrained_graph.view()
+
+    graph = CodonGraph(
+        aa_seq,
+        context_l=context_l,
+        context_r=context_r,
+        translation_table=tt,
+        banned_sequences=[
+            'CCCCCCCCCCCC',
+            'GGGGGGGGGGGG',
+            'TTTTTTTTTTTT',
+        ],
+    )
+
+    view = graph.view()
+
+    assert view.n_valid_sequences == unconstrained_view.n_valid_sequences
+
+
+@pytest.mark.parametrize('aa_seq', MEDIUM_AA_SEQUENCES)
+@pytest.mark.parametrize('context_l', CONTEXTS_L)
+@pytest.mark.parametrize('context_r', CONTEXTS_R)
+def test_regression_banned_sequences_long_aa_sequence(aa_seq, context_l, context_r):
+    tt = TranslationTable()
+
+    unconstrained_graph = CodonGraph(
+        aa_seq,
+        context_l=context_l,
+        context_r=context_r,
+        translation_table=tt,
+    )
+
+    unconstrained_view = unconstrained_graph.view()
+    seqs = [unconstrained_view[i] for i in range(20)]
+
+    banned_sequences = helper_banned_windows(
+        seqs,
+        motif_lengths=(6, 9, 12),
+        n=10,
+    )
+
+    helper_assert_banned_sequences_correct(
+        aa_seq,
+        banned_sequences,
+        context_l=context_l,
+        context_r=context_r,
+    )
+
+
+@pytest.mark.parametrize('aa_seq', MEDIUM_AA_SEQUENCES)
+@pytest.mark.parametrize('context_l', CONTEXTS_L)
+@pytest.mark.parametrize('context_r', CONTEXTS_R)
+def test_regression_banned_sequences_long_aa_sequence_overlapping_banned_sequences(aa_seq, context_l, context_r):
+    tt = TranslationTable()
+
+    seq = helper_arbitrary_coding_sequence(aa_seq, tt)
+
+    banned_sequences = [
+        seq[0:12],
+        seq[3:15],
+        seq[6:18],
+        seq[9:21],
+    ]
+
+    helper_assert_banned_sequences_correct(
+        aa_seq,
+        banned_sequences,
+        context_l=context_l,
+        context_r=context_r,
+    )
+
+
+@pytest.mark.parametrize('context_l', CONTEXTS_L)
+@pytest.mark.parametrize('context_r', CONTEXTS_R)
+def test_regression_banned_sequences_short_aa_sequence_many_banned_sequences(context_l, context_r):
+    tt = TranslationTable()
+    aa_seq = 'MIKEY'
+
+    unconstrained_graph = CodonGraph(
+        aa_seq,
+        context_l=context_l,
+        context_r=context_r,
+        translation_table=tt,
+    )
+
+    unconstrained_view = unconstrained_graph.view()
+    seqs = list(unconstrained_view)
+
+    banned_sequences = helper_banned_windows(
+        seqs,
+        motif_lengths=(3, 4, 5, 6),
+        n=25,
+    )
+
+    helper_assert_banned_sequences_correct(
+        aa_seq,
+        banned_sequences,
+        context_l=context_l,
+        context_r=context_r,
+    )
+
+
+@pytest.mark.parametrize('aa_seq', MEDIUM_AA_SEQUENCES)
+@pytest.mark.parametrize('context_l', CONTEXTS_L)
+@pytest.mark.parametrize('context_r', CONTEXTS_R)
+def test_regression_banned_sequences_long_aa_sequence_many_banned_sequences(aa_seq, context_l, context_r):
+    tt = TranslationTable()
+
+    unconstrained_graph = CodonGraph(
+        aa_seq,
+        context_l=context_l,
+        context_r=context_r,
+        translation_table=tt,
+    )
+
+    unconstrained_view = unconstrained_graph.view()
+    seqs = [unconstrained_view[i] for i in range(50)]
+
+    banned_sequences = helper_banned_windows(
+        seqs,
+        motif_lengths=(4, 5, 6, 7, 8),
+        n=40,
+    )
+
+    helper_assert_banned_sequences_correct(
+        aa_seq,
+        banned_sequences,
+        context_l=context_l,
+        context_r=context_r,
+    )
+
+
+@pytest.mark.parametrize('aa_seq', MEDIUM_AA_SEQUENCES)
+@pytest.mark.parametrize('context_l', CONTEXTS_L)
+@pytest.mark.parametrize('context_r', CONTEXTS_R)
+def test_regression_banned_sequences_long_aa_sequence_long_banned_sequences(aa_seq, context_l, context_r):
+    tt = TranslationTable()
+
+    unconstrained_graph = CodonGraph(
+        aa_seq,
+        context_l=context_l,
+        context_r=context_r,
+        translation_table=tt,
+    )
+
+    unconstrained_view = unconstrained_graph.view()
+    seqs = [unconstrained_view[i] for i in range(50)]
+
+    banned_sequences = helper_banned_windows(
+        seqs,
+        motif_lengths=(15, 18, 21, 24),
+        n=10,
+    )
+
+    helper_assert_banned_sequences_correct(
+        aa_seq,
+        banned_sequences,
+        context_l=context_l,
+        context_r=context_r,
+    )

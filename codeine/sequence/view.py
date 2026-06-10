@@ -236,6 +236,9 @@ class CodonGraphView:
         """
         Sample a DNA sequence from this graph view.
         """
+        if self.n_valid_sequences == 0:
+            raise ValueError('Cannot sample from an empty coding space.')
+
         node = self.graph.initial_node
         sequence = []
 
@@ -366,7 +369,15 @@ class CodonGraphView:
             next_masses = current_masses
 
         left_choice = self.graph.left_context_node.sequence
-        left_child = self.graph.left_context_node.transitions[left_choice]
+        left_child = self.graph.left_context_node.transitions.get(left_choice)
+
+        if left_child is None:
+            valid_paths_by_choice[self.graph.left_context_node] = {}
+            weight_mass_by_choice[self.graph.left_context_node] = {}
+            self.valid_paths_by_choice = valid_paths_by_choice
+            self.weight_mass_by_choice = weight_mass_by_choice
+            self.n_valid_sequences = 0
+            return
 
         total_count = next_counts.get(left_child, 0)
         total_mass = next_masses.get(left_child, 0.0)
