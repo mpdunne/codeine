@@ -8,7 +8,7 @@ if TYPE_CHECKING:
 import uuid
 
 from collections import Counter
-from typing import Dict, List, Optional, Sequence, Union, Tuple
+from typing import Dict, List, Optional, Sequence, Union, Set, Tuple
 
 from codeine.sequence.display import format_banned_sequences, format_restrictions
 from codeine.translation.tables import TranslationTable
@@ -144,8 +144,8 @@ class CodonGraph:
         self.right_context_node = None
         self.end_node = None
 
-        self.codon_nodes = []
-        self.codon_nodes_by_pos = {pos: [] for pos in range(1, len(self.aa_seq) + 1)}
+        self.codon_nodes = set()
+        self.codon_nodes_by_pos = {pos: set() for pos in range(1, len(self.aa_seq) + 1)}
 
         self.initial_node = None
         self.final_node = None
@@ -270,6 +270,7 @@ class CodonGraph:
         right_context_node = ContextNode(self.context_r)
         end_node = EndNode()
 
+        codon_nodes = []
         for ix, aa in enumerate(self.aa_seq):
             pos = ix + 1
 
@@ -279,27 +280,27 @@ class CodonGraph:
                 codons = self.tt.aa_to_codons[aa]
 
             node = CodonNode(pos, aa, codons)
-            self.add_codon_node(node)
+            codon_nodes.append(node)
 
         # Left context -> first codon node
         left_context_node.transitions = {
-            left_context_node.sequence: self.codon_nodes[0]
+            left_context_node.sequence: codon_nodes[0]
         }
-        self.codon_nodes[0].parents.add(
+        codon_nodes[0].parents.add(
             (left_context_node, left_context_node.sequence)
         )
 
         # Codon node -> next codon node
-        for i in range(1, len(self.codon_nodes)):
-            previous = self.codon_nodes[i - 1]
-            current = self.codon_nodes[i]
+        for i in range(1, len(codon_nodes)):
+            previous = codon_nodes[i - 1]
+            current = codon_nodes[i]
 
             for codon in previous.codons:
                 previous.transitions[codon] = current
                 current.parents.add((previous, codon))
 
         # Last codon node -> right context
-        last_codon_node = self.codon_nodes[-1]
+        last_codon_node = codon_nodes[-1]
         for codon in last_codon_node.codons:
             last_codon_node.transitions[codon] = right_context_node
             right_context_node.parents.add((last_codon_node, codon))
@@ -315,6 +316,8 @@ class CodonGraph:
         self.left_context_node = left_context_node
         self.right_context_node = right_context_node
         self.end_node = end_node
+        for codon_node in codon_nodes:
+            self.add_codon_node(codon_node)
 
         self.initial_node = left_context_node
         self.final_node = end_node
@@ -531,30 +534,22 @@ class CodonGraph:
             self._remove_transition(final_copy, final_choice)
 
     @property
-    def nodes(self) -> List[Node]:
+    def nodes(self) -> Set[Node]:
         """
         All nodes in the graph, including context and end nodes.
         """
-        return [
+        return self.codon_nodes | {
             self.left_context_node,
-            *self.codon_nodes,
             self.right_context_node,
             self.end_node,
-        ]
+        }
 
     def add_codon_node(self, node: CodonNode) -> None:
         """
         Add a codon node and update codon-node indexes.
         """
-        self.codon_nodes.append(node)
-        self.codon_nodes_by_pos.setdefault(node.pos, []).append(node)
-
-    def remove_codon_node(self, node: CodonNode) -> None:
-        """
-        Remove a codon node and update codon-node indexes.
-        """
-        self.codon_nodes.remove(node)
-        self.codon_nodes_by_pos[node.pos].remove(node)
+        self.codon_nodes.add(node)
+        self.codon_nodes_by_pos.setdefault(node.pos, set()).add(node)
 
     def view(self) -> 'CodonGraphView':
         """

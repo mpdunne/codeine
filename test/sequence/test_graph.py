@@ -39,12 +39,14 @@ def test_codon_restrictions_are_uppercased():
 
 def test_single_codon_restriction_is_applied():
     graph = CodonGraph('MIKEY', codon_restrictions={3: 'AAA'})
-    assert graph.codon_nodes[2].codons == ['AAA']
+    [node] = graph.codon_nodes_by_pos[3]
+    assert node.codons == ['AAA']
 
 
 def test_multiple_codon_restriction_is_applied():
     graph = CodonGraph('MIKEY', codon_restrictions={3: ['AAA', 'AAG']})
-    assert graph.codon_nodes[2].codons == ['AAA', 'AAG']
+    [node] = graph.codon_nodes_by_pos[3]
+    assert node.codons == ['AAA', 'AAG']
 
 
 def test_lowercase_sequence_is_accepted():
@@ -77,15 +79,16 @@ def test_final_node_has_no_transitions():
 
 def test_left_context_node_points_to_first_codon_node():
     graph = CodonGraph('MIKEY', context_l='AAA')
-    first_node = graph.codon_nodes[0]
+    [first_node] = graph.codon_nodes_by_pos[1]
 
     assert graph.left_context_node.transitions == {'AAA': first_node}
     assert (graph.left_context_node, 'AAA') in first_node.parents
 
 
 def test_last_codon_node_points_to_right_context_node():
-    graph = CodonGraph('MIKEY')
-    last_node = graph.codon_nodes[-1]
+    aa_seq = 'MIKEY'
+    graph = CodonGraph(aa_seq)
+    [last_node] = graph.codon_nodes_by_pos[len(aa_seq)]
 
     assert set(last_node.transitions) == set(last_node.codons)
     assert all(target is graph.right_context_node for target in last_node.transitions.values())
