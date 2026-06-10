@@ -332,6 +332,15 @@ class CodonGraph:
                 ]
                 offset,  # Where the path starts relative to first node's codon choice.
             )
+
+        Parameters
+        ----------
+        sequence
+            The sequence to search for.
+
+        Returns
+        -------
+        A tuple consisting of a list of (node, sequence) pairs, and the start offset for matching the sequence.
         """
 
         sequence = sequence.upper()
@@ -357,11 +366,7 @@ class CodonGraph:
 
                     elif sequence.startswith(choice_subsequence):
                         # Maybe bingo! Maygo!
-                        candidate_matches.append((
-                            [(node, choice)],
-                            offset,
-                            len(choice_subsequence),
-                        ))
+                        candidate_matches.append(([(node, choice)], offset, len(choice_subsequence)))
 
         def reinspect_candidate_matches(candidate_matches):
             reinspect = []
@@ -373,6 +378,7 @@ class CodonGraph:
                 remaining_sequence = sequence[seen_length:]
 
                 if remaining_sequence == '':
+
                     # Fantastic!
                     matches.append((partial_path, offset))
                     continue
