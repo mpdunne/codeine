@@ -1,4 +1,11 @@
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from codeine.sequence.space import ForbiddenMotif
+
 from typing import Dict, List, Sequence, Union
+
+from codeine.motifs.restriction import RestrictionSite
 
 
 CodonRestriction = Union[str, Sequence[str]]
@@ -69,3 +76,15 @@ def format_banned_sequences(
 
     lines.append(f'        ... {len(sequences) - max_lines} more')
     return lines
+
+
+def format_forbidden_motif(motif: 'ForbiddenMotif', rna: bool) -> str:
+
+    if isinstance(motif, RestrictionSite):
+        sequences = [
+            seq.upper().replace('T', 'U') if rna else seq.upper().replace('U', 'T')
+            for seq in motif.motifs
+        ]
+        return f'{motif.name} ({", ".join(sequences)})'
+
+    return motif.upper().replace('T', 'U') if rna else motif.upper().replace('U', 'T')

@@ -2,7 +2,9 @@ import pytest
 
 from Bio.Seq import Seq
 
+from codeine.sequence.graph import CodonGraph
 from codeine.sequence.space import CodingSpace
+from codeine.motifs.restriction import RestrictionSite
 
 
 @pytest.mark.parametrize('aa_seq', ('MIKEY', 'MILDRED', 'STEVEN', 'WILLIAM'))
@@ -232,3 +234,116 @@ def test_space_contains():
         seq = space.sample()
         assert seq in space
         assert seq + 'ATG' not in space
+
+
+@pytest.fixture
+def disable_banned_sequence_filtering(monkeypatch):
+    monkeypatch.setattr(CodonGraph, '_apply_banned_sequences', lambda self, sequence: None)
+
+
+def test_expand_forbidden_motifs_none():
+    assert CodingSpace._expand_and_validate_forbidden_motifs(None, rna=False) == []
+
+
+def test_expand_forbidden_motifs_single_string_dna():
+    motifs = 'gaattc'
+    validated = CodingSpace._expand_and_validate_forbidden_motifs(motifs, rna=False)
+    assert validated == ['GAATTC']
+
+
+def test_expand_forbidden_motifs_single_string_rna():
+    motifs = 'GAATTC'
+    validated = CodingSpace._expand_and_validate_forbidden_motifs(motifs, rna=True)
+    assert validated == ['GAAUUC']
+
+
+def test_expand_forbidden_motifs_sequence_of_strings_deduplicates_and_sorts():
+    motifs = ['tttt', 'UUUU', 'aaaa']
+    validated = CodingSpace._expand_and_validate_forbidden_motifs(motifs, rna=False)
+    assert validated == ['AAAA', 'TTTT']
+
+
+def test_expand_forbidden_motifs_restriction_sites():
+    validated = CodingSpace._expand_and_validate_forbidden_motifs([RestrictionSite.EcoRI], rna=False)
+    assert validated == ['GAATTC']
+
+    validated = CodingSpace._expand_and_validate_forbidden_motifs([RestrictionSite.BsaI], rna=False)
+    assert validated == ['GAGACC', 'GGTCTC']
+
+    validated = CodingSpace._expand_and_validate_forbidden_motifs([RestrictionSite.BsaI, 'GGTTCC'], rna=False)
+    assert validated == ['GAGACC', 'GGTCTC', 'GGTTCC']
+
+
+def test_expand_forbidden_motifs_mixed():
+    motifs = [RestrictionSite.EcoRI, 'AAAA']
+    validated = CodingSpace._expand_and_validate_forbidden_motifs(motifs, rna=False)
+    assert validated == ['AAAA', 'GAATTC']
+
+
+def test_orbidden_motif_empty_raises():
+    with pytest.raises(ValueError, match='Forbidden motifs cannot be empty'):
+        CodingSpace._expand_and_validate_forbidden_motifs('', rna=False)
+
+
+def test_forbidden_motif_invalid_type_raises():
+    with pytest.raises(TypeError, match='Forbidden motifs must be strings or codeine.RestrictionSite.'):
+        CodingSpace._expand_and_validate_forbidden_motifs([420], rna=False)
+
+
+def test_validate_max_homopolymer_none():
+    assert CodingSpace._expand_and_validate_max_homopolymer(None) == []
+
+
+def test_validate_max_homopolymer_int():
+    assert CodingSpace._expand_and_validate_max_homopolymer(4) == ['AAAAA', 'CCCCC', 'GGGGG', 'TTTTT']
+
+
+def test_validate_max_homopolymer_rejects_non_int():
+    with pytest.raises(TypeError, match='max_homopolymer must be an integer'):
+        CodingSpace._expand_and_validate_max_homopolymer(4.5)
+
+
+def test_validate_max_homopolymer_rejects_less_than_one():
+    with pytest.raises(ValueError, match='max_homopolymer must be at least 1'):
+        CodingSpace._expand_and_validate_max_homopolymer(0)
+
+
+def test_forbidden_motifs_are_stored(disable_banned_sequence_filtering):
+    space = CodingSpace('MIKEY', forbidden_motifs=[RestrictionSite.EcoRI, 'AAAA'])
+    assert space.forbidden_sequences == ['AAAA', 'GAATTC']
+
+
+def test_max_homopolymer_is_stored(disable_banned_sequence_filtering):
+    space = CodingSpace('MIKEY', max_homopolymer=4)
+    assert space.max_homopolymer == 4
+
+
+def test_max_homopolymer_is_expanded_correctly(disable_banned_sequence_filtering):
+    space = CodingSpace('MIKEY', max_homopolymer=None)
+    assert not space.forbidden_sequences
+
+    space = CodingSpace('MIKEY', max_homopolymer=4)
+    assert all(nt * 5 in space.forbidden_sequences for nt in 'ACGT')
+
+
+def test_mixed_restrictions(disable_banned_sequence_filtering):
+    space = CodingSpace('MIKEY', max_homopolymer=4, forbidden_motifs = [RestrictionSite.BsaI, 'GGTTCC'])
+    assert set(space.forbidden_sequences) == {'GAGACC', 'GGTCTC', 'GGTTCC', 'AAAAA', 'CCCCC', 'GGGGG', 'TTTTT'}
+
+
+def test_forbidden_motifs_repr(disable_banned_sequence_filtering):
+    space = CodingSpace('MIKEY', forbidden_motifs=[RestrictionSite.EcoRI, 'AAAA'],)
+
+    text = repr(space)
+    assert 'Forbidden motifs:' in text
+    assert 'EcoRI' in text
+    assert 'GAATTC' in text
+    assert 'AAAA' in text
+
+
+def test_max_homopolymer_repr(disable_banned_sequence_filtering):
+    space = CodingSpace('MIKEY', max_homopolymer=4)
+
+    text = repr(space)
+    assert 'Maximum homopolymer' in text
+    assert '4' in text

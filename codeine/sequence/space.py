@@ -1,46 +1,46 @@
-from typing import Dict, Generator, Optional, Sequence
+from typing import Dict, Generator, List, Optional, Sequence, Union
 
-from codeine.sequence.display import format_count, format_restrictions, format_banned_sequences
+from codeine.motifs.restriction import RestrictionSite
+from codeine.sequence.display import format_banned_sequences, format_forbidden_motif,\
+    format_count, format_restrictions
 from codeine.sequence.graph import CodonGraph
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
 
 
+ForbiddenMotif = Union[str, RestrictionSite]
+ForbiddenMotifs = Optional[Union[ForbiddenMotif, Sequence[ForbiddenMotif]]]
+
+
 class CodingSpace:
-    """
-    Class representing coding sequence space, for sampling and mutating CDS coding sequences.
-    """
-
     def __init__(
-            self,
-            aa_seq: str,
-            codon_restrictions: Optional[Dict[int, str]] = None,
-            translation_table: TranslationTable = None,
-            codon_weights: CodonWeights = None,
-            context_l: str = '',
-            context_r: str = '',
+        self,
+        aa_seq: str,
+        codon_restrictions: Optional[Dict[int, str]] = None,
+        forbidden_motifs: ForbiddenMotifs = None,
+        max_homopolymer: Optional[int] = None,
+        translation_table: TranslationTable = None,
+        codon_weights: CodonWeights = None,
+        context_l: str = '',
+        context_r: str = '',
     ) -> None:
-        """
-        Constructor for the CodingSpace class.
+        if translation_table is None:
+            rna = codon_weights.rna if codon_weights is not None else False
+        else:
+            rna = translation_table.rna
 
-        Parameters
-        ----------
-        aa_seq
-            The amino acid sequence.
-        codon_restrictions
-            Any codon restrictions in the format e.g. {4: 'TCC'} or {5: ['AGT', 'AGC']}
-        translation_table
-            The translation table to use. Leave blank to use standard table.
-        codon_weights
-            The codon weights to use. Leave blank to sample uniformly.
-        context_l
-            The context sequence to the left of the coding sequence
-        context_r
-            The context sequence to the right of the coding sequence
-        """
+        self.forbidden_motifs = forbidden_motifs
+        self.max_homopolymer = max_homopolymer
+        self.forbidden_sequences = self._expand_and_validate_sequence_constraints(
+            forbidden_motifs=forbidden_motifs,
+            max_homopolymer=max_homopolymer,
+            rna=rna,
+        )
+
         self.view = CodonGraph(
             aa_seq,
             codon_restrictions=codon_restrictions,
+            banned_sequences=self.forbidden_sequences,
             translation_table=translation_table,
             weights=codon_weights,
             context_l=context_l,
@@ -55,43 +55,18 @@ class CodingSpace:
     def from_view(cls, view) -> 'CodingSpace':
         obj = cls.__new__(cls)
         obj.view = view
+        obj.forbidden_motifs = []
+        obj.max_homopolymer = None
+        obj.forbidden_sequences = list(view.graph.banned_sequences)
         return obj
 
     def __getitem__(self, index: int) -> str:
-        """
-        Return the valid sequence at a given index.
-
-        Parameters
-        ----------
-        index
-            Zero-based sequence index.
-
-        Returns
-        -------
-        str
-            The indexed valid DNA sequence.
-        """
         return self.view[index]
 
     def __iter__(self) -> Generator[str, None, None]:
-        """
-        Iterate over all valid sequences in this coding space.
-        Be aware that "all valid sequences" can be astronomically many!
-
-        Yields
-        ----------
-        All valid sequences in the coding space, in order.
-        """
         yield from self.view
 
     def __contains__(self, seq: str) -> bool:
-        """
-        Does the given seq exist in this space? 
-
-        Returns
-        ----------
-        True if and only if this is a valid sequence in this space.
-        """
         return seq in self.view
 
     def __repr__(self) -> str:
@@ -105,7 +80,8 @@ class CodingSpace:
             '',
             f'Amino acid sequence ({len(self.view.aa_seq)} aa)',
             f'{self.view.aa_seq}',
-            '']
+            '',
+        ]
 
         if self.view.graph.codon_restrictions:
             lines += [
@@ -116,17 +92,32 @@ class CodingSpace:
                     max_lines=4,
                 ),
                 '',
-                ]
+            ]
 
-        if self.view.graph.banned_sequences:
+        if self.forbidden_motifs:
+            motifs = self.forbidden_motifs
+
+            if isinstance(motifs, (str, RestrictionSite)):
+                motifs = [motifs]
+
             lines += [
-                'Banned sequences:',
+                'Forbidden motifs:',
                 *format_banned_sequences(
-                    self.view.graph.banned_sequences,
+                    [
+                        format_forbidden_motif(motif, rna=self.translation_table.rna)
+                        for motif in motifs
+                    ],
                     max_lines=4,
                 ),
                 '',
-                ]
+            ]
+
+        if self.max_homopolymer is not None:
+            lines += [
+                'Maximum homopolymer length:',
+                f'  {self.max_homopolymer}',
+                '',
+            ]
 
         if self.view.pinned_codons:
             lines += [
@@ -137,126 +128,101 @@ class CodingSpace:
                     max_lines=4,
                 ),
                 '',
-                ]
+            ]
 
         lines.append(f'Num. valid coding sequences: {format_count(self.n_valid_sequences)}')
 
         return '\n'.join(lines)
 
-    def sample(self) -> str:
-        """
-        Sample a DNA sequence from this coding space.
+    @staticmethod
+    def _expand_and_validate_forbidden_motifs(forbidden_motifs: ForbiddenMotifs, rna: bool) -> List[str]:
+        all_sequences = []
 
-        Returns
-        -------
-        A sampled sequence. By default, only the coding sequence is returned.
-        """
+        if forbidden_motifs is None:
+            return []
+
+        if isinstance(forbidden_motifs, (str, RestrictionSite)):
+            forbidden_motifs = [forbidden_motifs]
+
+        for motif in forbidden_motifs:
+            if isinstance(motif, RestrictionSite):
+                sequences = [*motif.motifs]
+
+            elif isinstance(motif, str):
+                if len(motif) == 0:
+                    raise ValueError('Forbidden motifs cannot be empty.')
+
+                sequences = [motif]
+
+            else:
+                raise TypeError('Forbidden motifs must be strings or codeine.RestrictionSite.')
+
+            sequences = [seq.upper() for seq in sequences]
+            sequences = [seq.replace('T', 'U') if rna else seq.replace('U', 'T') for seq in sequences]
+
+            all_sequences += sequences
+
+        return sorted(set(all_sequences))
+
+    @staticmethod
+    def _expand_and_validate_max_homopolymer(max_homopolymer: Optional[int], rna: bool = False) -> List[str]:
+        if max_homopolymer is None:
+            return []
+
+        if not isinstance(max_homopolymer, int):
+            raise TypeError('max_homopolymer must be an integer.')
+
+        if max_homopolymer < 1:
+            raise ValueError('max_homopolymer must be at least 1.')
+
+        nts = 'ACGU' if rna else 'ACGT'
+        return [nt * (max_homopolymer + 1) for nt in nts]
+
+    @staticmethod
+    def _expand_and_validate_sequence_constraints(
+            forbidden_motifs=None,
+            max_homopolymer=None,
+            rna: bool = False,
+    ):
+        forbidden_sequences = CodingSpace._expand_and_validate_forbidden_motifs(forbidden_motifs, rna=rna)
+        forbidden_homopolymers = CodingSpace._expand_and_validate_max_homopolymer(max_homopolymer, rna=rna)
+        return sorted(set(forbidden_sequences + forbidden_homopolymers))
+
+    def sample(self) -> str:
         return self.view.sample()
 
     def pin_codons(self, pinned_codons):
-        """
-        Pin (temporarily fix) a codon in the codon graph.
-
-        Parameters
-        ----------
-        pinned_codons:
-            A dict specifying which codons to pin, by pos: codon
-        """
         self.view.pin_codons(pinned_codons)
 
     def unpin_codons(self, positions):
-        """
-        Unpin codon nodes by pos.
-
-        Parameters
-        ----------
-        positions:
-            A list of positions
-        """
         self.view.unpin_codons(positions)
 
     def clear_pins(self):
-        """
-        Remove all codon pins from the generator.
-        """
         self.view.clear_pins()
 
     def contains(self, seq: str) -> bool:
-        """
-        Check whether a DNA sequence is contained in this coding space.
-
-        Parameters
-        ----------
-        seq
-            The sequence to check
-
-        Returns
-        -------
-        True if and only if the sequence is contained in this coding space.
-        """
         return self.view.contains(seq)
 
     @property
     def n_valid_sequences(self) -> int:
-        """
-        The number of valid sequences in this space.
-
-        Returns
-        -------
-        The number of valid sequences in this space.
-        """
         return self.view.n_valid_sequences
 
     @property
     def translation_table(self) -> TranslationTable:
-        """
-        The translation table being used in this space.
-
-        Returns
-        -------
-        The TranslationTable being used.
-        """
         return self.view.graph.tt
 
     @property
     def codon_weights(self) -> CodonWeights:
-        """
-        The codon weights being used in this space.
-
-        Returns
-        -------
-        The CodonWeights being used.
-        """
         return self.view.graph.cw
 
     def enumerate(self) -> Generator[str, None, None]:
-        """
-        Generate all sequences in this space. If there are many (and often there are
-        astronomically many), one would not expect to reach the 'end'. However for smaller
-        sequence spaces, such as mutation spaces, it's quite possible to get there.
-
-        Yields
-        ------
-        str
-            A valid DNA sequence.
-        """
         yield from self.view.enumerate()
 
-    def mutants(self,
-                seq: str,
-                positions: Sequence[int],
-                ) -> 'CodingSpace':
-        """
-        Return a space of mutants relative to a given coding sequence, i.e. a space derived
-        from this one but which fixes the sequence on all but the specified positions.
-
-        Parameters
-        ----------
-        seq
-            The sequence to mutate.
-        positions
-            The positions that are allowed to vary.
-        """
+    def mutants(
+        self,
+        seq: str,
+        positions: Sequence[int],
+    ) -> 'CodingSpace':
         seq = seq.upper()
 
         if not self.contains(seq):
