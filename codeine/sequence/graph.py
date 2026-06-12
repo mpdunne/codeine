@@ -228,10 +228,7 @@ class CodonGraph:
         return normalised
 
     @staticmethod
-    def validate_codon_weights(
-            weights: CodonWeights,
-            translation_table: TranslationTable,
-    ) -> None:
+    def validate_codon_weights(weights: CodonWeights, translation_table: TranslationTable) -> None:
         """
         Check that codon weights are compatible with the provided translation table.
 
@@ -261,6 +258,53 @@ class CodonGraph:
 
         if actual_codons != expected_codons:
             raise ValueError('Codon weights and translation table do not match.')
+
+    def validate_banned_sequences(self, banned_sequences: Sequence[str]) -> List[str]:
+        """
+        Check the inputted banned sequences make sense.
+
+        Parameters
+        ----------
+        banned_sequences
+            The list of banned sequences.
+
+        Returns
+        -------
+        A normalised, de-duplicated list of banned sequences.
+        """
+        banned_sequences = banned_sequences or []
+
+        normalised = []
+        for sequence in banned_sequences:
+            sequence = self.normalise_sequence(sequence)
+
+            if len(sequence) == 0:
+                raise ValueError('Banned sequences cannot be empty.')
+
+            normalised.append(sequence)
+
+        return sorted(set(normalised))
+
+    def normalise_sequence(self, sequence: str) -> str:
+        """
+        Normalise a nucleotide sequence to match this graph's molecule type.
+
+        Parameters
+        ----------
+        sequence
+            A DNA or RNA sequence.
+
+        Returns
+        -------
+        str
+            The sequence in the same alphabet as the translation table.
+        """
+        sequence = sequence.upper()
+
+        if self.tt.rna:
+            return sequence.replace('T', 'U')
+
+        return sequence.replace('U', 'T')
 
     def _initialise_graph(self) -> None:
         """
