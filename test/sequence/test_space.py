@@ -3,6 +3,7 @@ import pytest
 from Bio.Seq import Seq
 
 from codeine.sequence.space import CodingSpace
+from codeine.motifs.restriction import RestrictionSite
 
 
 @pytest.mark.parametrize('aa_seq', ('MIKEY', 'MILDRED', 'STEVEN', 'WILLIAM'))
@@ -232,3 +233,75 @@ def test_space_contains():
         seq = space.sample()
         assert seq in space
         assert seq + 'ATG' not in space
+
+
+def test_expand_forbidden_motifs_none():
+    assert CodingSpace._expand_and_validate_forbidden_motifs(None, rna=False) == []
+
+
+def test_expand_single_string_dna():
+    motifs = 'gaattc'
+    validated = CodingSpace._expand_and_validate_forbidden_motifs(motifs, rna=False)
+    assert validated == ['GAATTC']
+
+
+def test_expand_single_string_rna():
+    motifs = 'GAATTC'
+    validated = CodingSpace._expand_and_validate_forbidden_motifs(motifs, rna=True)
+    assert validated == ['GAAUUC']
+
+
+def test_expand_sequence_of_strings_deduplicates_and_sorts():
+    motifs = ['tttt', 'UUUU', 'aaaa']
+    validated = CodingSpace._expand_and_validate_forbidden_motifs(motifs, rna=False)
+    expected = ['AAAA', 'TTTT']
+    assert validated == expected
+
+
+def test_expand_restriction_sites():
+    validated = CodingSpace._expand_and_validate_forbidden_motifs([RestrictionSite.EcoRI], rna=False)
+    expected = ['GAATTC']
+    assert validated == expected
+
+    validated = CodingSpace._expand_and_validate_forbidden_motifs([RestrictionSite.BsaI], rna=False)
+    expected = ['GAGACC', 'GGTCTC']
+    assert validated == expected
+
+    validated = CodingSpace._expand_and_validate_forbidden_motifs([RestrictionSite.BsaI, 'GGTTCC'], rna=False)
+    expected = ['GAGACC', 'GGTCTC', 'GGTTCC']
+    assert validated == expected
+
+
+def test_expand_mixed_forbidden_motifs():
+    motifs = [RestrictionSite.EcoRI, 'AAAA']
+    validated = CodingSpace._expand_and_validate_forbidden_motifs(motifs, rna=False)
+    expected = ['AAAA', 'GAATTC']
+    assert validated == expected
+
+
+def test_empty_forbidden_motif_raises():
+    motifs = ''
+
+    with pytest.raises(ValueError, match='Forbidden motifs cannot be empty'):
+        CodingSpace._expand_and_validate_forbidden_motifs(motifs, rna=False)
+
+
+def test_invalid_forbidden_motif_type_raises():
+    motifs = [420]
+    with pytest.raises(TypeError, match='Forbidden motifs must be strings or codeine.RestrictionSite.'):
+        CodingSpace._expand_and_validate_forbidden_motifs(motifs, rna=False)
+
+
+# TODO: Uncomment these when we've fully wired up the banned sequences
+#def test_forbidden_motifs_are_stored_on_space():
+#    space = CodingSpace('MIKEY', forbidden_motifs='GAATTC')
+#    assert space.forbidden_sequences == ['GAATTC']
+
+#def test_forbidden_motifs_repr():
+#    space = CodingSpace('MIKEY', forbidden_motifs=[RestrictionSite.EcoRI, 'AAAA'])
+#    text = repr(space)
+#
+#    assert 'Forbidden motifs:' in text
+#    assert 'EcoRI' in text
+#    assert 'GAATTC' in text
+#    assert 'AAAA' in text

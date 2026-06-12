@@ -152,6 +152,7 @@ class CodonGraph:
 
         self._initialise_graph()
 
+        self.banned_sequences = []
         if banned_sequences:
             raise NotImplementedError('Working on this :)')
 #            banned_sequences = self.validate_banned_sequences(banned_sequences)
