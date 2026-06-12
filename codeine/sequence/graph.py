@@ -152,11 +152,9 @@ class CodonGraph:
 
         self._initialise_graph()
 
-        self.banned_sequences = []
-        if banned_sequences:
-#            raise NotImplementedError('Working on this :)')
-            banned_sequences = self.validate_banned_sequences(banned_sequences)
-            self.banned_sequences = banned_sequences
+        banned_sequences = self.validate_banned_sequences(banned_sequences)
+        self.banned_sequences = banned_sequences
+        self._apply_banned_sequences(banned_sequences)
 
     def __repr__(self) -> str:
         molecule = 'RNA' if self.tt.rna else 'DNA'
@@ -181,11 +179,11 @@ class CodonGraph:
                 '',
                 ]
 
-#        if self.banned_sequences:
-#            lines += [
-#                'Banned sequences:',
-#                *format_banned_sequences(self.banned_sequences),
-#            ]
+        if self.banned_sequences:
+            lines += [
+                'Banned sequences:',
+                *format_banned_sequences(self.banned_sequences),
+            ]
 
         return '\n'.join(lines)
 
@@ -477,6 +475,17 @@ class CodonGraph:
             candidate_matches = reinspect_candidate_matches(candidate_matches)
 
         return matches
+
+    def _apply_banned_sequences(self, banned_sequences: Sequence[str]) -> None:
+        """
+        Apply banned sequence restrictions to the graph.
+
+        Parameters
+        ----------
+        banned_sequences
+            A sequence of banned nucleotide strings.
+        """
+        raise NotImplementedError('Sequence banning is not implemented yet.')
 
     @property
     def nodes(self) -> Set[Node]:
