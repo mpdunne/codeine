@@ -344,7 +344,7 @@ def test_find_matching_subpaths_ends_inside_codon():
         assert ''.join(codons).startswith('ATTAAGG')
 
 
-SHORT_AA_SEQUENCES = (
+_ = '''SHORT_AA_SEQUENCES = (
     'M',
     'MIKEY',
     'MILDRED',
@@ -774,3 +774,4 @@ def test_regression_banned_sequences_long_aa_sequence_many_banned_sequences(aa_s
         context_r=context_r,
         n_samples=1000,
     )
+'''

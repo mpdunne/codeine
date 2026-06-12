@@ -152,13 +152,10 @@ class CodonGraph:
 
         self._initialise_graph()
 
-        if banned_sequences is None:
-            banned_sequences = []
-
-        banned_sequences = list(set(banned_sequences))
-        self.banned_sequences = banned_sequences
-        for banned in banned_sequences:
-            self._ban_sequence(banned)
+        if banned_sequences:
+            raise NotImplementedError('Working on this :)')
+#            banned_sequences = self.validate_banned_sequences(banned_sequences)
+#            self.banned_sequences = banned_sequences
 
     def __repr__(self) -> str:
         molecule = 'RNA' if self.tt.rna else 'DNA'
@@ -183,11 +180,11 @@ class CodonGraph:
                 '',
                 ]
 
-        if self.banned_sequences:
-            lines += [
-                'Banned sequences:',
-                *format_banned_sequences(self.banned_sequences),
-            ]
+#        if self.banned_sequences:
+#            lines += [
+#                'Banned sequences:',
+#                *format_banned_sequences(self.banned_sequences),
+#            ]
 
         return '\n'.join(lines)
 
@@ -479,103 +476,6 @@ class CodonGraph:
             candidate_matches = reinspect_candidate_matches(candidate_matches)
 
         return matches
-
-    def _set_transition(self, parent: Node, choice: str, child: Node) -> None:
-        """
-        Set parent --choice--> child, updating parent sets.
-        """
-        old_child = parent.transitions.get(choice)
-
-        if old_child is not None:
-            old_child.parents.discard((parent, choice))
-
-        parent.transitions[choice] = child
-        child.parents.add((parent, choice))
-
-    def _remove_transition(self, parent: Node, choice: str) -> None:
-        """
-        Remove parent --choice--> child, updating parent sets.
-        """
-        old_child = parent.transitions.pop(choice, None)
-
-        if old_child is not None:
-            old_child.parents.discard((parent, choice))
-
-        if isinstance(parent, CodonNode) and choice in parent.codons:
-            parent.codons = [
-                codon
-                for codon in parent.codons
-                if codon != choice
-            ]
-
-    def _copy_codon_node(self, node: CodonNode) -> CodonNode:
-        """
-        Copy a codon node.
-        """
-        node_copy = CodonNode(
-            pos=node.pos,
-            aa=node.aa,
-            codons=list(node.codons),
-        )
-
-        node_copy.transitions = node.transitions.copy()
-        node_copy.parents = set()
-
-        self.add_codon_node(node_copy)
-
-        return node_copy
-
-    def _ban_sequence(self, sequence: str) -> None:
-        """
-        Edit the graph to remove all paths emitting the banned sequence.
-        """
-        sequence = sequence.upper()
-
-        matches = self._find_matching_subpaths(sequence)
-
-        if not matches:
-            return
-
-        copies = {}
-
-        def get_copy(node: CodonNode) -> CodonNode:
-            if node not in copies:
-                copies[node] = self._copy_codon_node(node)
-            return copies[node]
-
-        for path, offset in matches:
-            codon_path = [
-                (node, choice)
-                for node, choice in path
-                if isinstance(node, CodonNode)
-            ]
-
-            if not codon_path:
-                self._remove_transition(
-                    self.left_context_node,
-                    self.left_context_node.sequence,
-                )
-                continue
-
-            copied_path = [
-                (get_copy(node), choice)
-                for node, choice in codon_path
-            ]
-
-            first_original, _ = codon_path[0]
-            first_copy, _ = copied_path[0]
-
-            # Redirect all parents of the first original node into the copied route.
-            for parent, choice in list(first_original.parents):
-                self._set_transition(parent, choice, first_copy)
-
-            # Forbidden choices continue along the copied route.
-            for (parent_copy, choice), (child_copy, _) in zip(copied_path, copied_path[1:]):
-                self._set_transition(parent_copy, choice, child_copy)
-
-            # Final forbidden choice is removed.
-            final_copy, final_choice = copied_path[-1]
-            self._remove_transition(final_copy, final_choice)
 
     @property
     def nodes(self) -> Set[Node]:
