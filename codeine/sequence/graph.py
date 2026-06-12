@@ -1,12 +1,18 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from codeine.sequence.view import CodonGraphView
+
 import uuid
 
 from collections import Counter
-from typing import Dict, Generator, List, Optional, Sequence, Union
+from typing import Dict, List, Optional, Sequence, Union, Set, Tuple
 
-from codeine.sequence.display import format_banned_sequences, format_count, format_restrictions
+from codeine.sequence.display import format_banned_sequences, format_restrictions
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
-from codeine.utils.sampling import Sampler
 
 
 CodonRestriction = Union[str, Sequence[str]]
@@ -39,7 +45,7 @@ class ContextNode(Node):
         Parameters
         ----------
         sequence
-            The context sequence emitted by this node.
+            The context sequence contained on this node.
         """
         super().__init__()
 
@@ -105,6 +111,7 @@ class CodonGraph:
         self,
         aa_seq: str,
         codon_restrictions: Optional[Dict[int, CodonRestriction]] = None,
+        banned_sequences: Sequence[str] = None,
         translation_table: TranslationTable = None,
         weights: CodonWeights = None,
         context_l: str = '',
@@ -130,8 +137,6 @@ class CodonGraph:
         self.codon_restrictions = {}
         self.codon_restrictions = self.validate_codon_restrictions(codon_restrictions)
 
-        self.banned_sequences = []
-
         self.context_l = context_l.upper()
         self.context_r = context_r.upper()
 
@@ -139,16 +144,18 @@ class CodonGraph:
         self.right_context_node = None
         self.end_node = None
 
-        self.codon_nodes = []
-        self.codon_nodes_by_pos = {
-            pos: []
-            for pos in range(1, len(self.aa_seq) + 1)
-        }
+        self.codon_nodes = set()
+        self.codon_nodes_by_pos = {pos: set() for pos in range(1, len(self.aa_seq) + 1)}
 
         self.initial_node = None
         self.final_node = None
 
-        self.initialise_graph()
+        self._initialise_graph()
+
+        if banned_sequences:
+            raise NotImplementedError('Working on this :)')
+#            banned_sequences = self.validate_banned_sequences(banned_sequences)
+#            self.banned_sequences = banned_sequences
 
     def __repr__(self) -> str:
         molecule = 'RNA' if self.tt.rna else 'DNA'
@@ -173,11 +180,11 @@ class CodonGraph:
                 '',
                 ]
 
-        if self.banned_sequences:
-            lines += [
-                'Banned sequences:',
-                *format_banned_sequences(self.banned_sequences),
-            ]
+#        if self.banned_sequences:
+#            lines += [
+#                'Banned sequences:',
+#                *format_banned_sequences(self.banned_sequences),
+#            ]
 
         return '\n'.join(lines)
 
@@ -218,10 +225,7 @@ class CodonGraph:
         return normalised
 
     @staticmethod
-    def validate_codon_weights(
-            weights: CodonWeights,
-            translation_table: TranslationTable,
-    ) -> None:
+    def validate_codon_weights(weights: CodonWeights, translation_table: TranslationTable) -> None:
         """
         Check that codon weights are compatible with the provided translation table.
 
@@ -252,7 +256,54 @@ class CodonGraph:
         if actual_codons != expected_codons:
             raise ValueError('Codon weights and translation table do not match.')
 
-    def initialise_graph(self) -> None:
+    def validate_banned_sequences(self, banned_sequences: Sequence[str]) -> List[str]:
+        """
+        Check the inputted banned sequences make sense.
+
+        Parameters
+        ----------
+        banned_sequences
+            The list of banned sequences.
+
+        Returns
+        -------
+        A normalised, de-duplicated list of banned sequences.
+        """
+        banned_sequences = banned_sequences or []
+
+        normalised = []
+        for sequence in banned_sequences:
+            sequence = self.normalise_sequence(sequence)
+
+            if len(sequence) == 0:
+                raise ValueError('Banned sequences cannot be empty.')
+
+            normalised.append(sequence)
+
+        return sorted(set(normalised))
+
+    def normalise_sequence(self, sequence: str) -> str:
+        """
+        Normalise a nucleotide sequence to match this graph's molecule type.
+
+        Parameters
+        ----------
+        sequence
+            A DNA or RNA sequence.
+
+        Returns
+        -------
+        str
+            The sequence in the same alphabet as the translation table.
+        """
+        sequence = sequence.upper()
+
+        if self.tt.rna:
+            return sequence.replace('T', 'U')
+
+        return sequence.replace('U', 'T')
+
+    def _initialise_graph(self) -> None:
         """
         Initialise the codon graph.
         """
@@ -260,6 +311,7 @@ class CodonGraph:
         right_context_node = ContextNode(self.context_r)
         end_node = EndNode()
 
+        codon_nodes = []
         for ix, aa in enumerate(self.aa_seq):
             pos = ix + 1
 
@@ -269,27 +321,27 @@ class CodonGraph:
                 codons = self.tt.aa_to_codons[aa]
 
             node = CodonNode(pos, aa, codons)
-            self.add_codon_node(node)
+            codon_nodes.append(node)
 
         # Left context -> first codon node
         left_context_node.transitions = {
-            left_context_node.sequence: self.codon_nodes[0]
+            left_context_node.sequence: codon_nodes[0]
         }
-        self.codon_nodes[0].parents.add(
+        codon_nodes[0].parents.add(
             (left_context_node, left_context_node.sequence)
         )
 
         # Codon node -> next codon node
-        for i in range(1, len(self.codon_nodes)):
-            previous = self.codon_nodes[i - 1]
-            current = self.codon_nodes[i]
+        for i in range(1, len(codon_nodes)):
+            previous = codon_nodes[i - 1]
+            current = codon_nodes[i]
 
             for codon in previous.codons:
                 previous.transitions[codon] = current
                 current.parents.add((previous, codon))
 
         # Last codon node -> right context
-        last_codon_node = self.codon_nodes[-1]
+        last_codon_node = codon_nodes[-1]
         for codon in last_codon_node.codons:
             last_codon_node.transitions[codon] = right_context_node
             right_context_node.parents.add((last_codon_node, codon))
@@ -305,419 +357,147 @@ class CodonGraph:
         self.left_context_node = left_context_node
         self.right_context_node = right_context_node
         self.end_node = end_node
+        for codon_node in codon_nodes:
+            self.add_codon_node(codon_node)
 
         self.initial_node = left_context_node
         self.final_node = end_node
 
+    def _find_matching_subpaths(self, sequence: str) -> List[Tuple[List[Tuple[Node, str]], int]]:
+        """
+        For a given sequence, find subpaths in the graph that match that sequence.
+        Return each found subpath in the following format:
+
+            (
+                [
+                    (node1, codon_1),
+                    (node2, codon_2),
+                    ...
+                ]
+                offset,  # Where the path starts relative to first node's codon choice.
+            )
+
+        Parameters
+        ----------
+        sequence
+            The sequence to search for.
+
+        Returns
+        -------
+        A tuple consisting of a list of (node, sequence) pairs, and the start offset for matching the sequence.
+        """
+
+        sequence = sequence.upper()
+
+        if len(sequence) == 0:
+            raise ValueError('Sequence cannot be empty.')
+
+        matches = []
+        candidate_matches = []
+
+        # First, check which nodes we can start at.
+        for node in self.nodes:
+            if node is self.end_node:
+                continue
+
+            for choice, child in node.transitions.items():
+                for offset in range(len(choice)):
+                    choice_subsequence = choice[offset:]
+
+                    if choice_subsequence.startswith(sequence):
+                        # Bingo!
+                        matches.append(([(node, choice)], offset))
+
+                    elif sequence.startswith(choice_subsequence):
+                        # Maybe bingo! Maygo!
+                        candidate_matches.append(([(node, choice)], offset, len(choice_subsequence)))
+
+        def reinspect_candidate_matches(candidate_matches):
+            reinspect = []
+
+            for partial_path, offset, seen_length in candidate_matches:
+                previous_node, previous_choice = partial_path[-1]
+                node = previous_node.transitions[previous_choice]
+
+                remaining_sequence = sequence[seen_length:]
+
+                if remaining_sequence == '':
+
+                    # Fantastic!
+                    matches.append((partial_path, offset))
+                    continue
+
+                if node is self.final_node:
+                    continue
+
+                if isinstance(node, CodonNode):
+                    choice_length = 3
+                else:
+                    choice_length = len(next(iter(node.transitions)))
+
+                # Sneaky shortcut if we've crossed into the right context:
+                if isinstance(node, CodonNode):
+                    pos = node.pos
+
+                    remaining_sequence_length = len(sequence) - seen_length
+                    remaining_coding_length = 3 * (len(self.aa_seq) - pos + 1)
+
+                    if remaining_sequence_length > remaining_coding_length:
+                        sequence_end = sequence[seen_length + remaining_coding_length:]
+
+                        if not self.context_r.startswith(sequence_end):
+                            continue
+
+                for choice, child in node.transitions.items():
+
+                    if len(remaining_sequence) >= choice_length:
+
+                        if remaining_sequence.startswith(choice):
+                            # Keep going...
+                            reinspect.append((partial_path + [(node, choice)], offset, seen_length + choice_length))
+
+                        else:
+                            # Hard luck this time.
+                            continue
+
+                    else:
+
+                        if choice.startswith(remaining_sequence):
+                            # Wahoo!
+                            matches.append((partial_path + [(node, choice)], offset))
+
+                        else:
+                            # Hard luck this time.
+                            continue
+
+            return reinspect
+
+        while candidate_matches:
+            candidate_matches = reinspect_candidate_matches(candidate_matches)
+
+        return matches
+
     @property
-    def nodes(self) -> List[Node]:
+    def nodes(self) -> Set[Node]:
         """
         All nodes in the graph, including context and end nodes.
         """
-        return [
+        return self.codon_nodes | {
             self.left_context_node,
-            *self.codon_nodes,
             self.right_context_node,
             self.end_node,
-        ]
+        }
 
     def add_codon_node(self, node: CodonNode) -> None:
         """
         Add a codon node and update codon-node indexes.
         """
-        self.codon_nodes.append(node)
-        self.codon_nodes_by_pos.setdefault(node.pos, []).append(node)
-
-    def remove_codon_node(self, node: CodonNode) -> None:
-        """
-        Remove a codon node and update codon-node indexes.
-        """
-        self.codon_nodes.remove(node)
-        self.codon_nodes_by_pos[node.pos].remove(node)
+        self.codon_nodes.add(node)
+        self.codon_nodes_by_pos.setdefault(node.pos, set()).add(node)
 
     def view(self) -> 'CodonGraphView':
         """
         Return a constrained view over this graph.
         """
+        from codeine.sequence.view import CodonGraphView
         return CodonGraphView(self)
-
-
-class CodonGraphView:
-    """
-    View of a codon graph. The view allows optional temporary constraints to be added without
-    affecting the underlying codon graph. It is on this object that most operations take place.
-    """
-
-    def __init__(self,
-                 graph: CodonGraph,
-                 ) -> None:
-        """
-        Constructor for the CodonGraphView
-
-        Parameters
-        ----------
-        graph
-            The underlying codon graph.
-        """
-        self.graph = graph
-        self.pinned_codons: Dict[int, List[str]] = {}
-
-        self.valid_paths_by_choice = {}
-        self.weight_mass_by_choice = {}
-
-        self.n_valid_sequences = None
-        self.samplers = {}
-
-        self.compile()
-
-    @property
-    def aa_seq(self):
-        """
-        The amino acid sequence on the underlying graph.
-
-        Returns
-        -------
-        The aa seq.
-        """
-        return self.graph.aa_seq
-
-    def __getitem__(self, index: int) -> str:
-        """
-        Return the valid sequence at a given index.
-
-        Parameters
-        ----------
-        index
-            Zero-based sequence index.
-
-        Returns
-        -------
-        str
-            The indexed valid DNA sequence.
-        """
-
-        if index < 0 or index >= self.n_valid_sequences:
-            raise IndexError(f'Sequence index {index} out of range for {self.n_valid_sequences} valid sequences.')
-
-        node = self.graph.initial_node
-        sequence = []
-
-        while node is not self.graph.final_node:
-            choice_counts = self.valid_paths_by_choice[node]
-
-            if isinstance(node, CodonNode):
-                remaining = index
-
-                for choice, count in choice_counts.items():
-                    if remaining < count:
-                        emitted = choice
-                        break
-                    remaining -= count
-                else:
-                    raise RuntimeError('Failed to resolve sequence index.')
-
-                sequence.append(emitted)
-                index = remaining
-
-            else:
-                # Context nodes only have one valid outgoing choice.
-                emitted = next(iter(choice_counts))
-
-            node = node.transitions[emitted]
-
-        return ''.join(sequence)
-
-    def __len__(self):
-        """
-        The number of valid sequences in this graph.
-
-        Returns
-        -------
-        The number of valid sequences in this graph.
-        """
-        return self.n_valid_sequences
-
-    def __iter__(self) -> Generator[str, None, None]:
-        """
-        Iterate over all valid sequences in this graph view.
-
-        Yields
-        ----------
-        All valid sequences in the graph, in order.
-        """
-        yield from self.enumerate()
-
-    def __contains__(self, seq: str) -> bool:
-        """
-        Does the given seq exist in this space? 
-
-        Returns
-        ----------
-        True if and only if this is a valid sequence in this space.
-        """
-        return self.contains(seq)
-
-    def __repr__(self) -> str:
-        molecule = 'RNA' if self.graph.tt.rna else 'DNA'
-
-        lines = [
-            f'{type(self).__name__}',
-            '',
-            f'Translation table: {self.graph.tt.table_id} ({self.graph.tt.name})',
-            f'Molecule type: {molecule}',
-            '',
-            f'Amino acid sequence ({len(self.aa_seq)} aa)',
-            f'{self.aa_seq}',
-            ''
-        ]
-
-        if self.graph.codon_restrictions:
-            lines += [
-                'Codon restrictions:',
-                *format_restrictions(
-                    self.graph.codon_restrictions,
-                    label='restricted positions',
-                ),
-                '',
-                ]
-
-        if self.graph.banned_sequences:
-            lines += [
-                'Banned sequences:',
-                *format_banned_sequences(
-                    self.graph.banned_sequences,
-                ),
-                '',
-                ]
-
-        if self.pinned_codons:
-            lines += [
-                'Temporary pins:',
-                *format_restrictions(
-                    self.pinned_codons,
-                    label='pinned positions',
-                ),
-                '',
-                ]
-
-        lines.append(f'Num. valid coding sequences: {format_count(self.n_valid_sequences)}')
-
-        return '\n'.join(lines)
-
-    def pin_codons(self, pinned_codons: Dict[int, CodonRestriction]) -> None:
-        """
-        Pin (temporarily fix) a codon in this codon graph view
-
-        Parameters
-        ----------
-        pinned_codons
-            A dict specifying which codons to pin, by pos: codon.
-        """
-        pinned_codons = self.graph.validate_codon_restrictions(pinned_codons)
-        self.pinned_codons.update(pinned_codons)
-        self.compile()
-
-    def unpin_codons(self, positions: Sequence[int]) -> None:
-        """
-        Unpin codon nodes by pos.
-
-        Parameters
-        ----------
-        positions
-            A list of positions to unpin.
-        """
-        for pos in positions:
-            if pos not in self.graph.codon_nodes_by_pos:
-                raise ValueError(f'Pinned codon position {pos} is out of range.')
-
-            self.pinned_codons.pop(pos, None)
-
-        self.compile()
-
-    def clear_pins(self) -> None:
-        """
-        Remove all codon pins from this graph view
-        """
-        self.pinned_codons.clear()
-        self.compile()
-
-    def contains(self, seq: str) -> bool:
-        """
-        Check whether a DNA sequence is contained in this view.
-
-        Parameters
-        ----------
-        seq
-            The sequence to check
-
-        Returns
-        -------
-        True if and only if the sequence is contained in this coding space.
-        """
-        seq = seq.upper()
-
-        if len(seq) != len(self.graph.aa_seq) * 3:
-            return False
-
-        current_node = self.graph.initial_node.transitions[self.graph.initial_node.sequence]
-
-        while current_node is not self.graph.right_context_node:
-            pos = current_node.pos
-            codon = seq[(pos - 1) * 3: pos * 3]
-
-            if pos in self.pinned_codons:
-                if codon not in self.pinned_codons[pos]:
-                    return False
-
-            elif codon not in current_node.codons:
-                return False
-
-            current_node = current_node.transitions[codon]
-
-        return True
-
-    def sample(self) -> str:
-        """
-        Sample a DNA sequence from this graph view.
-        """
-        node = self.graph.initial_node
-        sequence = []
-
-        while node is not self.graph.final_node:
-            if not node.transitions:
-                raise RuntimeError(f'Reached non-final node {node.id} with no outgoing transitions.')
-
-            if isinstance(node, CodonNode):
-                emitted = self.samplers[node].sample()
-                sequence.append(emitted)
-
-            else:
-                emitted = node.sequence
-
-            node = node.transitions[emitted]
-
-        return ''.join(sequence)
-
-    def enumerate(self) -> Generator[str, None, None]:
-        """
-        Enumerate all valid sequences in this view.
-
-        Yields
-        ------
-        str
-            A valid DNA sequence.
-        """
-        for index in range(self.n_valid_sequences):
-            yield self[index]
-
-    def copy(self) -> 'CodonGraphView':
-        """
-        Copy this view and all its constraints.
-
-        Returns
-        -------
-        A copy of the view.
-        """
-        view = self.graph.view()
-        view.pin_codons(self.pinned_codons.copy())
-        return view
-
-    def compile(self) -> None:
-        """
-        Calculate all graph properties that are derived from its structure plus additional
-        temporary constraints (pins). Remember to do this after editing the graph!
-        """
-        # Calculate descendant counts!
-        self._update_descendant_counts()
-
-        # Update the samplers!
-        self._update_samplers()
-
-    def _update_samplers(self) -> None:
-        """
-        Make samplers for each codon node given the view's constraints. The probabilities
-        are calculated by combining descendant counts and the base probabilities.
-        """
-        samplers = {}
-
-        for node, choice_masses in self.weight_mass_by_choice.items():
-            if not isinstance(node, CodonNode):
-                continue
-
-            codons = list(choice_masses)
-            weights = [choice_masses[codon] for codon in codons]
-
-            if codons:
-                samplers[node] = Sampler(codons, weights)
-
-        self.samplers = samplers
-
-    def _choices_for_node(self, node: CodonNode) -> List[str]:
-        """
-        Return codon choices available to this node in this view.
-        """
-        if node.pos in self.pinned_codons:
-            return self.pinned_codons[node.pos]
-
-        return node.codons
-
-    def _update_descendant_counts(self) -> None:
-        """
-        Calculate valid path counts and weight masses for each outgoing transition.
-        """
-        valid_paths_by_choice = {}
-        weight_mass_by_choice = {}
-
-        right_choice = self.graph.right_context_node.sequence
-
-        valid_paths_by_choice[self.graph.right_context_node] = {right_choice: 1}
-        weight_mass_by_choice[self.graph.right_context_node] = {right_choice: 1.0}
-
-        next_counts = {self.graph.right_context_node: 1}
-        next_masses = {self.graph.right_context_node: 1.0}
-
-        for pos in range(len(self.graph.aa_seq), 0, -1):
-            current_counts = {}
-            current_masses = {}
-
-            for node in self.graph.codon_nodes_by_pos[pos]:
-                choice_counts = {}
-                choice_masses = {}
-                total_count = 0
-                total_mass = 0.0
-
-                for codon in self._choices_for_node(node):
-                    child = node.transitions[codon]
-
-                    count = next_counts.get(child, 0)
-                    mass = self.graph.cw[codon] * next_masses.get(child, 0.0)
-
-                    if count:
-                        choice_counts[codon] = count
-                        total_count += count
-
-                    if mass:
-                        choice_masses[codon] = mass
-                        total_mass += mass
-
-                valid_paths_by_choice[node] = choice_counts
-                weight_mass_by_choice[node] = choice_masses
-
-                current_counts[node] = total_count
-                current_masses[node] = total_mass
-
-            next_counts = current_counts
-            next_masses = current_masses
-
-        left_choice = self.graph.left_context_node.sequence
-        left_child = self.graph.left_context_node.transitions[left_choice]
-
-        total_count = next_counts.get(left_child, 0)
-        total_mass = next_masses.get(left_child, 0.0)
-
-        valid_paths_by_choice[self.graph.left_context_node] = {left_choice: total_count}
-        weight_mass_by_choice[self.graph.left_context_node] = {left_choice: total_mass}
-
-        self.valid_paths_by_choice = valid_paths_by_choice
-        self.weight_mass_by_choice = weight_mass_by_choice
-        self.n_valid_sequences = total_count
