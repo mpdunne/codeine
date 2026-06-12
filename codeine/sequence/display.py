@@ -78,8 +78,7 @@ def format_banned_sequences(
     return lines
 
 
-def format_forbidden_motif(self, motif: 'ForbiddenMotif') -> str:
-    rna = self.translation_table.rna
+def format_forbidden_motif(motif: 'ForbiddenMotif', rna: bool) -> str:
 
     if isinstance(motif, RestrictionSite):
         sequences = [

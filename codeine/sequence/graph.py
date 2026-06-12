@@ -485,7 +485,8 @@ class CodonGraph:
         banned_sequences
             A sequence of banned nucleotide strings.
         """
-        raise NotImplementedError('Sequence banning is not implemented yet.')
+        if banned_sequences:
+            raise NotImplementedError('Sequence banning is not implemented yet.')
 
     @property
     def nodes(self) -> Set[Node]:

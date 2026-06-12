@@ -17,8 +17,8 @@ class CodingSpace:
         self,
         aa_seq: str,
         codon_restrictions: Optional[Dict[int, str]] = None,
-        forbidden_motifs: Optional[Sequence[ForbiddenMotif]] = None,
-        max_homopolymer: int = None,
+        forbidden_motifs: ForbiddenMotifs = None,
+        max_homopolymer: Optional[int] = None,
         translation_table: TranslationTable = None,
         codon_weights: CodonWeights = None,
         context_l: str = '',
@@ -36,9 +36,6 @@ class CodingSpace:
             max_homopolymer=max_homopolymer,
             rna=rna,
         )
-
-        if self.sequence_constraints:
-            raise NotImplementedError('Sequence exclusion constraints are not implemented yet.')
 
         self.view = CodonGraph(
             aa_seq,
@@ -59,6 +56,7 @@ class CodingSpace:
         obj = cls.__new__(cls)
         obj.view = view
         obj.forbidden_motifs = []
+        obj.max_homopolymer = None
         obj.forbidden_sequences = list(view.graph.banned_sequences)
         return obj
 
@@ -106,11 +104,18 @@ class CodingSpace:
                 'Forbidden motifs:',
                 *format_banned_sequences(
                     [
-                        format_forbidden_motif(motif)
+                        format_forbidden_motif(motif, rna=self.translation_table.rna)
                         for motif in motifs
                     ],
                     max_lines=4,
                 ),
+                '',
+            ]
+
+        if self.max_homopolymer is not None:
+            lines += [
+                'Maximum homopolymer length:',
+                f'  {self.max_homopolymer}',
                 '',
             ]
 
@@ -160,9 +165,9 @@ class CodingSpace:
         return sorted(set(all_sequences))
 
     @staticmethod
-    def _validate_max_homopolymer(max_homopolymer: Optional[int]) -> Optional[int]:
+    def _expand_and_validate_max_homopolymer(max_homopolymer: Optional[int], rna: bool = False) -> List[str]:
         if max_homopolymer is None:
-            return None
+            return []
 
         if not isinstance(max_homopolymer, int):
             raise TypeError('max_homopolymer must be an integer.')
@@ -170,7 +175,8 @@ class CodingSpace:
         if max_homopolymer < 1:
             raise ValueError('max_homopolymer must be at least 1.')
 
-        return max_homopolymer
+        nts = 'ACGU' if rna else 'ACGT'
+        return [nt * (max_homopolymer + 1) for nt in nts]
 
     @staticmethod
     def _expand_and_validate_sequence_constraints(
@@ -178,22 +184,9 @@ class CodingSpace:
             max_homopolymer=None,
             rna: bool = False,
     ):
-        forbidden_sequences = CodingSpace._expand_and_validate_forbidden_motifs(
-            forbidden_motifs,
-            rna=rna,
-        )
-
-        max_homopolymer = CodingSpace._validate_max_homopolymer(max_homopolymer)
-
-        constraints = []
-
-        for seq in forbidden_sequences:
-            constraints.append(('forbidden_sequence', seq))
-
-        if max_homopolymer is not None:
-            constraints.append(('max_homopolymer', max_homopolymer))
-
-        return constraints
+        forbidden_sequences = CodingSpace._expand_and_validate_forbidden_motifs(forbidden_motifs, rna=rna)
+        forbidden_homopolymers = CodingSpace._expand_and_validate_max_homopolymer(max_homopolymer, rna=rna)
+        return sorted(set(forbidden_sequences + forbidden_homopolymers))
 
     def sample(self) -> str:
         return self.view.sample()
