@@ -292,16 +292,19 @@ def test_invalid_forbidden_motif_type_raises():
         CodingSpace._expand_and_validate_forbidden_motifs(motifs, rna=False)
 
 
-# TODO: Uncomment these when we've fully wired up the banned sequences
-#def test_forbidden_motifs_are_stored_on_space():
-#    space = CodingSpace('MIKEY', forbidden_motifs='GAATTC')
-#    assert space.forbidden_sequences == ['GAATTC']
+def test_validate_max_homopolymer_none():
+    assert CodingSpace._validate_max_homopolymer(None) is None
 
-#def test_forbidden_motifs_repr():
-#    space = CodingSpace('MIKEY', forbidden_motifs=[RestrictionSite.EcoRI, 'AAAA'])
-#    text = repr(space)
-#
-#    assert 'Forbidden motifs:' in text
-#    assert 'EcoRI' in text
-#    assert 'GAATTC' in text
-#    assert 'AAAA' in text
+
+def test_validate_max_homopolymer_int():
+    assert CodingSpace._validate_max_homopolymer(4) == 4
+
+
+def test_validate_max_homopolymer_rejects_non_int():
+    with pytest.raises(TypeError, match='max_homopolymer must be an integer'):
+        CodingSpace._validate_max_homopolymer(4.5)
+
+
+def test_validate_max_homopolymer_rejects_less_than_one():
+    with pytest.raises(ValueError, match='max_homopolymer must be at least 1'):
+        CodingSpace._validate_max_homopolymer(0)

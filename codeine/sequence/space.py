@@ -1,13 +1,15 @@
 from typing import Dict, Generator, List, Optional, Sequence, Union
 
 from codeine.motifs.restriction import RestrictionSite
-from codeine.sequence.display import format_banned_sequences, format_count, format_restrictions
+from codeine.sequence.display import format_banned_sequences, format_forbidden_motif,\
+    format_count, format_restrictions
 from codeine.sequence.graph import CodonGraph
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
 
 
 ForbiddenMotif = Union[str, RestrictionSite]
+ForbiddenMotifs = Optional[Union[ForbiddenMotif, Sequence[ForbiddenMotif]]]
 
 
 class CodingSpace:
@@ -16,6 +18,7 @@ class CodingSpace:
         aa_seq: str,
         codon_restrictions: Optional[Dict[int, str]] = None,
         forbidden_motifs: Optional[Sequence[ForbiddenMotif]] = None,
+        max_homopolymer: int = None,
         translation_table: TranslationTable = None,
         codon_weights: CodonWeights = None,
         context_l: str = '',
@@ -26,7 +29,16 @@ class CodingSpace:
         else:
             rna = translation_table.rna
 
-        self.forbidden_sequences = self._expand_and_validate_forbidden_motifs(forbidden_motifs, rna=rna)
+        self.forbidden_motifs = forbidden_motifs
+        self.max_homopolymer = max_homopolymer
+        self.forbidden_sequences = self._expand_and_validate_sequence_constraints(
+            forbidden_motifs=forbidden_motifs,
+            max_homopolymer=max_homopolymer,
+            rna=rna,
+        )
+
+        if self.sequence_constraints:
+            raise NotImplementedError('Sequence exclusion constraints are not implemented yet.')
 
         self.view = CodonGraph(
             aa_seq,
@@ -37,36 +49,6 @@ class CodingSpace:
             context_l=context_l,
             context_r=context_r,
         ).view()
-
-    @staticmethod
-    def _expand_and_validate_forbidden_motifs(forbidden_motifs: Sequence[Union[str, ForbiddenMotif]], rna: bool) -> List[str]:
-        all_sequences = []
-
-        if forbidden_motifs is None:
-            return []
-
-        if isinstance(forbidden_motifs, (str, RestrictionSite)):
-            forbidden_motifs = [forbidden_motifs]
-
-        for motif in forbidden_motifs:
-            if isinstance(motif, RestrictionSite):
-                sequences = [*motif.motifs]
-
-            elif isinstance(motif, str):
-                if len(motif) == 0:
-                    raise ValueError('Forbidden motifs cannot be empty.')
-
-                sequences = [motif]
-
-            else:
-                raise TypeError('Forbidden motifs must be strings or codeine.RestrictionSite.')
-
-            sequences = [seq.upper() for seq in sequences]
-            sequences = [seq.replace('T', 'U') if rna else seq.replace('U', 'T') for seq in sequences]
-
-            all_sequences += sequences
-
-        return sorted(set(all_sequences))
 
     @classmethod
     def from_graph(cls, graph: CodonGraph) -> 'CodingSpace':
@@ -115,20 +97,18 @@ class CodingSpace:
             ]
 
         if self.forbidden_motifs:
-            lines += [
-                'Forbidden motifs:',
-                *format_banned_sequences(
-                    self.forbidden_sequences,
-                    max_lines=4,
-                ),
-                '',
-            ]
+            motifs = self.forbidden_motifs
 
-        elif self.forbidden_sequences:
+            if isinstance(motifs, (str, RestrictionSite)):
+                motifs = [motifs]
+
             lines += [
                 'Forbidden motifs:',
                 *format_banned_sequences(
-                    self.forbidden_sequences,
+                    [
+                        format_forbidden_motif(motif)
+                        for motif in motifs
+                    ],
                     max_lines=4,
                 ),
                 '',
@@ -148,6 +128,72 @@ class CodingSpace:
         lines.append(f'Num. valid coding sequences: {format_count(self.n_valid_sequences)}')
 
         return '\n'.join(lines)
+
+    @staticmethod
+    def _expand_and_validate_forbidden_motifs(forbidden_motifs: ForbiddenMotifs, rna: bool) -> List[str]:
+        all_sequences = []
+
+        if forbidden_motifs is None:
+            return []
+
+        if isinstance(forbidden_motifs, (str, RestrictionSite)):
+            forbidden_motifs = [forbidden_motifs]
+
+        for motif in forbidden_motifs:
+            if isinstance(motif, RestrictionSite):
+                sequences = [*motif.motifs]
+
+            elif isinstance(motif, str):
+                if len(motif) == 0:
+                    raise ValueError('Forbidden motifs cannot be empty.')
+
+                sequences = [motif]
+
+            else:
+                raise TypeError('Forbidden motifs must be strings or codeine.RestrictionSite.')
+
+            sequences = [seq.upper() for seq in sequences]
+            sequences = [seq.replace('T', 'U') if rna else seq.replace('U', 'T') for seq in sequences]
+
+            all_sequences += sequences
+
+        return sorted(set(all_sequences))
+
+    @staticmethod
+    def _validate_max_homopolymer(max_homopolymer: Optional[int]) -> Optional[int]:
+        if max_homopolymer is None:
+            return None
+
+        if not isinstance(max_homopolymer, int):
+            raise TypeError('max_homopolymer must be an integer.')
+
+        if max_homopolymer < 1:
+            raise ValueError('max_homopolymer must be at least 1.')
+
+        return max_homopolymer
+
+    @staticmethod
+    def _expand_and_validate_sequence_constraints(
+            forbidden_motifs=None,
+            max_homopolymer=None,
+            rna: bool = False,
+    ):
+        forbidden_sequences = CodingSpace._expand_and_validate_forbidden_motifs(
+            forbidden_motifs,
+            rna=rna,
+        )
+
+        max_homopolymer = CodingSpace._validate_max_homopolymer(max_homopolymer)
+
+        constraints = []
+
+        for seq in forbidden_sequences:
+            constraints.append(('forbidden_sequence', seq))
+
+        if max_homopolymer is not None:
+            constraints.append(('max_homopolymer', max_homopolymer))
+
+        return constraints
 
     def sample(self) -> str:
         return self.view.sample()

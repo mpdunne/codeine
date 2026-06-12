@@ -154,9 +154,9 @@ class CodonGraph:
 
         self.banned_sequences = []
         if banned_sequences:
-            raise NotImplementedError('Working on this :)')
-#            banned_sequences = self.validate_banned_sequences(banned_sequences)
-#            self.banned_sequences = banned_sequences
+#            raise NotImplementedError('Working on this :)')
+            banned_sequences = self.validate_banned_sequences(banned_sequences)
+            self.banned_sequences = banned_sequences
 
     def __repr__(self) -> str:
         molecule = 'RNA' if self.tt.rna else 'DNA'
