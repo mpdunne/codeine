@@ -1,7 +1,7 @@
 import bisect
 import random
 
-from typing import Any, Sequence, Union
+from typing import Any, Sequence, Optional, Union
 
 
 Seedable = Union[None, int, float, str, bytes, bytearray]
@@ -11,7 +11,12 @@ class Sampler:
     """
     A precomputed sampler to speed up weighted sampling.
     """
-    def __init__(self, items: Sequence[Any], weights: Sequence[Union[int, float]] = None, seed: Seedable = None):
+    def __init__(self,
+                 items: Sequence[Any],
+                 weights: Sequence[Union[int, float]] = None,
+                 seed: Optional[Seedable] = None,
+                 rng: Optional[random.Random] = None,
+                 ):
         """
         Constructor for the Sampler class.
 
@@ -22,7 +27,10 @@ class Sampler:
         weights
             The weights assigned to the items.
         seed
-            The random seed to use.
+            Seed used to initialise a random number generator on this Sampler.
+        rng
+            Pre-constructed random number generator to use for sampling.
+
         """
         if len(items) == 0:
             raise ValueError('Items cannot be empty.')
@@ -44,7 +52,17 @@ class Sampler:
         self._single = len(items) == 1
 
         if not self._single:
-            self._rng = random.Random(seed)
+
+            if seed is not None and rng is not None:
+                raise ValueError('Provide either seed or rng, not both.')
+
+            if rng is None:
+                if seed is not None:
+                    rng = random.Random(seed)
+                else:
+                    rng = random.Random()
+
+            self._rng = rng
 
             cumulative = []
             running = 0
