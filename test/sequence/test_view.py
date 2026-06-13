@@ -70,7 +70,7 @@ def test_view_contains():
 
 @pytest.mark.parametrize('aa_seq',
                          (
-                                 'M'
+                                 'M',
                                  'MIKEY',
                                  'MILDRED',
                                  'ELEPHANT',
@@ -244,3 +244,82 @@ def test_enumerate_pinned_sequences(standard_codon_table):
     assert 24 == view.n_valid_sequences == len(generated_unpinned_seqs) == len(expected_all_seqs)
     assert 24 == len(generated_unpinned_seqs) == len(expected_all_seqs) == len(set(expected_all_seqs))
     assert set(generated_unpinned_seqs) == set(expected_all_seqs)
+
+
+def test_view_seed_consistent():
+    samples_by_rep = []
+
+    for _ in range(10):
+        view = CodonGraph('MIKEY').view(seed=8675309)
+        samples = [view.sample() for _ in range(100)]
+        samples_by_rep.append(samples)
+
+    assert all(samples == samples_by_rep[0] for samples in samples_by_rep)
+
+
+def test_view_no_seed_not_consistent():
+    samples_by_rep = []
+
+    for _ in range(10):
+        view = CodonGraph('MIKEY').view()
+        samples = [view.sample() for _ in range(100)]
+        samples_by_rep.append(samples)
+
+    assert not all(samples == samples_by_rep[0] for samples in samples_by_rep)
+
+
+def test_view_seed_survives_recompile():
+    view = CodonGraph('MIKEY').view(seed=8675309)
+
+    before = [view.sample() for _ in range(20)]
+
+    view.pin_codons({2: 'ATC'})
+    pinned = [view.sample() for _ in range(20)]
+
+    view.clear_pins()
+    after = [view.sample() for _ in range(20)]
+
+    repeat = CodonGraph('MIKEY').view(seed=8675309)
+
+    expected_before = [repeat.sample() for _ in range(20)]
+    repeat.pin_codons({2: 'ATC'})
+    expected_pinned = [repeat.sample() for _ in range(20)]
+    repeat.clear_pins()
+    expected_after = [repeat.sample() for _ in range(20)]
+
+    assert before == expected_before
+    assert pinned == expected_pinned
+    assert after == expected_after
+
+
+def test_view_seed_and_rng_cannot_both_be_provided():
+    import random
+
+    with pytest.raises(ValueError):
+        CodonGraph('MIKEY').view(seed=123, rng=random.Random(123))
+
+
+def test_view_rng_is_used():
+    import random
+
+    rng = random.Random(8675309)
+    view = CodonGraph('MIKEY').view(rng=rng)
+
+    samples = [view.sample() for _ in range(100)]
+
+    control_rng = random.Random(8675309)
+    control_view = CodonGraph('MIKEY').view(rng=control_rng)
+    expected = [control_view.sample() for _ in range(100)]
+
+    assert samples == expected
+
+
+def test_view_copy_copies_pins_not_rng_state():
+    view = CodonGraph('MIKEY').view(seed=8675309)
+    view.pin_codons({2: 'ATC'})
+
+    copied = view.copy()
+
+    assert copied.pinned_codons == view.pinned_codons
+    assert copied.n_valid_sequences == view.n_valid_sequences
+    assert [*copied.enumerate()] == [*view.enumerate()]
