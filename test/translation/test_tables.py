@@ -1,3 +1,4 @@
+import pickle
 import pytest
 
 from codeine.translation.tables import TranslationTable
@@ -150,3 +151,32 @@ def test_getitem_bad_key_raises():
     tt_rna = TranslationTable(rna=True)
     with pytest.raises(KeyError):
         _ = tt_rna['ATG']
+
+
+def test_translation_table_pickle():
+    table = TranslationTable(table_id=1, rna=False)
+    loaded = pickle.loads(pickle.dumps(table))
+    assert type(loaded) is TranslationTable
+    assert loaded.table_id == table.table_id
+    assert loaded.name == table.name
+    assert loaded.rna == table.rna
+    assert loaded.codons_to_aa == table.codons_to_aa
+    assert loaded.aa_to_codons == table.aa_to_codons
+    assert loaded['ATG'] == 'M'
+
+
+def test_translation_table_pickle_rna():
+    table = TranslationTable(table_id=1, rna=True)
+    loaded = pickle.loads(pickle.dumps(table))
+    assert type(loaded) is TranslationTable
+    assert loaded.rna is True
+    assert loaded['AUG'] == 'M'
+    assert 'AUG' in loaded.codons_to_aa
+    assert 'ATG' not in loaded.codons_to_aa
+
+
+def test_translation_table_pickle_preserves_immutability():
+    table = TranslationTable()
+    loaded = pickle.loads(pickle.dumps(table))
+    with pytest.raises(AttributeError):
+        loaded.rna = True

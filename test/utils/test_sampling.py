@@ -1,3 +1,4 @@
+import pickle
 import pytest
 import random
 
@@ -141,3 +142,23 @@ def test_invalid_inputs_raise_errors():
 
     with pytest.raises(ValueError):
         Sampler(['a', 'b'], weights=[1, -2])
+
+
+def test_sampler_pickle_preserves_random_state():
+    sampler = Sampler(['a', 'b', 'c'], weights=[1, 2, 3], seed=8675309)
+    _ = [sampler.sample() for _ in range(100)]
+
+    dumped = pickle.dumps(sampler)
+    samples_orig = [sampler.sample() for _ in range(100)]
+
+    loaded = pickle.loads(dumped)
+    samples_loaded = [loaded.sample() for _ in range(100)]
+
+    assert samples_orig == samples_loaded
+
+
+def test_single_value_sampler_pickle():
+    sampler = Sampler(['a'])
+    loaded = pickle.loads(pickle.dumps(sampler))
+    assert loaded.sample() == 'a'
+    assert loaded.items == ('a',)

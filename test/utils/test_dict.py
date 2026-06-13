@@ -1,3 +1,4 @@
+import pickle
 import pytest
 
 from codeine.utils.dict import FrozenDict
@@ -69,3 +70,11 @@ def test_item_deletion_not_allowed():
     fd = FrozenDict({'A': 420})
     with pytest.raises(TypeError):
         del fd['A']
+
+
+def test_frozendict_pickle():
+    obj = FrozenDict({'a': 1, 'b': 2})
+    loaded = pickle.loads(pickle.dumps(obj))
+    assert loaded == obj
+    assert type(loaded) is FrozenDict
+    assert dict(loaded) == {'a': 1, 'b': 2}
