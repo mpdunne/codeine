@@ -1,5 +1,5 @@
 import pytest
-import random
+import pickle
 
 from codeine.sequence.graph import CodonGraph, CodonNode, ContextNode, EndNode
 from codeine.translation.tables import TranslationTable
@@ -342,6 +342,22 @@ def test_find_matching_subpaths_ends_inside_codon():
         assert offset == 0
         codons = [codon for node, codon in path]
         assert ''.join(codons).startswith('ATTAAGG')
+
+
+def test_codon_graph_pickle_preserves_enumeration():
+    graph = CodonGraph('MIKEY')
+    loaded = pickle.loads(pickle.dumps(graph))
+    assert loaded.aa_seq == graph.aa_seq
+    assert [*loaded.view().enumerate()] == [*graph.view().enumerate()]
+
+
+def test_codon_graph_pickle_preserves_constraints():
+    graph = CodonGraph('MIKEY', codon_restrictions={2: 'ATC'})
+    loaded = pickle.loads(pickle.dumps(graph))
+    assert loaded.codon_restrictions == graph.codon_restrictions
+    assert loaded.banned_sequences == graph.banned_sequences
+    assert loaded.view().n_valid_sequences == graph.view().n_valid_sequences
+
 
 
 _ = '''SHORT_AA_SEQUENCES = (
