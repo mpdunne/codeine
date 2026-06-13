@@ -1,3 +1,4 @@
+import pickle
 import pytest
 import random
 
@@ -386,3 +387,79 @@ def test_space_no_seed_not_consistent():
         samples_by_rep.append(samples)
 
     assert not all(samples == samples_by_rep[0] for samples in samples_by_rep)
+
+
+def test_coding_space_pickle_preserves_random_state():
+    space = CodingSpace('MIKEY', seed=8675309)
+
+    _ = [space.sample() for _ in range(100)]
+
+    loaded = pickle.loads(pickle.dumps(space))
+
+    assert [loaded.sample() for _ in range(100)] == [space.sample() for _ in range(100)]
+
+
+def test_coding_space_pickle_preserves_pins():
+    space = CodingSpace('MIKEY', seed=8675309)
+    space.pin_codons({2: 'ATC'})
+
+    loaded = pickle.loads(pickle.dumps(space))
+
+    assert loaded.view.pinned_codons == space.view.pinned_codons
+    assert loaded.n_valid_sequences == space.n_valid_sequences
+    assert [*loaded.enumerate()] == [*space.enumerate()]
+
+
+def test_coding_space_pickle_preserves_constraints(disable_banned_sequence_filtering):
+    space = CodingSpace(
+        'MIKEY',
+        codon_restrictions={2: 'ATC'},
+        forbidden_motifs=['AAAA'],
+        max_homopolymer=4,
+        seed=8675309,
+    )
+
+    loaded = pickle.loads(pickle.dumps(space))
+
+    assert loaded.forbidden_motifs == space.forbidden_motifs
+    assert loaded.max_homopolymer == space.max_homopolymer
+    assert loaded.forbidden_sequences == space.forbidden_sequences
+    assert loaded.n_valid_sequences == space.n_valid_sequences
+
+
+def test_coding_space_pickle_preserves_future_sampling():
+    space = CodingSpace('MIKEY', seed=8675309)
+
+    _ = [space.sample() for _ in range(100)]
+
+    loaded = pickle.loads(pickle.dumps(space))
+
+    expected = [space.sample() for _ in range(1000)]
+    observed = [loaded.sample() for _ in range(1000)]
+
+    assert observed == expected
+
+
+def test_coding_space_pickle_preserves_future_sampling_with_pins():
+    space = CodingSpace('MIKEY', seed=8675309)
+    space.pin_codons({2: 'ATC'})
+
+    _ = [space.sample() for _ in range(100)]
+
+    loaded = pickle.loads(pickle.dumps(space))
+
+    expected = [space.sample() for _ in range(1000)]
+    observed = [loaded.sample() for _ in range(1000)]
+
+    assert observed == expected
+
+
+def test_coding_space_pickle_preserves_initial_sampling():
+    space = CodingSpace('MIKEY', seed=8675309)
+
+    loaded = pickle.loads(pickle.dumps(space))
+
+    expected = [space.sample() for _ in range(1000)]
+    observed = [loaded.sample() for _ in range(1000)]
+
+    assert observed == expected
