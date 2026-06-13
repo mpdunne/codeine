@@ -1,5 +1,7 @@
+import pickle
 import random
 
+from pathlib import Path
 from typing import Dict, Generator, List, Optional, Sequence, Union
 
 from codeine.motifs.restriction import RestrictionSite
@@ -87,6 +89,21 @@ class CodingSpace:
         obj.max_homopolymer = None
         obj.forbidden_sequences = list(view.graph.banned_sequences)
         return obj
+
+    @classmethod
+    def load(cls, path) -> 'CodingSpace':
+        """
+        Load a coding space from disc.
+        """
+        with Path(path).open('rb') as f:
+            return pickle.load(f)
+
+    def save(self, path) -> None:
+        """
+        Save this coding space to disk.
+        """
+        with Path(path).open('wb') as f:
+            pickle.dump(self, f)
 
     def __getitem__(self, index: int) -> str:
         """
