@@ -1,3 +1,4 @@
+import pickle
 import pytest
 
 from codeine.translation.tables import TranslationTable
@@ -211,3 +212,41 @@ def test_builtin_dna_and_rna_weights_match_after_codon_conversion(constructor):
     for dna_codon, dna_weight in dna_weights.weights.items():
         rna_codon = dna_codon.replace('T', 'U')
         assert rna_weights[rna_codon] == pytest.approx(dna_weight)
+
+
+def test_codon_weights_pickle_uniform():
+    weights = CodonWeights.uniform()
+    loaded = pickle.loads(pickle.dumps(weights))
+    assert type(loaded) is CodonWeights
+    assert loaded.rna == weights.rna
+    assert loaded.aa_to_codons == weights.aa_to_codons
+    assert loaded.weights == weights.weights
+    assert loaded['ATG'] == weights['ATG']
+    assert loaded.by_aa('K') == weights.by_aa('K')
+
+
+def test_codon_weights_pickle_ecoli():
+    weights = CodonWeights.ecoli()
+    loaded = pickle.loads(pickle.dumps(weights))
+    assert type(loaded) is CodonWeights
+    assert loaded.rna == weights.rna
+    assert loaded.aa_to_codons == weights.aa_to_codons
+    assert loaded.weights == weights.weights
+    assert loaded.by_aa('L') == weights.by_aa('L')
+
+
+def test_codon_weights_pickle_rna():
+    weights = CodonWeights.uniform(rna=True)
+    loaded = pickle.loads(pickle.dumps(weights))
+    assert type(loaded) is CodonWeights
+    assert loaded.rna is True
+    assert 'AUG' in loaded.weights
+    assert 'ATG' not in loaded.weights
+    assert loaded['AUG'] == weights['AUG']
+
+
+def test_codon_weights_pickle_preserves_immutability():
+    weights = CodonWeights.uniform()
+    loaded = pickle.loads(pickle.dumps(weights))
+    with pytest.raises(AttributeError):
+        loaded.rna = True
