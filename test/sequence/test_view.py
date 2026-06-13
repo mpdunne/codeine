@@ -1,3 +1,4 @@
+import pickle
 import pytest
 
 from itertools import product
@@ -323,3 +324,23 @@ def test_view_copy_copies_pins_not_rng_state():
     assert copied.pinned_codons == view.pinned_codons
     assert copied.n_valid_sequences == view.n_valid_sequences
     assert [*copied.enumerate()] == [*view.enumerate()]
+
+
+def test_codon_graph_view_pickle_preserves_random_state():
+    view = CodonGraph('MIKEY').view(seed=8675309)
+    _ = [view.sample() for _ in range(100)]
+
+    loaded = pickle.loads(pickle.dumps(view))
+
+    assert [loaded.sample() for _ in range(100)] == [view.sample() for _ in range(100)]
+
+
+def test_codon_graph_view_pickle_preserves_pins():
+    view = CodonGraph('MIKEY').view(seed=8675309)
+    view.pin_codons({2: 'ATC'})
+
+    loaded = pickle.loads(pickle.dumps(view))
+
+    assert loaded.pinned_codons == view.pinned_codons
+    assert loaded.n_valid_sequences == view.n_valid_sequences
+    assert [*loaded.enumerate()] == [*view.enumerate()]
