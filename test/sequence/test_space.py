@@ -463,3 +463,45 @@ def test_coding_space_pickle_preserves_initial_sampling():
     observed = [loaded.sample() for _ in range(1000)]
 
     assert observed == expected
+
+
+def test_coding_space_save_load(tmp_path):
+    path = tmp_path / 'space.pkl'
+
+    space = CodingSpace('MIKEY', seed=8675309)
+    space.save(path)
+
+    loaded = CodingSpace.load(path)
+
+    assert loaded.n_valid_sequences == space.n_valid_sequences
+    assert [*loaded.enumerate()] == [*space.enumerate()]
+
+
+def test_coding_space_save_load_preserves_random_state(tmp_path):
+    path = tmp_path / 'space.pkl'
+
+    space = CodingSpace('MIKEY', seed=8675309)
+
+    _ = [space.sample() for _ in range(100)]
+
+    space.save(path)
+    loaded = CodingSpace.load(path)
+
+    expected = [space.sample() for _ in range(1000)]
+    observed = [loaded.sample() for _ in range(1000)]
+
+    assert observed == expected
+
+
+def test_coding_space_save_load_preserves_pins(tmp_path):
+    path = tmp_path / 'space.pkl'
+
+    space = CodingSpace('MIKEY', seed=8675309)
+    space.pin_codons({2: 'ATC'})
+
+    space.save(path)
+    loaded = CodingSpace.load(path)
+
+    assert loaded.view.pinned_codons == space.view.pinned_codons
+    assert loaded.n_valid_sequences == space.n_valid_sequences
+    assert [*loaded.enumerate()] == [*space.enumerate()]
