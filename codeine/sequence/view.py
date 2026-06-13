@@ -1,8 +1,10 @@
-from typing import Dict, Generator, List, Sequence, Union
+import random
+
+from typing import Dict, Generator, List, Optional, Sequence, Union
 
 from codeine.sequence.display import format_banned_sequences, format_count, format_restrictions
 from codeine.sequence.graph import CodonGraph, CodonNode
-from codeine.utils.sampling import Sampler
+from codeine.utils.sampling import Sampler, Seedable
 
 
 CodonRestriction = Union[str, Sequence[str]]
@@ -16,6 +18,8 @@ class CodonGraphView:
 
     def __init__(self,
                  graph: CodonGraph,
+                 seed: Seedable = None,
+                 rng: Optional[random.Random] = None,
                  ) -> None:
         """
         Constructor for the CodonGraphView
@@ -25,6 +29,11 @@ class CodonGraphView:
         graph
             The underlying codon graph.
         """
+        if seed is not None and rng is not None:
+            raise ValueError('Provide either seed or rng, not both.')
+
+        self._rng = rng if rng is not None else random.Random(seed)
+
         self.graph = graph
         self.pinned_codons: Dict[int, List[str]] = {}
 
@@ -323,7 +332,7 @@ class CodonGraphView:
             weights = [choice_masses[codon] for codon in codons]
 
             if codons:
-                samplers[node] = Sampler(codons, weights)
+                samplers[node] = Sampler(codons, weights, rng=self._rng)
 
         self.samplers = samplers
 

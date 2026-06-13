@@ -1,3 +1,5 @@
+import random
+
 from typing import Dict, Generator, List, Optional, Sequence, Union
 
 from codeine.motifs.restriction import RestrictionSite
@@ -6,13 +8,16 @@ from codeine.sequence.display import format_banned_sequences, format_forbidden_m
 from codeine.sequence.graph import CodonGraph
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
-
+from codeine.utils.sampling import Seedable
 
 ForbiddenMotif = Union[str, RestrictionSite]
 ForbiddenMotifs = Optional[Union[ForbiddenMotif, Sequence[ForbiddenMotif]]]
 
 
 class CodingSpace:
+    """
+    Class representing coding sequence space, for sampling and mutating CDS coding sequences.
+    """
     def __init__(
         self,
         aa_seq: str,
@@ -23,7 +28,31 @@ class CodingSpace:
         codon_weights: CodonWeights = None,
         context_l: str = '',
         context_r: str = '',
+        seed: Optional[Seedable] = None,
+        rng: Optional[random.Random] = None
     ) -> None:
+        """
+        Constructor for the CodingSpace class.
+
+        Parameters
+        ----------
+        aa_seq
+            The amino acid sequence.
+        codon_restrictions
+            Any codon restrictions in the format e.g. {4: 'TCC'} or {5: ['AGT', 'AGC']}
+        translation_table
+            The translation table to use. Leave blank to use standard table.
+        codon_weights
+            The codon weights to use. Leave blank to sample uniformly.
+        context_l
+            The context sequence to the left of the coding sequence
+        context_r
+            The context sequence to the right of the coding sequence
+        seed
+            Seed used to initialise the view's random number generator.
+        rng
+            Random number generator used by the view for sampling.
+        """
         if translation_table is None:
             rna = codon_weights.rna if codon_weights is not None else False
         else:
@@ -45,11 +74,10 @@ class CodingSpace:
             weights=codon_weights,
             context_l=context_l,
             context_r=context_r,
-        ).view()
-
-    @classmethod
-    def from_graph(cls, graph: CodonGraph) -> 'CodingSpace':
-        return cls.from_view(graph.view())
+        ).view(
+            seed=seed,
+            rng=rng,
+        )
 
     @classmethod
     def from_view(cls, view) -> 'CodingSpace':
@@ -61,12 +89,42 @@ class CodingSpace:
         return obj
 
     def __getitem__(self, index: int) -> str:
+        """
+        Return the valid sequence at a given index.
+
+        Parameters
+        ----------
+        index
+            Zero-based sequence index.
+
+        Returns
+        -------
+        str
+            The indexed valid DNA sequence.
+        """
         return self.view[index]
 
     def __iter__(self) -> Generator[str, None, None]:
+        """
+        Iterate over all valid sequences in this coding space.
+        Be aware that "all valid sequences" can be astronomically many!
+
+        Yields
+        ----------
+        All valid sequences in the coding space, in order.
+        """
+
         yield from self.view
 
     def __contains__(self, seq: str) -> bool:
+        """
+        Does the given seq exist in this space?
+
+        Returns
+        ----------
+        True if and only if this is a valid sequence in this space.
+        """
+
         return seq in self.view
 
     def __repr__(self) -> str:
@@ -189,33 +247,103 @@ class CodingSpace:
         return sorted(set(forbidden_sequences + forbidden_homopolymers))
 
     def sample(self) -> str:
+        """
+        Sample a DNA sequence from this coding space.
+
+        Returns
+        -------
+        A sampled sequence. By default, only the coding sequence is returned.
+        """
         return self.view.sample()
 
     def pin_codons(self, pinned_codons):
+        """
+        Pin (temporarily fix) a codon in the codon graph.
+
+        Parameters
+        ----------
+        pinned_codons:
+            A dict specifying which codons to pin, by pos: codon
+        """
+
         self.view.pin_codons(pinned_codons)
 
     def unpin_codons(self, positions):
+        """
+        Unpin codon nodes by pos.
+
+        Parameters
+        ----------
+        positions:
+            A list of positions
+        """
         self.view.unpin_codons(positions)
 
     def clear_pins(self):
+        """
+        Remove all codon pins from the generator.
+        """
         self.view.clear_pins()
 
     def contains(self, seq: str) -> bool:
+        """
+        Check whether a DNA sequence is contained in this coding space.
+
+        Parameters
+        ----------
+        seq
+            The sequence to check
+
+        Returns
+        -------
+        True if and only if the sequence is contained in this coding space.
+        """
         return self.view.contains(seq)
 
     @property
     def n_valid_sequences(self) -> int:
+        """
+        The number of valid sequences in this space.
+
+        Returns
+        -------
+        The number of valid sequences in this space.
+        """
         return self.view.n_valid_sequences
 
     @property
     def translation_table(self) -> TranslationTable:
+        """
+        The translation table being used in this space.
+
+        Returns
+        -------
+        The TranslationTable being used.
+        """
         return self.view.graph.tt
 
     @property
     def codon_weights(self) -> CodonWeights:
+        """
+        The codon weights being used in this space.
+
+        Returns
+        -------
+        The CodonWeights being used.
+        """
         return self.view.graph.cw
 
     def enumerate(self) -> Generator[str, None, None]:
+        """
+        Generate all sequences in this space. If there are many (and often there are
+        astronomically many), one would not expect to reach the 'end'. However for smaller
+        sequence spaces, such as mutation spaces, it's quite possible to get there.
+
+        Yields
+        ------
+        str
+            A valid DNA sequence.
+        """
         yield from self.view.enumerate()
 
     def mutants(
@@ -223,6 +351,17 @@ class CodingSpace:
         seq: str,
         positions: Sequence[int],
     ) -> 'CodingSpace':
+        """
+        Return a space of mutants relative to a given coding sequence, i.e. a space derived
+        from this one but which fixes the sequence on all but the specified positions.
+
+        Parameters
+        ----------
+        seq
+            The sequence to mutate.
+        positions
+            The positions that are allowed to vary.
+        """
         seq = seq.upper()
 
         if not self.contains(seq):

@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from codeine.sequence.view import CodonGraphView
 
+import random
 import uuid
 
 from collections import Counter
@@ -13,7 +14,7 @@ from typing import Dict, List, Optional, Sequence, Union, Set, Tuple
 from codeine.sequence.display import format_banned_sequences, format_restrictions
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
-
+from codeine.utils.sampling import Seedable
 
 CodonRestriction = Union[str, Sequence[str]]
 
@@ -506,9 +507,16 @@ class CodonGraph:
         self.codon_nodes.add(node)
         self.codon_nodes_by_pos.setdefault(node.pos, set()).add(node)
 
-    def view(self) -> 'CodonGraphView':
+    def view(self, seed: Optional[Seedable] = None, rng: Optional[random.Random] = None) -> 'CodonGraphView':
         """
         Return a constrained view over this graph.
+
+        Parameters
+        ----------
+        seed
+            Seed used to initialise the view's random number generator.
+        rng
+            Random number generator used by the view for sampling.
         """
         from codeine.sequence.view import CodonGraphView
-        return CodonGraphView(self)
+        return CodonGraphView(self, seed=seed, rng=rng)
