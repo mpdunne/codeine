@@ -190,13 +190,13 @@ def test_mutation_space_n_valid_sequences():
     assert space.n_valid_sequences == 24
 
     mut = space.mutants(ref_cds, [1])
-    assert mut.n_valid_sequences == 1
+    assert mut.n_valid_variants == 1
 
     mut = space.mutants(ref_cds, [2])
-    assert mut.n_valid_sequences == 3
+    assert mut.n_valid_variants == 3
 
     mut = space.mutants(ref_cds, [1, 2, 3])
-    assert mut.n_valid_sequences == 6
+    assert mut.n_valid_variants == 6
 
     assert space.n_valid_sequences == 24
 
@@ -226,8 +226,8 @@ def test_sequence_space_contains():
 
 def test_sequence_space_mutants_pins_non_mutated_positions():
     space = CodingSpace('FF')
-    muts = space.mutants('TTTTTT', positions=[2])
-    assert list(muts.enumerate()) == ['TTTTTT', 'TTTTTC']
+    muts = space.mutants('TTTTTT', free_positions=[2])
+    assert list(muts) == ['TTTTTT', 'TTTTTC']
 
 
 def test_space_contains():

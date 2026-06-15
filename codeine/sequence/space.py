@@ -1,3 +1,8 @@
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from codeine.sequence.mutate import MutationSpace
+
 import pickle
 import random
 
@@ -273,7 +278,7 @@ class CodingSpace:
         """
         return self.view.sample()
 
-    def pin_codons(self, pinned_codons):
+    def pin_codons(self, pinned_codons: Dict[int, str]):
         """
         Pin (temporarily fix) a codon in the codon graph.
 
@@ -285,7 +290,7 @@ class CodingSpace:
 
         self.view.pin_codons(pinned_codons)
 
-    def unpin_codons(self, positions):
+    def unpin_codons(self, positions: Dict[int, str]):
         """
         Unpin codon nodes by pos.
 
@@ -295,6 +300,17 @@ class CodingSpace:
             A list of positions
         """
         self.view.unpin_codons(positions)
+
+    def set_pinned_codons(self, pinned_codons: Dict[int, str]) -> None:
+        """
+        Pin a specified group codons, unpinning any that are not specified.
+
+        Parameters
+        ----------
+        pinned_codons:
+            A dict specifying which codons to pin, by pos: codon
+        """
+        self.view.set_pinned_codons(pinned_codons)
 
     def clear_pins(self):
         """
@@ -366,8 +382,8 @@ class CodingSpace:
     def mutants(
         self,
         seq: str,
-        positions: Sequence[int],
-    ) -> 'CodingSpace':
+        free_positions: Sequence[int] = None,
+    ) -> 'MutationSpace':
         """
         Return a space of mutants relative to a given coding sequence, i.e. a space derived
         from this one but which fixes the sequence on all but the specified positions.
@@ -376,27 +392,21 @@ class CodingSpace:
         ----------
         seq
             The sequence to mutate.
-        positions
+        free_positions
             The positions that are allowed to vary.
         """
-        seq = seq.upper()
+        cds = seq.upper()
 
-        if not self.contains(seq):
-            raise ValueError('Parent sequence is not contained in this coding space.')
-
-        positions = set(positions)
-
-        if any(pos < 1 or pos > len(self.view.aa_seq) for pos in positions):
-            raise ValueError('Mutation positions out of range.')
-
-        mutation_pins = {}
-
-        for pos in range(1, len(self.view.aa_seq) + 1):
-            if pos not in positions:
-                start = (pos - 1) * 3
-                mutation_pins[pos] = seq[start:start + 3]
+        if not self.contains(cds):
+            raise ValueError('CDS is not contained in this coding space.')
 
         view = self.view.copy()
-        view.pin_codons(mutation_pins)
+        space = CodingSpace.from_view(view)
 
-        return CodingSpace.from_view(view)
+        from codeine.sequence.mutate import MutationSpace
+
+        return MutationSpace(
+            space=space,
+            cds=cds,
+            free_positions=free_positions,
+        )
