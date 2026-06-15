@@ -382,7 +382,7 @@ class CodingSpace:
     def mutants(
         self,
         seq: str,
-        free_positions: Sequence[int],
+        free_positions: Sequence[int] = None,
     ) -> 'MutationSpace':
         """
         Return a space of mutants relative to a given coding sequence, i.e. a space derived

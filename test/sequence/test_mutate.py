@@ -144,3 +144,21 @@ def test_mutation_space_sample_uses_current_pins():
         assert variant[3:6] == cds[3:6]
         assert variant[6:9] == cds[6:9]
         assert variant[9:12] == cds[9:12]
+
+
+def test_mutation_space_does_not_modify_original_space():
+    space = CodingSpace('MIKEY')
+    cds = space[0]
+
+    muts = space.mutants(cds, free_positions=[2])
+    muts.freeze_all()
+
+    assert space.view.pinned_codons == {}
+    assert muts.space.view.pinned_codons != {}
+
+
+def test_mutation_space_rejects_cds_not_in_space():
+    space = CodingSpace('MIKEY')
+
+    with pytest.raises(ValueError):
+        space.mutants('ATG' * 5)

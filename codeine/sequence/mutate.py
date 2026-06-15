@@ -199,3 +199,14 @@ class MutationSpace:
         A sampled string sequence from this mutation space.
         """
         return self.space.sample()
+
+    def enumerate(self) -> Generator[str, None, None]:
+        """
+        Generate all sequences in this mutation space.
+
+        Yields
+        ------
+        str
+            A valid DNA sequence.
+        """
+        yield from self.space.enumerate()
