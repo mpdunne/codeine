@@ -1,3 +1,8 @@
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from codeine.sequence.mutate import MutationSpace
+
 import pickle
 import random
 
@@ -377,8 +382,8 @@ class CodingSpace:
     def mutants(
         self,
         seq: str,
-        positions: Sequence[int],
-    ) -> 'CodingSpace':
+        free_positions: Sequence[int],
+    ) -> 'MutationSpace':
         """
         Return a space of mutants relative to a given coding sequence, i.e. a space derived
         from this one but which fixes the sequence on all but the specified positions.
@@ -387,27 +392,21 @@ class CodingSpace:
         ----------
         seq
             The sequence to mutate.
-        positions
+        free_positions
             The positions that are allowed to vary.
         """
-        seq = seq.upper()
+        cds = seq.upper()
 
-        if not self.contains(seq):
-            raise ValueError('Parent sequence is not contained in this coding space.')
-
-        positions = set(positions)
-
-        if any(pos < 1 or pos > len(self.view.aa_seq) for pos in positions):
-            raise ValueError('Mutation positions out of range.')
-
-        mutation_pins = {}
-
-        for pos in range(1, len(self.view.aa_seq) + 1):
-            if pos not in positions:
-                start = (pos - 1) * 3
-                mutation_pins[pos] = seq[start:start + 3]
+        if not self.contains(cds):
+            raise ValueError('CDS is not contained in this coding space.')
 
         view = self.view.copy()
-        view.pin_codons(mutation_pins)
+        space = CodingSpace.from_view(view)
 
-        return CodingSpace.from_view(view)
+        from codeine.sequence.mutate import MutationSpace
+
+        return MutationSpace(
+            space=space,
+            cds=cds,
+            free_positions=free_positions,
+        )

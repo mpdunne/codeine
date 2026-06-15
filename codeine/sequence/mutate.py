@@ -1,4 +1,4 @@
-from typing import Collection, Optional, Set
+from typing import Collection, Generator, Optional, Set
 
 from codeine.sequence.space import CodingSpace
 
@@ -43,6 +43,43 @@ class MutationSpace:
 
         self._free_positions: Set[int] = set()
         self.set_free_positions(free_positions)
+
+    def __getitem__(self, index: int) -> str:
+        """
+        Return the valid sequence at a given index.
+
+        Parameters
+        ----------
+        index
+            Zero-based sequence index.
+
+        Returns
+        -------
+        str
+            The indexed valid DNA sequence.
+        """
+        return self.space[index]
+
+    def __iter__(self) -> Generator[str, None, None]:
+        """
+        Iterate over all valid sequences in this mutation space.
+        Be aware that "all valid sequences" can be astronomically many!
+
+        Yields
+        ----------
+        All valid sequences in the coding space, in order.
+        """
+        yield from self.space
+
+    def __contains__(self, seq: str) -> bool:
+        """
+        Does the given seq exist in this space?
+
+        Returns
+        ----------
+        True if and only if this is a valid sequence in this space.
+        """
+        return seq in self.space
 
     @property
     def free_positions(self):
@@ -91,6 +128,21 @@ class MutationSpace:
         """
         pins = {pos: self._codon_at_position(pos) for pos in self.frozen_positions}
         self.space.set_pinned_codons(pins)
+
+    def contains(self, seq: str) -> bool:
+        """
+        Check whether a DNA sequence is contained in this mutation space.
+
+        Parameters
+        ----------
+        seq
+            The sequence to check
+
+        Returns
+        -------
+        True if and only if the sequence is contained in this mutation space.
+        """
+        return self.space.contains(seq)
 
     @property
     def n_valid_variants(self) -> int:
