@@ -273,7 +273,7 @@ class CodingSpace:
         """
         return self.view.sample()
 
-    def pin_codons(self, pinned_codons):
+    def pin_codons(self, pinned_codons: Dict[int, str]):
         """
         Pin (temporarily fix) a codon in the codon graph.
 
@@ -285,7 +285,7 @@ class CodingSpace:
 
         self.view.pin_codons(pinned_codons)
 
-    def unpin_codons(self, positions):
+    def unpin_codons(self, positions: Dict[int, str]):
         """
         Unpin codon nodes by pos.
 
@@ -295,6 +295,17 @@ class CodingSpace:
             A list of positions
         """
         self.view.unpin_codons(positions)
+
+    def set_pinned_codons(self, pinned_codons: Dict[int, str]) -> None:
+        """
+        Pin a specified group codons, unpinning any that are not specified.
+
+        Parameters
+        ----------
+        pinned_codons:
+            A dict specifying which codons to pin, by pos: codon
+        """
+        self.view.set_pinned_codons(pinned_codons)
 
     def clear_pins(self):
         """

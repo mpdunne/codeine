@@ -169,6 +169,19 @@ class CodonGraphView:
 
         self.compile()
 
+    def set_pinned_codons(self, pinned_codons: Dict[int, CodonRestriction]) -> None:
+        """
+        Pin a specified group codons, leaving all others unpinned.
+
+        Parameters
+        ----------
+        pinned_codons:
+            A dict specifying which codons to pin, by pos: codon
+        """
+        pinned_codons = self.graph.validate_codon_restrictions(pinned_codons)
+        self.pinned_codons = dict(pinned_codons)
+        self.compile()
+
     def clear_pins(self) -> None:
         """
         Remove all codon pins from this graph view

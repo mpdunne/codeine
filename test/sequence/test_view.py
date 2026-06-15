@@ -2,6 +2,7 @@ import pickle
 import pytest
 
 from itertools import product
+from unittest.mock import MagicMock
 
 from codeine.sequence.graph import CodonGraph
 
@@ -19,11 +20,37 @@ def test_view_can_unpin_codons():
     assert 3 not in view.pinned_codons
 
 
+def test_pin_codons_validates_positions():
+    view = CodonGraph('MIKEY').view()
+    with pytest.raises(ValueError):
+        view.pin_codons({999: 'ATG'})
+
+
 def test_view_can_clear_pins():
     view = CodonGraph('MIKEY').view()
     view.pin_codons({3: 'AAA', 5: 'TAT'})
     view.clear_pins()
     assert view.pinned_codons == {}
+
+
+def test_set_pinned_codons_replaces_existing_pins():
+    view = CodonGraph('MIKEY').view()
+    view.pin_codons({1: 'ATG'})
+    view.set_pinned_codons({5: 'TAT'})
+    assert view.pinned_codons == {5: ['TAT']}
+
+
+def test_set_pinned_codons_compiles_once():
+    view = CodonGraph('MIKEY').view()
+    view.compile = MagicMock()
+    view.set_pinned_codons({1: 'ATG'})
+    view.compile.assert_called_once()
+
+
+def test_set_pinned_codons_validates_positions():
+    view = CodonGraph('MIKEY').view()
+    with pytest.raises(ValueError):
+        view.set_pinned_codons({999: 'ATG'})
 
 
 def test_view_rejects_out_of_range_pin():
