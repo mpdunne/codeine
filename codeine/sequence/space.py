@@ -400,13 +400,10 @@ class CodingSpace:
         if not self.contains(cds):
             raise ValueError('CDS is not contained in this coding space.')
 
-        view = self.view.copy()
-        space = CodingSpace.from_view(view)
-
         from codeine.sequence.mutate import MutationSpace
 
         return MutationSpace(
-            space=space,
+            space=self,
             cds=cds,
             free_positions=free_positions,
         )

@@ -35,8 +35,10 @@ class MutationSpace:
         free_positions
             Which positions are allowed to change?
         """
-        self.space = space
+        self.space = CodingSpace.from_view(space.view.copy())
         self.cds = self._validate_cds(cds)
+
+        self._base_pins = dict(self.space.view.pinned_codons)
 
         if free_positions is None:
             free_positions = range(1, len(space.view.aa_seq) + 1)
@@ -146,7 +148,8 @@ class MutationSpace:
         """
         Update the pins on the underlying space.
         """
-        pins = {pos: self._codon_at_position(pos) for pos in self.frozen_positions}
+        frozen_pins = {pos: self._codon_at_position(pos) for pos in self.frozen_positions}
+        pins = {**self._base_pins, **frozen_pins}
         self.space.set_pinned_codons(pins)
 
     def contains(self, seq: str) -> bool:
