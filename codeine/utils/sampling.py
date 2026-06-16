@@ -46,7 +46,7 @@ class Sampler:
 
         total = sum(weights)
         if total <= 0:
-            raise ValueError('Weights must sum to a positive number')
+            raise ValueError('Weights must sum to a positive number.')
 
         self.items = tuple(items)
         self._single = len(items) == 1
