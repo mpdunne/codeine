@@ -27,14 +27,14 @@ def test_mutation_space_inherits_existing_pins():
     cds = space[0]
     space.pin_codons({3: cds[6:9]})
     mutation_space = space.mutants(cds)
-    assert mutation_space.space.view.pinned_codons[3] == [cds[6:9]]
+    assert mutation_space.view.pinned_codons[3] == [cds[6:9]]
     assert mutation_space.contains(cds)
 
     space = CodingSpace('MIKEY')
     cds = space[0]
     space.pin_codons({3: cds[6:9]})
     mutation_space = MutationSpace(space, cds)
-    assert mutation_space.space.view.pinned_codons[3] == [cds[6:9]]
+    assert mutation_space.view.pinned_codons[3] == [cds[6:9]]
     assert mutation_space.contains(cds)
 
 
@@ -44,14 +44,14 @@ def test_mutation_space_remains_unchanged_if_space_changes():
     space.pin_codons({3: cds[6:9]})
     mutation_space = space.mutants(cds)
     space.pin_codons({4: cds[9:12]})
-    assert 4 not in mutation_space.space.view.pinned_codons
+    assert 4 not in mutation_space.view.pinned_codons
 
     space = CodingSpace('MIKEY')
     cds = space[0]
     space.pin_codons({3: cds[6:9]})
     mutation_space = MutationSpace(space, cds)
     space.pin_codons({4: cds[9:12]})
-    assert 4 not in mutation_space.space.view.pinned_codons
+    assert 4 not in mutation_space.view.pinned_codons
 
 
 def test_mutation_space_combines_original_pins_with_frozen_positions():
@@ -60,14 +60,14 @@ def test_mutation_space_combines_original_pins_with_frozen_positions():
     space.pin_codons({3: cds[6:9]})
     mutation_space = space.mutants(cds, free_positions=[2, 3])
     expected_pins = {1: [cds[0:3]], 3: [cds[6:9]], 4: [cds[9:12]], 5: [cds[12:15]]}
-    assert mutation_space.space.view.pinned_codons == expected_pins
+    assert mutation_space.view.pinned_codons == expected_pins
 
     space = CodingSpace('MIKEY')
     cds = space[0]
     space.pin_codons({3: cds[6:9]})
     mutation_space = MutationSpace(space, cds, free_positions=[2, 3])
     expected_pins = {1: [cds[0:3]], 3: [cds[6:9]], 4: [cds[9:12]], 5: [cds[12:15]]}
-    assert mutation_space.space.view.pinned_codons == expected_pins
+    assert mutation_space.view.pinned_codons == expected_pins
 
 
 def test_mutation_space_original_space_untouched_by_freezing():
@@ -77,7 +77,7 @@ def test_mutation_space_original_space_untouched_by_freezing():
     original_pins = dict(space.view.pinned_codons)
     mutation_space = space.mutants(cds, free_positions=[1, 3, 4])
     assert space.view.pinned_codons == original_pins
-    assert mutation_space.space.view.pinned_codons != original_pins
+    assert mutation_space.view.pinned_codons != original_pins
 
     space = CodingSpace('MIKEY')
     cds = space[0]
@@ -85,7 +85,7 @@ def test_mutation_space_original_space_untouched_by_freezing():
     original_pins = dict(space.view.pinned_codons)
     mutation_space = MutationSpace(space, cds, free_positions=[1, 3, 4])
     assert space.view.pinned_codons == original_pins
-    assert mutation_space.space.view.pinned_codons != original_pins
+    assert mutation_space.view.pinned_codons != original_pins
 
 
 def test_mutation_space_defaults_to_all_positions_free():
@@ -171,7 +171,7 @@ def test_mutation_space_updates_pins_when_free_positions_change():
     muts.set_free_positions([2])
 
     expected_pins = {1: [cds[0:3]], 3: [cds[6:9]], 4: [cds[9:12]], 5: [cds[12:15]]}
-    assert muts.space.view.pinned_codons == expected_pins
+    assert muts.view.pinned_codons == expected_pins
 
 
 def test_mutation_space_freeze_all_pins_every_codon():
@@ -186,7 +186,7 @@ def test_mutation_space_freeze_all_pins_every_codon():
         for pos in range(1, len(space.view.aa_seq) + 1)
     }
 
-    assert muts.space.view.pinned_codons == expected_pins
+    assert muts.view.pinned_codons == expected_pins
 
 
 def test_mutation_space_unfreeze_all_clears_pins():
@@ -196,7 +196,7 @@ def test_mutation_space_unfreeze_all_clears_pins():
 
     muts.unfreeze_all()
     assert space.view.pinned_codons == {}
-    assert muts.space.view.pinned_codons == {}
+    assert muts.view.pinned_codons == {}
 
 
 def test_mutation_space_samples_correctly():
@@ -205,7 +205,7 @@ def test_mutation_space_samples_correctly():
 
     muts = MutationSpace(space, cds, free_positions=[2])
     assert space.view.pinned_codons == {}
-    assert set(muts.space.view.pinned_codons.keys()) == {1, 3, 4, 5}
+    assert set(muts.view.pinned_codons.keys()) == {1, 3, 4, 5}
     variants = [muts.sample() for _ in range(1000)]
     assert len(set(variants)) == muts.n_valid_variants == 3
     for variant in variants:
@@ -216,7 +216,7 @@ def test_mutation_space_samples_correctly():
 
     muts = MutationSpace(space, cds, free_positions=[2, 3])
     assert space.view.pinned_codons == {}
-    assert set(muts.space.view.pinned_codons.keys()) == {1, 4, 5}
+    assert set(muts.view.pinned_codons.keys()) == {1, 4, 5}
     variants = [muts.sample() for _ in range(1000)]
     assert len(set(variants)) == muts.n_valid_variants == 6
     for variant in variants:
@@ -226,7 +226,7 @@ def test_mutation_space_samples_correctly():
 
     muts = MutationSpace(space, cds, free_positions=[5])
     assert space.view.pinned_codons == {}
-    assert set(muts.space.view.pinned_codons.keys()) == {1, 2, 3, 4}
+    assert set(muts.view.pinned_codons.keys()) == {1, 2, 3, 4}
     variants = [muts.sample() for _ in range(1000)]
     assert len(set(variants)) == muts.n_valid_variants == 2
     for variant in variants:
@@ -244,4 +244,4 @@ def test_mutation_space_does_not_modify_original_space():
     muts.freeze_all()
 
     assert space.view.pinned_codons == {}
-    assert muts.space.view.pinned_codons != {}
+    assert muts.view.pinned_codons != {}

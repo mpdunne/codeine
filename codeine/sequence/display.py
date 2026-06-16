@@ -79,14 +79,46 @@ def format_banned_sequences(
 
 
 def normalise_motif(seq: str, rna: bool) -> str:
+    """
+    Normalise a motif by uppercasing and converting to RNA/DNA as specified
+    """
     seq = seq.upper()
     return seq.replace('T', 'U') if rna else seq.replace('U', 'T')
 
 
 def format_forbidden_motif(motif: 'ForbiddenMotif', rna: bool) -> str:
+    """
+    Format a forbidden motif for display.
+    """
 
     if isinstance(motif, RestrictionSite):
         sequences = [normalise_motif(seq, rna) for seq in motif.motifs]
         return f'{motif.name} ({", ".join(sequences)})'
 
     return normalise_motif(motif, rna)
+
+
+def format_positions(positions) -> str:
+    """
+    Format positions nicely.
+    """
+    positions = sorted(positions)
+    if not positions:
+        return 'None'
+
+    ranges = []
+    start = prev = positions[0]
+
+    for pos in positions[1:]:
+        if pos == prev + 1:
+            prev = pos
+        else:
+            ranges.append((start, prev))
+            start = prev = pos
+
+    ranges.append((start, prev))
+
+    return ', '.join(
+        str(start) if start == end else f'{start}-{end}'
+        for start, end in ranges
+    )

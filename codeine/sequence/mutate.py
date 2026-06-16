@@ -1,5 +1,8 @@
 from typing import Collection, FrozenSet, Generator, Optional, Set
 
+from codeine.sequence.display import format_banned_sequences, format_forbidden_motif,\
+    format_count, format_restrictions, format_positions
+from codeine.motifs.restriction import RestrictionSite
 from codeine.sequence.space import CodingSpace
 
 
@@ -35,13 +38,16 @@ class MutationSpace:
         free_positions
             Which positions are allowed to change?
         """
-        self.space = CodingSpace.from_view(space.view.copy())
+        self.forbidden_motifs = space.forbidden_motifs
+        self.max_homopolymer = space.max_homopolymer
+
+        self.view = space.view.copy()
+        self._base_pins = dict(space.view.pinned_codons)
+
         self.cds = self._validate_cds(cds)
 
-        self._base_pins = dict(self.space.view.pinned_codons)
-
         if free_positions is None:
-            free_positions = range(1, len(space.view.aa_seq) + 1)
+            free_positions = range(1, len(self.view.aa_seq) + 1)
 
         self._free_positions: Set[int] = set()
         self.set_free_positions(free_positions)
@@ -60,7 +66,7 @@ class MutationSpace:
         str
             The indexed valid DNA sequence.
         """
-        return self.space[index]
+        return self.view[index]
 
     def __iter__(self) -> Generator[str, None, None]:
         """
@@ -71,7 +77,7 @@ class MutationSpace:
         ----------
         All valid sequences in the coding space, in order.
         """
-        yield from self.space
+        yield from self.view
 
     def __contains__(self, seq: str) -> bool:
         """
@@ -81,7 +87,86 @@ class MutationSpace:
         ----------
         True if and only if this is a valid sequence in this space.
         """
-        return seq in self.space
+        return seq in self.view
+
+    def __repr__(self) -> str:
+        molecule = 'RNA' if self.view.graph.tt.rna else 'DNA'
+
+        lines = [
+            f'{type(self).__name__}',
+            '',
+            f'Translation table: {self.view.graph.tt.table_id} ({self.view.graph.tt.name})',
+            f'Molecule type: {molecule}',
+            '',
+            f'Amino acid sequence ({len(self.view.aa_seq)} aa):',
+            f'{self.view.aa_seq}',
+            '',
+            'Reference CDS:',
+            self.cds,
+            '',
+        ]
+
+        if self.view.graph.codon_restrictions:
+            lines += [
+                'Codon restrictions:',
+                *format_restrictions(
+                    self.view.graph.codon_restrictions,
+                    label='restricted positions',
+                    max_lines=4,
+                ),
+                '',
+            ]
+
+        if self.forbidden_motifs:
+            motifs = self.forbidden_motifs
+
+            if isinstance(motifs, (str, RestrictionSite)):
+                motifs = [motifs]
+
+            lines += [
+                'Forbidden motifs:',
+                *format_banned_sequences(
+                    [
+                        format_forbidden_motif(
+                            motif,
+                            rna=self.view.graph.tt.rna,
+                        )
+                        for motif in motifs
+                    ],
+                    max_lines=4,
+                ),
+                '',
+            ]
+
+        if self.max_homopolymer is not None:
+            lines += [
+                'Maximum homopolymer length:',
+                f'    {self.max_homopolymer}',
+                '',
+            ]
+
+        if self._base_pins:
+            lines += [
+                'Inherited pins:',
+                *format_restrictions(
+                    self._base_pins,
+                    label='pinned positions',
+                    max_lines=4,
+                ),
+                '',
+            ]
+
+        lines += [
+            'Free positions:',
+            f'    {format_positions(self.free_positions)}',
+            '',
+        ]
+
+        lines.append(
+            f'Num. valid variants: {format_count(self.n_valid_variants)}'
+        )
+
+        return '\n'.join(lines)
 
     @property
     def free_positions(self) -> FrozenSet[int]:
@@ -95,7 +180,7 @@ class MutationSpace:
         """
         Codon positions that are currently fixed to the reference CDS.
         """
-        all_positions = set(range(1, len(self.space.view.aa_seq) + 1))
+        all_positions = set(range(1, len(self.view.aa_seq) + 1))
         return frozenset(all_positions - self._free_positions)
 
     def _validate_positions(self, positions: Collection[int]) -> Set[int]:
@@ -103,7 +188,7 @@ class MutationSpace:
         Validate a collection of codon positions.
         """
         positions = set(positions)
-        invalid = [pos for pos in positions if pos < 1 or pos > len(self.space.view.aa_seq)]
+        invalid = [pos for pos in positions if pos < 1 or pos > len(self.view.aa_seq)]
         if invalid:
             raise ValueError(f'Invalid codon positions: {sorted(invalid)}')
 
@@ -124,7 +209,7 @@ class MutationSpace:
         """
         cds = cds.upper()
 
-        if not self.space.contains(cds):
+        if not self.view.contains(cds):
             raise ValueError('CDS is not contained in this coding space.')
 
         return cds
@@ -150,7 +235,7 @@ class MutationSpace:
         """
         frozen_pins = {pos: self._codon_at_position(pos) for pos in self.frozen_positions}
         pins = {**self._base_pins, **frozen_pins}
-        self.space.set_pinned_codons(pins)
+        self.view.set_pinned_codons(pins)
 
     def contains(self, seq: str) -> bool:
         """
@@ -165,14 +250,14 @@ class MutationSpace:
         -------
         True if and only if the sequence is contained in this mutation space.
         """
-        return self.space.contains(seq)
+        return self.view.contains(seq)
 
     @property
     def n_valid_variants(self) -> int:
         """
         Number of valid variants under the current mutation constraints.
         """
-        return self.space.n_valid_sequences
+        return self.view.n_valid_sequences
 
     def set_free_positions(self, positions: Collection[int]) -> None:
         """
@@ -210,7 +295,7 @@ class MutationSpace:
         """
         Unfreeze all codon positions.
         """
-        self._free_positions = set(range(1, len(self.space.view.aa_seq) + 1))
+        self._free_positions = set(range(1, len(self.view.aa_seq) + 1))
         self._update_pins()
 
     def sample(self) -> str:
@@ -221,7 +306,7 @@ class MutationSpace:
         -------
         A sampled string sequence from this mutation space.
         """
-        return self.space.sample()
+        return self.view.sample()
 
     def enumerate(self) -> Generator[str, None, None]:
         """
@@ -232,4 +317,4 @@ class MutationSpace:
         str
             A valid DNA sequence.
         """
-        yield from self.space.enumerate()
+        yield from self.view.enumerate()
