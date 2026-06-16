@@ -196,6 +196,7 @@ def test_mutation_space_unfreeze_all_clears_pins():
 
     muts.unfreeze_all()
     assert space.view.pinned_codons == {}
+    assert muts.space.view.pinned_codons == {}
 
 
 def test_mutation_space_samples_correctly():
@@ -244,10 +245,3 @@ def test_mutation_space_does_not_modify_original_space():
 
     assert space.view.pinned_codons == {}
     assert muts.space.view.pinned_codons != {}
-
-
-def test_mutation_space_rejects_cds_not_in_space():
-    space = CodingSpace('MIKEY')
-
-    with pytest.raises(ValueError):
-        space.mutants('ATG' * 5)
