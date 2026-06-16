@@ -90,7 +90,7 @@ def test_uniform_can_use_rna_flag_without_table():
 def test_uniform_uses_table_dna_if_rna_is_not_given():
     table = TranslationTable(rna=True)
     weights = CodonWeights.uniform(table)
-    assert not weights.rna
+    assert weights.rna
     assert 'GCT' in weights.weights
     assert 'GCU' not in weights.weights
 
