@@ -78,13 +78,15 @@ def format_banned_sequences(
     return lines
 
 
+def normalise_motif(seq: str, rna: bool) -> str:
+    seq = seq.upper()
+    return seq.replace('T', 'U') if rna else seq.replace('U', 'T')
+
+
 def format_forbidden_motif(motif: 'ForbiddenMotif', rna: bool) -> str:
 
     if isinstance(motif, RestrictionSite):
-        sequences = [
-            seq.upper().replace('T', 'U') if rna else seq.upper().replace('U', 'T')
-            for seq in motif.motifs
-        ]
+        sequences = [normalise_motif(seq, rna) for seq in motif.motifs]
         return f'{motif.name} ({", ".join(sequences)})'
 
-    return motif.upper().replace('T', 'U') if rna else motif.upper().replace('U', 'T')
+    return normalise_motif(motif, rna)
