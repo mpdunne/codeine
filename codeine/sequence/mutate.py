@@ -1,4 +1,4 @@
-from typing import Collection, Generator, Optional, Set
+from typing import Collection, FrozenSet, Generator, Optional, Set
 
 from codeine.sequence.space import CodingSpace
 
@@ -36,7 +36,7 @@ class MutationSpace:
             Which positions are allowed to change?
         """
         self.space = space
-        self.cds = cds
+        self.cds = self._validate_cds(cds)
 
         if free_positions is None:
             free_positions = range(1, len(space.view.aa_seq) + 1)
@@ -82,14 +82,14 @@ class MutationSpace:
         return seq in self.space
 
     @property
-    def free_positions(self):
+    def free_positions(self) -> FrozenSet[int]:
         """
         Codon positions that are currently free to mutate.
         """
         return frozenset(self._free_positions)
 
     @property
-    def frozen_positions(self):
+    def frozen_positions(self) -> FrozenSet[int]:
         """
         Codon positions that are currently fixed to the reference CDS.
         """
@@ -106,6 +106,26 @@ class MutationSpace:
             raise ValueError(f'Invalid codon positions: {sorted(invalid)}')
 
         return positions
+
+    def _validate_cds(self, cds: str) -> str:
+        """
+        Check that the CDS belongs to the underlying space.
+
+        Parameters
+        ----------
+        cds
+            The inputted CDS.
+
+        Returns
+        -------
+        A normalised and validated version of the inputted CDS.
+        """
+        cds = cds.upper()
+
+        if not self.space.contains(cds):
+            raise ValueError('CDS is not contained in this coding space.')
+
+        return cds
 
     def _codon_at_position(self, pos: int) -> str:
         """
