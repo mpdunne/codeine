@@ -133,7 +133,7 @@ class CodonWeights:
         return weights
 
     @classmethod
-    def uniform(cls, table: Optional[TranslationTable] = None, rna: bool = False) -> 'CodonWeights':
+    def uniform(cls, table: Optional[TranslationTable] = None, rna: bool = None) -> 'CodonWeights':
         """
         Construct a CodonWeights object with uniform codon weights for a given translation table.
 
@@ -150,7 +150,7 @@ class CodonWeights:
         A uniform CodonWeights object.
         """
         if table is None:
-            table = TranslationTable(rna=rna)
+            table = TranslationTable(rna=bool(rna))
 
         elif rna is None:
             rna = table.rna

@@ -158,7 +158,7 @@ class CodingSpace:
             f'Translation table: {self.translation_table.table_id} ({self.translation_table.name})',
             f'Molecule type: {molecule}',
             '',
-            f'Amino acid sequence ({len(self.view.aa_seq)} aa)',
+            f'Amino acid sequence ({len(self.view.aa_seq)} aa):',
             f'{self.view.aa_seq}',
             '',
         ]
@@ -290,7 +290,7 @@ class CodingSpace:
 
         self.view.pin_codons(pinned_codons)
 
-    def unpin_codons(self, positions: Dict[int, str]):
+    def unpin_codons(self, positions: Sequence[int]):
         """
         Unpin codon nodes by pos.
 

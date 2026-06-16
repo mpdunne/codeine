@@ -207,7 +207,7 @@ class CodonGraph:
             if len(codons) == 0:
                 raise ValueError(f'Codon restriction at position {pos} cannot be empty.')
 
-            codons = [codon.upper() for codon in codons]
+            codons = [self.tt.normalise_codon(codon) for codon in codons]
 
             aa = self.aa_seq[pos - 1]
 

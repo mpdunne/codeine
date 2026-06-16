@@ -1,8 +1,25 @@
 import pytest
-from unittest.mock import MagicMock
 
 from codeine.sequence.space import CodingSpace
 from codeine.sequence.mutate import MutationSpace
+
+
+def test_mutation_space_requires_cds_in_space():
+    space = CodingSpace('MIKEY')
+
+    with pytest.raises(ValueError):
+        MutationSpace(space=space, cds='AAAAAAAAAAAA')
+
+    with pytest.raises(ValueError):
+        MutationSpace(space=space, cds='')
+
+    with pytest.raises(ValueError):
+        MutationSpace(space=space, cds='MIKEY')
+
+    for seq in space:
+        _ = MutationSpace(space=space, cds=seq)
+        _ = MutationSpace(space=space, cds=seq.lower())
+        _ = MutationSpace(space=space, cds=seq.upper())
 
 
 def test_mutation_space_defaults_to_all_positions_free():
