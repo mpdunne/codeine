@@ -290,7 +290,7 @@ class CodingSpace:
 
         self.view.pin_codons(pinned_codons)
 
-    def unpin_codons(self, positions: Dict[int, str]):
+    def unpin_codons(self, positions: Sequence[int]):
         """
         Unpin codon nodes by pos.
 
