@@ -9,7 +9,7 @@ import random
 import uuid
 
 from collections import Counter
-from typing import Dict, List, Optional, Sequence, Union, Set, Tuple
+from typing import Dict, List, Optional, Sequence, Union, Set
 
 from codeine.sequence.display import format_restrictions
 from codeine.translation.tables import TranslationTable

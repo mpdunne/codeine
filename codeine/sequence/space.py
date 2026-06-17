@@ -109,7 +109,7 @@ class CodingSpace:
 
     def save(self, path) -> None:
         """
-        Save this coding space to disk.
+        Save this coding space to disc.
         """
         with Path(path).open('wb') as f:
             pickle.dump(self, f)
@@ -291,7 +291,6 @@ class CodingSpace:
         pinned_codons:
             A dict specifying which codons to pin, by pos: codon
         """
-
         self.view.pin_codons(pinned_codons)
 
     def unpin_codons(self, positions: Sequence[int]):
