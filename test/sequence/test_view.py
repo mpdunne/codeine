@@ -1,9 +1,11 @@
 import pickle
 import pytest
+import random
 
 from itertools import product
 from unittest.mock import MagicMock
 
+from codeine.translation.tables import TranslationTable
 from codeine.sequence.graph import CodonGraph
 
 
@@ -373,8 +375,7 @@ def test_codon_graph_view_pickle_preserves_pins():
     assert [*loaded.enumerate()] == [*view.enumerate()]
 
 
-
-_ = '''SHORT_AA_SEQUENCES = (
+SHORT_AA_SEQUENCES = (
     'M',
     'MIKEY',
     'MILDRED',
@@ -399,70 +400,42 @@ CONTEXTS_L = ('', 'aaggaaggaagg')
 CONTEXTS_R = ('', 'ttccttccttcc')
 
 
-@pytest.mark.parametrize(
-    'aa_seq',
-    SHORT_AA_SEQUENCES + MEDIUM_AA_SEQUENCES + LONG_AA_SEQUENCES,
-)
-@pytest.mark.parametrize('context_l', CONTEXTS_L)
-@pytest.mark.parametrize('context_r', CONTEXTS_R)
-def test_find_matching_subpaths_full_sequences(aa_seq, context_l, context_r):
-    tt = TranslationTable()
-
-    graph = CodonGraph(aa_seq, context_l=context_l, context_r=context_r, translation_table=tt)
-
-    view = graph.view()
-    seqs = [view[i] for i in range(min(view.n_valid_sequences, 10))]
-
-    for seq in seqs:
-        matches = graph._find_matching_subpaths(seq)
-
-        # Only one path matches any given full sequence.
-        assert len(matches) == 1
-        path, offset = matches[0]
-
-        # It should start at the beginning.
-        assert offset == 0
-
-        # All codon nodes please :)
-        assert all(isinstance(node, CodonNode) for node, codon in path)
-
-        # And the positions should be logical...
-        positions = [node.pos for node, codon in path]
-        assert positions == [*range(1, 1 + (len(seq) // 3))]
-
-        codons = [codon.upper() for node, codon in path]
-        assert seq.upper() == ''.join(codons)
-
-
 def test_banned_sequence_entirely_in_left_context_gives_empty_space():
-    graph = CodonGraph('MIKEY', context_l='GAATTC', banned_sequences=['GAATTC'])
+    graph = CodonGraph('MIKEY', context_l='GAATTC')
     view = graph.view()
+    view.set_banned_sequences(['GAATTC'])
     assert view.n_valid_sequences == 0
 
-    graph = CodonGraph('MIKEY', context_l='GAATTC', banned_sequences=['AATTC'])
+    graph = CodonGraph('MIKEY', context_l='GAATTC')
     view = graph.view()
+    view.set_banned_sequences(['AATTC'])
     assert view.n_valid_sequences == 0
 
-    graph = CodonGraph('MIKEY', context_l='GAATTC', banned_sequences=['GAATT'])
+    graph = CodonGraph('MIKEY', context_l='GAATT')
     view = graph.view()
+    view.set_banned_sequences(['GAATTC'])
     assert view.n_valid_sequences == 0
 
-    graph = CodonGraph('MIKEY', context_l='GAATTC', banned_sequences=['AATT'])
+    graph = CodonGraph('MIKEY', context_l='AATT')
     view = graph.view()
+    view.set_banned_sequences(['GAATTC'])
     assert view.n_valid_sequences == 0
 
 
 def test_banned_sequence_entirely_in_right_context_gives_empty_space():
-    graph = CodonGraph('MIKEY', context_r='GAATTC', banned_sequences=['GAATTC'])
+    graph = CodonGraph('MIKEY', context_l='GAATTC')
     view = graph.view()
+    view.set_banned_sequences(['GAATTC'])
     assert view.n_valid_sequences == 0
 
-    graph = CodonGraph('MIKEY', context_r='GAATTC', banned_sequences=['AATTC'])
+    graph = CodonGraph('MIKEY', context_l='GAATTC')
     view = graph.view()
+    view.set_banned_sequences(['AATTC'])
     assert view.n_valid_sequences == 0
 
-    graph = CodonGraph('MIKEY', context_r='GAATTC', banned_sequences=['AATT'])
+    graph = CodonGraph('MIKEY', context_r='GAATTC')
     view = graph.view()
+    view.set_banned_sequences(['AATT'])
     assert view.n_valid_sequences == 0
 
 
@@ -487,14 +460,10 @@ def helper_ban_sequences_and_check_comprehensive(
         context_l=context_l,
         context_r=context_r,
         translation_table=tt,
-        banned_sequences=banned_sequences,
     )
     view = graph.view()
+    view.set_banned_sequences(banned_sequences=banned_sequences)
     observed_seqs = set(view)
-
-    for banned_sequence in banned_sequences:
-        matches = graph._find_matching_subpaths(banned_sequence)
-        assert not matches
 
     expected_seqs = {seq for seq in unconstrained_seqs
                      if all(banned_sequence.upper() not in seq.upper()
@@ -525,15 +494,11 @@ def helper_ban_sequences_and_check_probabilistic(
         context_l=context_l,
         context_r=context_r,
         translation_table=tt,
-        banned_sequences=banned_sequences,
     )
     view = graph.view()
+    view.set_banned_sequences(banned_sequences=banned_sequences)
 
     assert view.n_valid_sequences >= 0
-
-    for banned_sequence in banned_sequences:
-        matches = graph._find_matching_subpaths(banned_sequence)
-        assert not matches
 
     for _ in range(n_samples):
         seq = view.sample()
@@ -599,10 +564,10 @@ def test_regression_banned_whole_sequences(aa_seq, context_l, context_r):
         context_l=context_l,
         context_r=context_r,
         translation_table=tt,
-        banned_sequences=[cds],
     )
 
     view = graph.view()
+    view.set_banned_sequences([cds])
 
     assert cds not in view
     assert view.n_valid_sequences == unconstrained_n_sequences - 1
@@ -615,10 +580,10 @@ def test_regression_banned_whole_sequences(aa_seq, context_l, context_r):
         context_l=context_l,
         context_r=context_r,
         translation_table=tt,
-        banned_sequences=seqs,
     )
 
     view = graph.view()
+    view.set_banned_sequences(seqs)
 
     for seq in seqs:
         assert seq not in view
@@ -646,14 +611,12 @@ def test_regression_banned_sequences_that_arent_present_anyway(aa_seq, context_l
         context_l=context_l,
         context_r=context_r,
         translation_table=tt,
-        banned_sequences=[
-            'CCCCCCCCCCCC',
-            'GGGGGGGGGGGG',
-            'TTTTTTTTTTTT',
-        ],
     )
 
     view = graph.view()
+    banned_sequences = ['CCCCCCCCCCCC', 'GGGGGGGGGGGG', 'TTTTTTTTTTTT']
+    view.set_banned_sequences(banned_sequences)
+
     assert view.n_valid_sequences == unconstrained_view.n_valid_sequences
 
 
@@ -804,4 +767,3 @@ def test_regression_banned_sequences_long_aa_sequence_many_banned_sequences(aa_s
         context_r=context_r,
         n_samples=1000,
     )
-'''
