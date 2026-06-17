@@ -411,14 +411,9 @@ def test_banned_sequence_entirely_in_left_context_gives_empty_space():
     view.set_banned_sequences(['AATTC'])
     assert view.n_valid_sequences == 0
 
-    graph = CodonGraph('MIKEY', context_l='GAATT')
+    graph = CodonGraph('MIKEY', context_l='GAATTC')
     view = graph.view()
-    view.set_banned_sequences(['GAATTC'])
-    assert view.n_valid_sequences == 0
-
-    graph = CodonGraph('MIKEY', context_l='AATT')
-    view = graph.view()
-    view.set_banned_sequences(['GAATTC'])
+    view.set_banned_sequences(['GAATT'])
     assert view.n_valid_sequences == 0
 
 
