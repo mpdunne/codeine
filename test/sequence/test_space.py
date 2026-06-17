@@ -4,7 +4,7 @@ import random
 
 from Bio.Seq import Seq
 
-from codeine.sequence.graph import CodonGraph
+from codeine.sequence.view import CodonGraphView
 from codeine.sequence.space import CodingSpace
 from codeine.motifs.restriction import RestrictionSite
 
@@ -240,7 +240,7 @@ def test_space_contains():
 
 @pytest.fixture
 def disable_banned_sequence_filtering(monkeypatch):
-    monkeypatch.setattr(CodonGraph, '_apply_banned_sequences', lambda self, sequence: None)
+    monkeypatch.setattr(CodonGraphView, '_check_banned_sequence_support', lambda self: None)
 
 
 def test_expand_forbidden_motifs_none():

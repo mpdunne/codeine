@@ -12,12 +12,15 @@ CodonRestriction = Union[str, Sequence[str]]
 
 class CodonGraphView:
     """
-    View of a codon graph. The view allows optional temporary constraints to be added without
-    affecting the underlying codon graph. It is on this object that most operations take place.
+    View of a codon graph. The view allows optional temporary constraints such as pinned codons
+    and banned nucleotide sequences to be added without affecting the underlying codon graph.
+
+    It is on this object that most operations (counting, sampling, enumeration....) take place.
     """
 
     def __init__(self,
                  graph: CodonGraph,
+                 banned_sequences: Optional[Sequence[str]] = None,
                  seed: Seedable = None,
                  rng: Optional[random.Random] = None,
                  ) -> None:
@@ -28,6 +31,12 @@ class CodonGraphView:
         ----------
         graph
             The underlying codon graph.
+        banned_sequences
+            Nucleotide sequences that are forbidden in this view.
+        seed
+            Seed used to initialise a random number generator, if not providing an RNG.
+        rng
+            Random number generator used by the view for sampling.
         """
         if seed is not None and rng is not None:
             raise ValueError('Provide either seed or rng, not both.')
@@ -36,6 +45,7 @@ class CodonGraphView:
 
         self.graph = graph
         self.pinned_codons: Dict[int, List[str]] = {}
+        self.banned_sequences: List[str] = self._validate_banned_sequences(banned_sequences)
 
         self.valid_paths_by_choice = {}
         self.weight_mass_by_choice = {}
@@ -116,11 +126,11 @@ class CodonGraphView:
                 '',
                 ]
 
-        if self.graph.banned_sequences:
+        if self.banned_sequences:
             lines += [
                 'Banned sequences:',
                 *format_banned_sequences(
-                    self.graph.banned_sequences,
+                    self.banned_sequences,
                 ),
                 '',
                 ]
@@ -187,6 +197,13 @@ class CodonGraphView:
         Remove all codon pins from this graph view
         """
         self.pinned_codons.clear()
+        self.compile()
+
+    def set_banned_sequences(self, banned_sequences: Sequence[str]) -> None:
+        """
+        Set banned nucleotide sequences for this view.
+        """
+        self.banned_sequences = self._validate_banned_sequences(banned_sequences)
         self.compile()
 
     def contains(self, seq: str) -> bool:
@@ -316,19 +333,59 @@ class CodonGraphView:
         A copy of the view.
         """
         view = self.graph.view()
-        view.pin_codons(self.pinned_codons.copy())
+        view.pinned_codons = self.pinned_codons.copy()
+        view.banned_sequences = self.banned_sequences.copy()
+        view.compile()
         return view
 
     def compile(self) -> None:
         """
-        Calculate all graph properties that are derived from its structure plus additional
-        temporary constraints (pins). Remember to do this after editing the graph!
+        Calculate all graph properties that are derived from its structure plus constraints
+        such as pins and banned sequences.
+
+        Remember to do this after editing constraints!
         """
+        # Placeholder!
+        self._check_banned_sequence_support()
+
         # Calculate descendant counts!
         self._update_descendant_counts()
 
         # Update the samplers!
         self._update_samplers()
+
+    def _validate_banned_sequences(self, banned_sequences: Sequence[str]) -> List[str]:
+        """
+        Check the inputted banned sequences make sense.
+
+        Parameters
+        ----------
+        banned_sequences
+            The list of banned sequences.
+
+        Returns
+        -------
+        A normalised, de-duplicated list of banned sequences.
+        """
+        banned_sequences = banned_sequences or []
+
+        normalised = []
+        for sequence in banned_sequences:
+            sequence = self.graph.normalise_sequence(sequence)
+
+            if len(sequence) == 0:
+                raise ValueError('Banned sequences cannot be empty.')
+
+            normalised.append(sequence)
+
+        return sorted(set(normalised))
+
+    def _check_banned_sequence_support(self) -> None:
+        """
+        For now, we don't support banned sequences. We mock this in tests.
+        """
+        if self.banned_sequences:
+            raise NotImplementedError('Banned sequences are not yet supported.')
 
     def _update_samplers(self) -> None:
         """

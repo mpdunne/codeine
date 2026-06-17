@@ -11,7 +11,7 @@ import uuid
 from collections import Counter
 from typing import Dict, List, Optional, Sequence, Union, Set, Tuple
 
-from codeine.sequence.display import format_banned_sequences, format_restrictions
+from codeine.sequence.display import format_restrictions
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
 from codeine.utils.sampling import Seedable
@@ -112,7 +112,6 @@ class CodonGraph:
         self,
         aa_seq: str,
         codon_restrictions: Optional[Dict[int, CodonRestriction]] = None,
-        banned_sequences: Sequence[str] = None,
         translation_table: TranslationTable = None,
         weights: CodonWeights = None,
         context_l: str = '',
@@ -153,10 +152,6 @@ class CodonGraph:
 
         self._initialise_graph()
 
-        banned_sequences = self.validate_banned_sequences(banned_sequences)
-        self.banned_sequences = banned_sequences
-        self._apply_banned_sequences(banned_sequences)
-
     def __repr__(self) -> str:
         molecule = 'RNA' if self.tt.rna else 'DNA'
 
@@ -179,12 +174,6 @@ class CodonGraph:
                 ),
                 '',
                 ]
-
-        if self.banned_sequences:
-            lines += [
-                'Banned sequences:',
-                *format_banned_sequences(self.banned_sequences),
-            ]
 
         return '\n'.join(lines)
 
@@ -255,32 +244,6 @@ class CodonGraph:
 
         if actual_codons != expected_codons:
             raise ValueError('Codon weights and translation table do not match.')
-
-    def validate_banned_sequences(self, banned_sequences: Sequence[str]) -> List[str]:
-        """
-        Check the inputted banned sequences make sense.
-
-        Parameters
-        ----------
-        banned_sequences
-            The list of banned sequences.
-
-        Returns
-        -------
-        A normalised, de-duplicated list of banned sequences.
-        """
-        banned_sequences = banned_sequences or []
-
-        normalised = []
-        for sequence in banned_sequences:
-            sequence = self.normalise_sequence(sequence)
-
-            if len(sequence) == 0:
-                raise ValueError('Banned sequences cannot be empty.')
-
-            normalised.append(sequence)
-
-        return sorted(set(normalised))
 
     def normalise_sequence(self, sequence: str) -> str:
         """
@@ -363,132 +326,6 @@ class CodonGraph:
         self.initial_node = left_context_node
         self.final_node = end_node
 
-    def _find_matching_subpaths(self, sequence: str) -> List[Tuple[List[Tuple[Node, str]], int]]:
-        """
-        For a given sequence, find subpaths in the graph that match that sequence.
-        Return each found subpath in the following format:
-
-            (
-                [
-                    (node1, codon_1),
-                    (node2, codon_2),
-                    ...
-                ]
-                offset,  # Where the path starts relative to first node's codon choice.
-            )
-
-        Parameters
-        ----------
-        sequence
-            The sequence to search for.
-
-        Returns
-        -------
-        A tuple consisting of a list of (node, sequence) pairs, and the start offset for matching the sequence.
-        """
-
-        sequence = sequence.upper()
-
-        if len(sequence) == 0:
-            raise ValueError('Sequence cannot be empty.')
-
-        matches = []
-        candidate_matches = []
-
-        # First, check which nodes we can start at.
-        for node in self.nodes:
-            if node is self.end_node:
-                continue
-
-            for choice, child in node.transitions.items():
-                for offset in range(len(choice)):
-                    choice_subsequence = choice[offset:]
-
-                    if choice_subsequence.startswith(sequence):
-                        # Bingo!
-                        matches.append(([(node, choice)], offset))
-
-                    elif sequence.startswith(choice_subsequence):
-                        # Maybe bingo! Maygo!
-                        candidate_matches.append(([(node, choice)], offset, len(choice_subsequence)))
-
-        def reinspect_candidate_matches(candidate_matches):
-            reinspect = []
-
-            for partial_path, offset, seen_length in candidate_matches:
-                previous_node, previous_choice = partial_path[-1]
-                node = previous_node.transitions[previous_choice]
-
-                remaining_sequence = sequence[seen_length:]
-
-                if remaining_sequence == '':
-
-                    # Fantastic!
-                    matches.append((partial_path, offset))
-                    continue
-
-                if node is self.final_node:
-                    continue
-
-                if isinstance(node, CodonNode):
-                    choice_length = 3
-                else:
-                    choice_length = len(next(iter(node.transitions)))
-
-                # Sneaky shortcut if we've crossed into the right context:
-                if isinstance(node, CodonNode):
-                    pos = node.pos
-
-                    remaining_sequence_length = len(sequence) - seen_length
-                    remaining_coding_length = 3 * (len(self.aa_seq) - pos + 1)
-
-                    if remaining_sequence_length > remaining_coding_length:
-                        sequence_end = sequence[seen_length + remaining_coding_length:]
-
-                        if not self.context_r.startswith(sequence_end):
-                            continue
-
-                for choice, child in node.transitions.items():
-
-                    if len(remaining_sequence) >= choice_length:
-
-                        if remaining_sequence.startswith(choice):
-                            # Keep going...
-                            reinspect.append((partial_path + [(node, choice)], offset, seen_length + choice_length))
-
-                        else:
-                            # Hard luck this time.
-                            continue
-
-                    else:
-
-                        if choice.startswith(remaining_sequence):
-                            # Wahoo!
-                            matches.append((partial_path + [(node, choice)], offset))
-
-                        else:
-                            # Hard luck this time.
-                            continue
-
-            return reinspect
-
-        while candidate_matches:
-            candidate_matches = reinspect_candidate_matches(candidate_matches)
-
-        return matches
-
-    def _apply_banned_sequences(self, banned_sequences: Sequence[str]) -> None:
-        """
-        Apply banned sequence restrictions to the graph.
-
-        Parameters
-        ----------
-        banned_sequences
-            A sequence of banned nucleotide strings.
-        """
-        if banned_sequences:
-            raise NotImplementedError('Sequence banning is not implemented yet.')
-
     @property
     def nodes(self) -> Set[Node]:
         """
@@ -507,7 +344,9 @@ class CodonGraph:
         self.codon_nodes.add(node)
         self.codon_nodes_by_pos.setdefault(node.pos, set()).add(node)
 
-    def view(self, seed: Optional[Seedable] = None, rng: Optional[random.Random] = None) -> 'CodonGraphView':
+    def view(self,
+             seed: Optional[Seedable] = None,
+             rng: Optional[random.Random] = None) -> 'CodonGraphView':
         """
         Return a constrained view over this graph.
 

@@ -73,18 +73,22 @@ class CodingSpace:
             rna=rna,
         )
 
-        self.view = CodonGraph(
+        graph = CodonGraph(
             aa_seq,
             codon_restrictions=codon_restrictions,
-            banned_sequences=self.forbidden_sequences,
             translation_table=translation_table,
             weights=codon_weights,
             context_l=context_l,
             context_r=context_r,
-        ).view(
+        )
+
+        view = graph.view(
             seed=seed,
             rng=rng,
         )
+
+        view.set_banned_sequences(self.forbidden_sequences)
+        self.view = view
 
     @classmethod
     def from_view(cls, view) -> 'CodingSpace':
@@ -92,7 +96,7 @@ class CodingSpace:
         obj.view = view
         obj.forbidden_motifs = []
         obj.max_homopolymer = None
-        obj.forbidden_sequences = list(view.graph.banned_sequences)
+        obj.forbidden_sequences = list(view.banned_sequences)
         return obj
 
     @classmethod
