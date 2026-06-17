@@ -218,3 +218,60 @@ class CodonWeights:
         """
         from codeine.translation.data import HUMAN_WEIGHTS
         return cls(HUMAN_WEIGHTS, rna=rna)
+
+    @classmethod
+    def mouse(cls, rna: bool = False) -> 'CodonWeights':
+        """
+        Construct a CodonWeights object with codon probabilities corresponding to Mouse.
+
+        Weights are obtained from GenScript https://www.genscript.com/tools/codon-frequency-table
+
+        Parameters
+        ----------
+        rna
+            Whether to use RNA.
+
+        Returns
+        -------
+        A CodonWeights object corresponding to Mouse.
+        """
+        from codeine.translation.data import MOUSE_WEIGHTS
+        return cls(MOUSE_WEIGHTS, rna=rna)
+
+    @classmethod
+    def arabidopsis(cls, rna: bool = False) -> 'CodonWeights':
+        """
+        Construct a CodonWeights object with codon probabilities corresponding to A. thaliana.
+
+        Weights are obtained from GenScript https://www.genscript.com/tools/codon-frequency-table
+
+        Parameters
+        ----------
+        rna
+            Whether to use RNA.
+
+        Returns
+        -------
+        A CodonWeights object corresponding to Arabidopsis thaliana.
+        """
+        from codeine.translation.data import ARABIDOPSIS_WEIGHTS
+        return cls(ARABIDOPSIS_WEIGHTS, rna=rna)
+
+    @classmethod
+    def drosophila(cls, rna: bool = False) -> 'CodonWeights':
+        """
+        Construct a CodonWeights object with codon probabilities corresponding to D. melanogaster.
+
+        Weights are obtained from GenScript https://www.genscript.com/tools/codon-frequency-table
+
+        Parameters
+        ----------
+        rna
+            Whether to use RNA.
+
+        Returns
+        -------
+        A CodonWeights object corresponding to Drosophila melanogaster.
+        """
+        from codeine.translation.data import DROSOPHILA_WEIGHTS
+        return cls(DROSOPHILA_WEIGHTS, rna=rna)
