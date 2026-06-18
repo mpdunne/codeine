@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from codeine.sequence.view import CodonGraphView
+    from graph.view import CodonGraphView
 
 import random
 import uuid
@@ -11,7 +11,7 @@ import uuid
 from collections import Counter
 from typing import Dict, List, Optional, Sequence, Union, Set, Tuple
 
-from codeine.sequence.display import format_restrictions
+from utils.display import format_restrictions
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
 from codeine.utils.sampling import Seedable
@@ -383,7 +383,7 @@ class CodonGraph:
         rng
             Random number generator used by the view for sampling.
         """
-        from codeine.sequence.view import CodonGraphView
+        from graph.view import CodonGraphView
         return CodonGraphView(self, seed=seed, rng=rng)
 
     def find_matching_subpaths(self, sequence: str) -> List[Tuple[List[Tuple[Node, str]], int]]:

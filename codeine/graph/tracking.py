@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Dict, FrozenSet, List, Sequence, Tuple
 
-from codeine.sequence.graph import Node
+from graph.codon import Node
 
 
 Watch = Tuple[int, int]          # (path_ix, matched_length)

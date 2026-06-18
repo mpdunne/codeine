@@ -1,7 +1,7 @@
 import pytest
 import pickle
 
-from codeine.sequence.graph import CodonGraph, CodonNode, ContextNode, EndNode
+from graph.codon import CodonGraph, CodonNode, ContextNode, EndNode
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
 

@@ -1,5 +1,5 @@
-from codeine.sequence.banned import BannedSequenceTracker, AdvanceResult
-from codeine.sequence.graph import CodonGraph
+from graph.tracking import BannedSequenceTracker, AdvanceResult
+from graph.codon import CodonGraph
 
 
 def helper_find_path_for(tracker, banned_sequence):

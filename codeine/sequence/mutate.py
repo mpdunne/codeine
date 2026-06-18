@@ -1,6 +1,6 @@
 from typing import Collection, FrozenSet, Generator, Optional, Set
 
-from codeine.sequence.display import format_banned_sequences, format_forbidden_motif,\
+from utils.display import format_banned_sequences, format_forbidden_motif,\
     format_count, format_restrictions, format_positions
 from codeine.motifs.restriction import RestrictionSite
 from codeine.sequence.space import CodingSpace
