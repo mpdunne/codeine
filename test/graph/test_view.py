@@ -6,7 +6,7 @@ from itertools import product
 from unittest.mock import MagicMock
 
 from codeine.translation.tables import TranslationTable
-from graph.codon import CodonGraph
+from codeine.graph.graph import CodonGraph
 
 
 def test_view_can_pin_codons():

@@ -12,7 +12,7 @@ from typing import Dict, Generator, List, Optional, Sequence, Union
 from codeine.motifs.restriction import RestrictionSite
 from utils.display import format_banned_sequences, format_forbidden_motif,\
     format_count, format_restrictions
-from graph.codon import CodonGraph
+from codeine.graph.graph import CodonGraph
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
 from codeine.utils.sampling import Seedable

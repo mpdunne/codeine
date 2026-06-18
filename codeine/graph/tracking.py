@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Dict, FrozenSet, List, Sequence, Tuple
 
-from graph.codon import Node
+from codeine.graph.graph import Node, CodonNode, CodonGraph
 
 
 Watch = Tuple[int, int]          # (path_ix, matched_length)
@@ -9,7 +9,7 @@ TrackerState = FrozenSet[Watch]
 
 
 @dataclass(frozen=True)
-class BannedPath:
+class SubPath:
     sequence: str
     parts: Tuple[Tuple[Node, str], ...]
     offset: int
@@ -45,18 +45,13 @@ class BannedSequenceTracker:
     def is_trivial(self) -> bool:
         return len(self.paths) == 0
 
-    def _find_banned_paths(self) -> Tuple[BannedPath, ...]:
+    def _find_banned_paths(self) -> Tuple[SubPath, ...]:
         paths = []
 
         for sequence in self.banned_sequences:
-            for parts, offset in self.graph.find_matching_subpaths(sequence):
-                paths.append(
-                    BannedPath(
-                        sequence=sequence,
-                        parts=tuple(parts),
-                        offset=offset,
-                    )
-                )
+            for parts, offset in _find_matching_subpaths(self.graph, sequence):
+                subpath = SubPath(sequence=sequence, parts=tuple(parts), offset=offset)
+                paths.append(subpath)
 
         return tuple(paths)
 
@@ -120,3 +115,119 @@ class BannedSequenceTracker:
             banned=False,
             state=frozenset(next_state),
         )
+
+
+def _find_matching_subpaths(graph: CodonGraph, sequence: str) \
+        -> List[Tuple[List[Tuple[Node, str]], int]]:
+    """
+    For a given sequence, find subpaths in the graph that match that sequence.
+    Return each found subpath in the following format:
+
+        (
+            [
+                (node1, codon_1),
+                (node2, codon_2),
+                ...
+            ]
+            offset,  # Where the path starts relative to first node's codon choice.
+        )
+
+    Parameters
+    ----------
+    sequence
+        The sequence to search for.
+
+    Returns
+    -------
+    A tuple consisting of a list of (node, sequence) pairs, and the start offset for matching the sequence.
+    """
+
+    sequence = sequence.upper()
+
+    if len(sequence) == 0:
+        raise ValueError('Sequence cannot be empty.')
+
+    matches = []
+    candidate_matches = []
+
+    # First, check which nodes we can start at.
+    for node in graph.nodes:
+        if node is graph.end_node:
+            continue
+
+        for choice, child in node.transitions.items():
+            for offset in range(len(choice)):
+                choice_subsequence = choice[offset:]
+
+                if choice_subsequence.startswith(sequence):
+                    # Bingo!
+                    matches.append(([(node, choice)], offset))
+
+                elif sequence.startswith(choice_subsequence):
+                    # Maybe bingo! Maygo!
+                    candidate_matches.append(([(node, choice)], offset, len(choice_subsequence)))
+
+    def reinspect_candidate_matches(candidate_matches):
+        reinspect = []
+
+        for partial_path, offset, seen_length in candidate_matches:
+            previous_node, previous_choice = partial_path[-1]
+            node = previous_node.transitions[previous_choice]
+
+            remaining_sequence = sequence[seen_length:]
+
+            if remaining_sequence == '':
+
+                # Fantastic!
+                matches.append((partial_path, offset))
+                continue
+
+            if node is graph.final_node:
+                continue
+
+            if isinstance(node, CodonNode):
+                choice_length = 3
+            else:
+                choice_length = len(next(iter(node.transitions)))
+
+            # Sneaky shortcut if we've crossed into the right context:
+            if isinstance(node, CodonNode):
+                pos = node.pos
+
+                remaining_sequence_length = len(sequence) - seen_length
+                remaining_coding_length = 3 * (len(graph.aa_seq) - pos + 1)
+
+                if remaining_sequence_length > remaining_coding_length:
+                    sequence_end = sequence[seen_length + remaining_coding_length:]
+
+                    if not graph.context_r.startswith(sequence_end):
+                        continue
+
+            for choice, child in node.transitions.items():
+
+                if len(remaining_sequence) >= choice_length:
+
+                    if remaining_sequence.startswith(choice):
+                        # Keep going...
+                        reinspect.append((partial_path + [(node, choice)], offset, seen_length + choice_length))
+
+                    else:
+                        # Hard luck this time.
+                        continue
+
+                else:
+
+                    if choice.startswith(remaining_sequence):
+                        # Wahoo!
+                        matches.append((partial_path + [(node, choice)], offset))
+
+                    else:
+                        # Hard luck this time.
+                        continue
+
+        return reinspect
+
+    while candidate_matches:
+        candidate_matches = reinspect_candidate_matches(candidate_matches)
+
+    return matches

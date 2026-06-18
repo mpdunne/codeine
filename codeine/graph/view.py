@@ -3,7 +3,7 @@ import random
 from typing import Dict, Generator, List, Optional, Sequence, Union
 
 from utils.display import format_banned_sequences, format_count, format_restrictions
-from graph.codon import CodonGraph, CodonNode
+from codeine.graph.graph import CodonGraph, CodonNode
 from codeine.utils.sampling import Sampler, Seedable
 
 
