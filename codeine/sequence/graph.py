@@ -9,7 +9,7 @@ import random
 import uuid
 
 from collections import Counter
-from typing import Dict, List, Optional, Sequence, Union, Set
+from typing import Dict, List, Optional, Sequence, Union, Set, Tuple
 
 from codeine.sequence.display import format_restrictions
 from codeine.translation.tables import TranslationTable
@@ -359,3 +359,117 @@ class CodonGraph:
         """
         from codeine.sequence.view import CodonGraphView
         return CodonGraphView(self, seed=seed, rng=rng)
+
+    def find_matching_subpaths(self, sequence: str) -> List[Tuple[List[Tuple[Node, str]], int]]:
+        """
+        For a given sequence, find subpaths in the graph that match that sequence.
+        Return each found subpath in the following format:
+
+            (
+                [
+                    (node1, codon_1),
+                    (node2, codon_2),
+                    ...
+                ]
+                offset,  # Where the path starts relative to first node's codon choice.
+            )
+
+        Parameters
+        ----------
+        sequence
+            The sequence to search for.
+
+        Returns
+        -------
+        A tuple consisting of a list of (node, sequence) pairs, and the start offset for matching the sequence.
+        """
+
+        sequence = sequence.upper()
+
+        if len(sequence) == 0:
+            raise ValueError('Sequence cannot be empty.')
+
+        matches = []
+        candidate_matches = []
+
+        # First, check which nodes we can start at.
+        for node in self.nodes:
+            if node is self.end_node:
+                continue
+
+            for choice, child in node.transitions.items():
+                for offset in range(len(choice)):
+                    choice_subsequence = choice[offset:]
+
+                    if choice_subsequence.startswith(sequence):
+                        # Bingo!
+                        matches.append(([(node, choice)], offset))
+
+                    elif sequence.startswith(choice_subsequence):
+                        # Maybe bingo! Maygo!
+                        candidate_matches.append(([(node, choice)], offset, len(choice_subsequence)))
+
+        def reinspect_candidate_matches(candidate_matches):
+            reinspect = []
+
+            for partial_path, offset, seen_length in candidate_matches:
+                previous_node, previous_choice = partial_path[-1]
+                node = previous_node.transitions[previous_choice]
+
+                remaining_sequence = sequence[seen_length:]
+
+                if remaining_sequence == '':
+
+                    # Fantastic!
+                    matches.append((partial_path, offset))
+                    continue
+
+                if node is self.final_node:
+                    continue
+
+                if isinstance(node, CodonNode):
+                    choice_length = 3
+                else:
+                    choice_length = len(next(iter(node.transitions)))
+
+                # Sneaky shortcut if we've crossed into the right context:
+                if isinstance(node, CodonNode):
+                    pos = node.pos
+
+                    remaining_sequence_length = len(sequence) - seen_length
+                    remaining_coding_length = 3 * (len(self.aa_seq) - pos + 1)
+
+                    if remaining_sequence_length > remaining_coding_length:
+                        sequence_end = sequence[seen_length + remaining_coding_length:]
+
+                        if not self.context_r.startswith(sequence_end):
+                            continue
+
+                for choice, child in node.transitions.items():
+
+                    if len(remaining_sequence) >= choice_length:
+
+                        if remaining_sequence.startswith(choice):
+                            # Keep going...
+                            reinspect.append((partial_path + [(node, choice)], offset, seen_length + choice_length))
+
+                        else:
+                            # Hard luck this time.
+                            continue
+
+                    else:
+
+                        if choice.startswith(remaining_sequence):
+                            # Wahoo!
+                            matches.append((partial_path + [(node, choice)], offset))
+
+                        else:
+                            # Hard luck this time.
+                            continue
+
+            return reinspect
+
+        while candidate_matches:
+            candidate_matches = reinspect_candidate_matches(candidate_matches)
+
+        return matches
