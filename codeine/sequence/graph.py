@@ -56,6 +56,14 @@ class ContextNode(Node):
         # Set an ID for this node.
         self.id = f'context-{uuid.uuid4().hex[:8]}'
 
+    def __repr__(self) -> str:
+        return (
+            f'ContextNode('
+            f'id={self.id}'
+            #f', seq={self.sequence}'
+            f')'
+        )
+
 
 class CodonNode(Node):
     """
@@ -87,6 +95,17 @@ class CodonNode(Node):
         # Initialise the basic attributes.
         self.codons = codons
 
+    def __repr__(self) -> str:
+        codons = ','.join(self.codons)
+
+        return (
+            f'CodonNode('
+            f'id={self.id}'
+            f', pos={self.pos}'
+            #f', codons=[{codons}]'
+            f')'
+        )
+
 
 class EndNode(Node):
     """
@@ -101,6 +120,13 @@ class EndNode(Node):
         """
         super().__init__()
         self.id = f'end-{uuid.uuid4().hex[:8]}'
+
+    def __repr__(self) -> str:
+        return (
+            f'EndNode('
+            f'id={self.id}, '
+            f')'
+        )
 
 
 class CodonGraph:
