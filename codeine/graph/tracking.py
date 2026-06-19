@@ -96,20 +96,15 @@ class BannedSequenceTracker:
 
             next_state.add((path_ix, matched_length))
 
-        # Continue existing watches.
         for path_ix, matched_length in state:
             path = self.paths[path_ix]
             remaining = path.sequence[matched_length:]
 
-            if not remaining.startswith(choice):
-                continue
-
-            new_matched_length = matched_length + len(choice)
-
-            if new_matched_length >= len(path.sequence):
+            if choice.startswith(remaining):
                 return AdvanceResult(banned=True)
 
-            next_state.add((path_ix, new_matched_length))
+            if remaining.startswith(choice):
+                next_state.add((path_ix, matched_length + len(choice)))
 
         return AdvanceResult(
             banned=False,
@@ -182,7 +177,7 @@ def _find_matching_subpaths(graph: CodonGraph, sequence: str) \
                 matches.append((partial_path, offset))
                 continue
 
-            if node is graph.final_node:
+            if node is graph.end_node:
                 continue
 
             if isinstance(node, CodonNode):
