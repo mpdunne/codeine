@@ -2,6 +2,7 @@ import pickle
 import pytest
 import random
 
+from collections import Counter
 from itertools import product
 from unittest.mock import MagicMock
 
@@ -527,6 +528,53 @@ def helper_ban_sequences_and_check_sample(
         )
 
 
+def helper_check_sampling_matches_expected_distributions(
+        aa_seq,
+        banned_sequences,
+        context_l='',
+        context_r='',
+        n_samples=10_000,
+):
+    tt = TranslationTable()
+
+    unconstrained_view = CodonGraph(
+        aa_seq,
+        context_l=context_l,
+        context_r=context_r,
+        translation_table=tt,
+    ).view(seed=8675309)
+
+    banned_view = CodonGraph(
+        aa_seq,
+        context_l=context_l,
+        context_r=context_r,
+        translation_table=tt,
+    ).view(seed=8675309)
+
+    banned_view.set_banned_sequences(banned_sequences)
+
+    banned_sequences = [seq.upper() for seq in banned_sequences]
+
+    fancy_counts = Counter(
+        banned_view.sample()
+        for _ in range(n_samples)
+    )
+
+    rejection_counts = Counter()
+    while sum(rejection_counts.values()) < n_samples:
+        seq = unconstrained_view.sample()
+        if all(banned not in seq.upper() for banned in banned_sequences):
+            rejection_counts[seq] += 1
+
+    assert set(fancy_counts) == set(rejection_counts) == set(banned_view)
+
+    for seq in banned_view:
+        fancy_p = fancy_counts[seq] / n_samples
+        rejection_p = rejection_counts[seq] / n_samples
+
+        assert abs(fancy_p - rejection_p) < 0.02
+
+
 def test_view_sampler_keys_include_tracker_state():
     view = CodonGraph('MIKEY').view()
 
@@ -544,7 +592,7 @@ def test_sample_respects_pins():
         assert view.sample()[3:6] == 'ATT'
 
 
-@pytest.mark.parametrize('aa_seq', SHORT_AA_SEQUENCES + MEDIUM_AA_SEQUENCES)
+@pytest.mark.parametrize('aa_seq', SHORT_AA_SEQUENCES)
 @pytest.mark.parametrize('context_l', CONTEXTS_L)
 @pytest.mark.parametrize('context_r', CONTEXTS_R)
 def test_view_sampling_works_without_banned_sequences(aa_seq, context_l, context_r):
@@ -556,6 +604,13 @@ def test_view_sampling_works_without_banned_sequences(aa_seq, context_l, context
 @pytest.mark.parametrize('context_r', CONTEXTS_R)
 def test_view_enumerate_works_without_banned_sequences(aa_seq, context_l, context_r):
     helper_ban_sequences_and_check_enumerate(aa_seq, [], context_l, context_r)
+
+
+@pytest.mark.parametrize('aa_seq', SHORT_AA_SEQUENCES + MEDIUM_AA_SEQUENCES)
+@pytest.mark.parametrize('context_l', CONTEXTS_L)
+@pytest.mark.parametrize('context_r', CONTEXTS_R)
+def test_banned_sampling_matches_rejection_sampling(aa_seq, context_l, context_r):
+    helper_check_sampling_matches_expected_distributions(aa_seq, [], context_l=context_l, context_r=context_r)
 
 
 _ = '''def test_banned_sequence_entirely_in_left_context_gives_empty_space():
