@@ -4,7 +4,7 @@ import random
 
 from Bio.Seq import Seq
 
-from codeine.sequence.space import CodingSpace
+from codeine.space.coding import CodingSpace
 from codeine.motifs.restriction import RestrictionSite
 
 

@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from codeine.sequence.mutate import MutationSpace
+    from codeine.space.mutation import MutationSpace
 
 import pickle
 import random
@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Dict, Generator, List, Optional, Sequence, Union
 
 from codeine.motifs.restriction import RestrictionSite
-from utils.display import format_banned_sequences, format_forbidden_motif,\
+from codeine.utils.display import format_banned_sequences, format_forbidden_motif,\
     format_count, format_restrictions
 from codeine.graph.graph import CodonGraph
 from codeine.translation.tables import TranslationTable
@@ -403,7 +403,7 @@ class CodingSpace:
         if not self.contains(cds):
             raise ValueError('CDS is not contained in this coding space.')
 
-        from codeine.sequence.mutate import MutationSpace
+        from codeine.space.mutation import MutationSpace
 
         return MutationSpace(
             space=self,

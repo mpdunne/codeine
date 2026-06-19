@@ -11,7 +11,7 @@ import uuid
 from collections import Counter
 from typing import Dict, List, Optional, Sequence, Union, Set, Tuple
 
-from utils.display import format_restrictions
+from codeine.utils.display import format_restrictions
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
 from codeine.utils.sampling import Seedable
