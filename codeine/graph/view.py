@@ -57,6 +57,9 @@ class CodonGraphView:
         self.weight_mass_by_choice = {}
         self.next_node_by_choice = {}
         self.next_state_by_choice = {}
+        self.next_key_by_choice = {}
+        self.codon_pos_by_key = {}
+        self.fixed_choice_by_key = {}
 
         self.n_valid_sequences = None
         self.samplers = {}
@@ -240,26 +243,22 @@ class CodonGraphView:
         if len(seq) != len(self.graph.aa_seq) * 3:
             return False
 
-        node = self.graph.initial_node
-        state = self._initial_banned_state()
+        key = self.initial_key
+        next_key_by_choice = self.next_key_by_choice
+        codon_pos_by_key = self.codon_pos_by_key
+        fixed_choice_by_key = self.fixed_choice_by_key
 
-        final_node = self.graph.final_node
-        next_node_by_choice = self.next_node_by_choice
-        next_state_by_choice = self.next_state_by_choice
-        view_key = self._view_key
+        while key is not None:
+            pos = codon_pos_by_key.get(key)
 
-        while node is not final_node:
-            key = view_key(node, state)
-
-            if isinstance(node, CodonNode):
-                pos = node.pos
-                choice = seq[(pos - 1) * 3: pos * 3]
+            if pos is None:
+                choice = fixed_choice_by_key[key]
             else:
-                choice = node.sequence
+                start = (pos - 1) * 3
+                choice = seq[start:start + 3]
 
             try:
-                node = next_node_by_choice[key][choice]
-                state = next_state_by_choice[key][choice]
+                key = next_key_by_choice[key][choice]
             except KeyError:
                 return False
 
@@ -492,6 +491,9 @@ class CodonGraphView:
         weight_mass_by_choice = {}
         next_node_by_choice = {}
         next_state_by_choice = {}
+        next_key_by_choice = {}
+        codon_pos_by_key = {}
+        fixed_choice_by_key = {}
         total_cache = {}
 
         initial_state = self._banned_tracker.initial_state
@@ -513,12 +515,15 @@ class CodonGraphView:
                 weight_mass_by_choice[key] = {}
                 next_node_by_choice[key] = {}
                 next_state_by_choice[key] = {}
+                next_key_by_choice[key] = {}
                 continue
 
             if isinstance(node, CodonNode):
                 choices = self._choices_for_node(node)
+                codon_pos_by_key[key] = node.pos
             else:
                 choices = [node.sequence]
+                fixed_choice_by_key[key] = node.sequence
 
             if not expanded:
                 stack.append((node, state, True))
@@ -545,6 +550,7 @@ class CodonGraphView:
             choice_masses = {}
             choice_next_nodes = {}
             choice_next_states = {}
+            choice_next_keys = {}
             total_count = 0
             total_mass = 0.0
 
@@ -573,6 +579,7 @@ class CodonGraphView:
 
                     choice_next_nodes[choice] = child
                     choice_next_states[choice] = advance.state
+                    choice_next_keys[choice] = None if child is self.graph.final_node else child_key
 
                 if choice_mass:
                     choice_masses[choice] = choice_mass
@@ -582,10 +589,14 @@ class CodonGraphView:
             weight_mass_by_choice[key] = choice_masses
             next_node_by_choice[key] = choice_next_nodes
             next_state_by_choice[key] = choice_next_states
+            next_key_by_choice[key] = choice_next_keys
             total_cache[key] = (total_count, total_mass)
 
         self.valid_paths_by_choice = valid_paths_by_choice
         self.weight_mass_by_choice = weight_mass_by_choice
         self.next_node_by_choice = next_node_by_choice
         self.next_state_by_choice = next_state_by_choice
+        self.next_key_by_choice = next_key_by_choice
+        self.codon_pos_by_key = codon_pos_by_key
+        self.fixed_choice_by_key = fixed_choice_by_key
         self.n_valid_sequences = total_cache[initial_key][0]
