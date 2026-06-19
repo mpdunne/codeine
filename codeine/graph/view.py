@@ -60,6 +60,8 @@ class CodonGraphView:
 
         self.n_valid_sequences = None
         self.samplers = {}
+        self.sample_steps = {}
+        self.initial_key = None
 
         self.compile()
 
@@ -325,27 +327,15 @@ class CodonGraphView:
         if self.n_valid_sequences == 0:
             raise ValueError('Cannot sample from an empty coding space.')
 
-        node = self.graph.initial_node
-        state = self._initial_banned_state()
+        key = self.initial_key
         sequence = []
+        sample_steps = self.sample_steps
 
-        final_node = self.graph.final_node
-        samplers = self.samplers
-        next_node_by_choice = self.next_node_by_choice
-        next_state_by_choice = self.next_state_by_choice
-        view_key = self._view_key
+        while key is not None:
+            emitted, key = sample_steps[key].sample()
 
-        while node is not final_node:
-            key = view_key(node, state)
-
-            if isinstance(node, CodonNode):
-                choice = samplers[key].sample()
-                sequence.append(choice)
-            else:
-                choice = node.sequence
-
-            node = next_node_by_choice[key][choice]
-            state = next_state_by_choice[key][choice]
+            if emitted is not None:
+                sequence.append(emitted)
 
         return ''.join(sequence)
 
@@ -437,26 +427,47 @@ class CodonGraphView:
 
     def _update_samplers(self) -> None:
         """
-        Make samplers for each codon node and banned-sequence tracker state.
+        Make samplers for each reachable graph state.
 
-        The probabilities are calculated by combining descendant weight masses
-        and the base codon probabilities.
+        ``samplers`` keeps the public/debug codon samplers keyed by
+        ``(node, tracker_state)``. ``sample_steps`` is the compiled runtime
+        sampler used by sample(); it returns ``(emitted_codon, next_key)`` so
+        sampling does not need to recompute or look up graph transitions.
         """
         samplers = {}
+        sample_steps = {}
+        final_node = self.graph.final_node
 
         for key, choice_masses in self.weight_mass_by_choice.items():
             node, state = key
 
-            if not isinstance(node, CodonNode):
+            if node is final_node:
                 continue
 
-            codons = list(choice_masses)
-            weights = [choice_masses[codon] for codon in codons]
+            runtime_items = []
+            runtime_weights = []
 
-            if codons:
-                samplers[key] = Sampler(codons, weights, rng=self._rng)
+            for choice, mass in choice_masses.items():
+                child = self.next_node_by_choice[key][choice]
+                next_state = self.next_state_by_choice[key][choice]
+                next_key = None if child is final_node else (child, next_state)
+                emitted = choice if isinstance(node, CodonNode) else None
+
+                runtime_items.append((emitted, next_key))
+                runtime_weights.append(mass)
+
+            if runtime_items:
+                sample_steps[key] = Sampler(runtime_items, runtime_weights, rng=self._rng)
+
+            if isinstance(node, CodonNode):
+                codons = list(choice_masses)
+                weights = [choice_masses[codon] for codon in codons]
+
+                if codons:
+                    samplers[key] = Sampler(codons, weights, rng=self._rng)
 
         self.samplers = samplers
+        self.sample_steps = sample_steps
 
     def _choices_for_node(self, node: CodonNode) -> List[str]:
         """
@@ -485,6 +496,7 @@ class CodonGraphView:
 
         initial_state = self._banned_tracker.initial_state
         initial_key = self._view_key(self.graph.initial_node, initial_state)
+        self.initial_key = initial_key
 
         stack = [(self.graph.initial_node, initial_state, False)]
 

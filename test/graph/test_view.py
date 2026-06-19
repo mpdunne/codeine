@@ -816,7 +816,7 @@ def test_regression_banned_sequences_long_aa_sequence(aa_seq, context_l, context
     )
 
     helper_ban_sequences_and_check_sample(aa_seq, banned_seqs,
-                                                 context_l, context_r, n_samples=1000)
+                                          context_l, context_r, n_samples=1000)
 
 
 @pytest.mark.parametrize('aa_seq', MEDIUM_AA_SEQUENCES + LONG_AA_SEQUENCES)
