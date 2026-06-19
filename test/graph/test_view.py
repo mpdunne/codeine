@@ -77,11 +77,18 @@ def test_view_getitem():
     assert view[1] == 'ATGTTC'
 
 
-def test_get_works_for_very_large_sequences():
+def test_getitem_works_for_very_large_sequences():
     view = CodonGraph('MIKEY' * 1000).view()
     _ = view[100]
     _ = view[1000000]
     _ = view[10**40]
+
+
+def test_getitem_respects_pins():
+    view = CodonGraph('MIKEY').view()
+    view.pin_codons({2: 'ATC'})
+
+    assert all(view[i][3:6] == 'ATC' for i in range(view.n_valid_sequences))
 
 
 def test_view_iter():
@@ -120,6 +127,11 @@ def test_contains_fails_on_wrong_length_sequences():
     assert not view.contains('ATG')
     assert not view.contains('ATG' * 10)
     assert not view.contains('ATGA')  # not multiple of 3
+
+
+def test_contains_respects_contexts():
+    view = CodonGraph('M', context_l='AAA', context_r='CCC').view()
+    assert 'ATG' in view
 
 
 @pytest.mark.parametrize(
@@ -355,6 +367,17 @@ def test_view_copy_copies_pins_not_rng_state():
     assert [*copied.enumerate()] == [*view.enumerate()]
 
 
+def test_view_copy_copies_banned_sequences():
+    view = CodonGraph('MIKEY').view()
+    view.set_banned_sequences(['AAA'])
+
+    copied = view.copy()
+
+    assert copied.banned_sequences == view.banned_sequences
+    assert copied.n_valid_sequences == view.n_valid_sequences
+    assert [*copied.enumerate()] == [*view.enumerate()]
+
+
 def test_codon_graph_view_pickle_preserves_random_state():
     view = CodonGraph('MIKEY').view(seed=8675309)
     _ = [view.sample() for _ in range(100)]
@@ -396,8 +419,8 @@ LONG_AA_SEQUENCES = (
     'MIKEY' * 1000,
 )
 
-CONTEXTS_L = ('', 'aaggaaggaagg')
-CONTEXTS_R = ('', 'ttccttccttcc')
+CONTEXTS_L = ('', 'a', 'aa', 'aaa', 'aaggaaggaagg')
+CONTEXTS_R = ('', 't', 'tt', 'ttt', 'ttccttccttcc')
 
 
 def helper_ban_sequences_and_check_enumerate(
@@ -407,6 +430,7 @@ def helper_ban_sequences_and_check_enumerate(
         context_r='',
 ):
     tt = TranslationTable()
+
     unconstrained_graph = CodonGraph(
         aa_seq,
         context_l=context_l,
@@ -426,12 +450,31 @@ def helper_ban_sequences_and_check_enumerate(
     view.set_banned_sequences(banned_sequences=banned_sequences)
     observed_seqs = set(view)
 
-    expected_seqs = {seq for seq in unconstrained_seqs
-                     if all(banned_sequence.upper() not in seq.upper()
-                            for banned_sequence in banned_sequences)}
+    normalised_banned_sequences = [
+        banned_sequence.upper()
+        for banned_sequence in banned_sequences
+    ]
 
-    assert observed_seqs == expected_seqs
-    assert view.n_valid_sequences == len(expected_seqs)
+    expected_removed_seqs = {
+        seq for seq in unconstrained_seqs
+        if any(
+            banned_sequence in seq.upper()
+            for banned_sequence in normalised_banned_sequences
+        )
+    }
+
+    expected_remaining_seqs = unconstrained_seqs - expected_removed_seqs
+    observed_removed_seqs = unconstrained_seqs - observed_seqs
+
+    assert observed_removed_seqs == expected_removed_seqs
+    assert observed_seqs == expected_remaining_seqs
+    assert view.n_valid_sequences == len(expected_remaining_seqs)
+
+    for seq in expected_removed_seqs:
+        assert seq not in view
+
+    for seq in expected_remaining_seqs:
+        assert seq in view
 
 
 def helper_ban_sequences_and_check_sample(
@@ -442,6 +485,7 @@ def helper_ban_sequences_and_check_sample(
         n_samples=100,
 ):
     tt = TranslationTable()
+
     unconstrained_graph = CodonGraph(
         aa_seq,
         context_l=context_l,
@@ -459,13 +503,28 @@ def helper_ban_sequences_and_check_sample(
     view = graph.view()
     view.set_banned_sequences(banned_sequences=banned_sequences)
 
+    normalised_banned_sequences = [
+        banned_sequence.upper()
+        for banned_sequence in banned_sequences
+    ]
+
     assert view.n_valid_sequences >= 0
+
+    if view.n_valid_sequences == 0:
+        with pytest.raises(ValueError):
+            view.sample()
+        return
 
     for _ in range(n_samples):
         seq = view.sample()
+
         assert seq in unconstrained_view
-        for banned_sequence in banned_sequences:
-            assert banned_sequence.upper() not in seq.upper()
+        assert seq in view
+
+        assert all(
+            banned_sequence not in seq.upper()
+            for banned_sequence in normalised_banned_sequences
+        )
 
 
 def test_view_sampler_keys_include_tracker_state():
@@ -475,6 +534,14 @@ def test_view_sampler_keys_include_tracker_state():
         node, state = key
         assert isinstance(node, CodonNode)
         assert state == frozenset()
+
+
+def test_sample_respects_pins():
+    view = CodonGraph('MIKEY').view(seed=8675309)
+    view.pin_codons({2: 'ATT'})
+
+    for _ in range(100):
+        assert view.sample()[3:6] == 'ATT'
 
 
 @pytest.mark.parametrize('aa_seq', SHORT_AA_SEQUENCES + MEDIUM_AA_SEQUENCES)
