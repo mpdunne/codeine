@@ -6,7 +6,7 @@ from itertools import product
 from unittest.mock import MagicMock
 
 from codeine.translation.tables import TranslationTable
-from codeine.graph.graph import CodonGraph
+from codeine.graph.graph import CodonGraph, CodonNode
 
 
 def test_view_can_pin_codons():
@@ -375,7 +375,7 @@ def test_codon_graph_view_pickle_preserves_pins():
     assert [*loaded.enumerate()] == [*view.enumerate()]
 
 
-_ = '''SHORT_AA_SEQUENCES = (
+SHORT_AA_SEQUENCES = (
     'M',
     'MIKEY',
     'MILDRED',
@@ -391,50 +391,16 @@ MEDIUM_AA_SEQUENCES = (
 # TODO Improve behaviour for long sequences
 LONG_AA_SEQUENCES = (
     'MIKEY' * 100,
-#    'MIKEY' * 250,
-#    'MIKEY' * 500,
-#    'MIKEY' * 1000,
+    'MIKEY' * 250,
+    'MIKEY' * 500,
+    'MIKEY' * 1000,
 )
 
 CONTEXTS_L = ('', 'aaggaaggaagg')
 CONTEXTS_R = ('', 'ttccttccttcc')
 
 
-def test_banned_sequence_entirely_in_left_context_gives_empty_space():
-    graph = CodonGraph('MIKEY', context_l='GAATTC')
-    view = graph.view()
-    view.set_banned_sequences(['GAATTC'])
-    assert view.n_valid_sequences == 0
-
-    graph = CodonGraph('MIKEY', context_l='GAATTC')
-    view = graph.view()
-    view.set_banned_sequences(['AATTC'])
-    assert view.n_valid_sequences == 0
-
-    graph = CodonGraph('MIKEY', context_l='GAATTC')
-    view = graph.view()
-    view.set_banned_sequences(['GAATT'])
-    assert view.n_valid_sequences == 0
-
-
-def test_banned_sequence_entirely_in_right_context_gives_empty_space():
-    graph = CodonGraph('MIKEY', context_l='GAATTC')
-    view = graph.view()
-    view.set_banned_sequences(['GAATTC'])
-    assert view.n_valid_sequences == 0
-
-    graph = CodonGraph('MIKEY', context_l='GAATTC')
-    view = graph.view()
-    view.set_banned_sequences(['AATTC'])
-    assert view.n_valid_sequences == 0
-
-    graph = CodonGraph('MIKEY', context_r='GAATTC')
-    view = graph.view()
-    view.set_banned_sequences(['AATT'])
-    assert view.n_valid_sequences == 0
-
-
-def helper_ban_sequences_and_check_comprehensive(
+def helper_ban_sequences_and_check_enumerate(
         aa_seq,
         banned_sequences,
         context_l='',
@@ -468,7 +434,7 @@ def helper_ban_sequences_and_check_comprehensive(
     assert view.n_valid_sequences == len(expected_seqs)
 
 
-def helper_ban_sequences_and_check_probabilistic(
+def helper_ban_sequences_and_check_sample(
         aa_seq,
         banned_sequences,
         context_l='',
@@ -500,6 +466,63 @@ def helper_ban_sequences_and_check_probabilistic(
         assert seq in unconstrained_view
         for banned_sequence in banned_sequences:
             assert banned_sequence.upper() not in seq.upper()
+
+
+def test_view_sampler_keys_include_tracker_state():
+    view = CodonGraph('MIKEY').view()
+
+    for key in view.samplers:
+        node, state = key
+        assert isinstance(node, CodonNode)
+        assert state == frozenset()
+
+
+@pytest.mark.parametrize('aa_seq', SHORT_AA_SEQUENCES + MEDIUM_AA_SEQUENCES)
+@pytest.mark.parametrize('context_l', CONTEXTS_L)
+@pytest.mark.parametrize('context_r', CONTEXTS_R)
+def test_view_sampling_works_without_banned_sequences(aa_seq, context_l, context_r):
+    helper_ban_sequences_and_check_sample(aa_seq, [], context_l, context_r, n_samples=1000)
+
+
+@pytest.mark.parametrize('aa_seq', SHORT_AA_SEQUENCES)
+@pytest.mark.parametrize('context_l', CONTEXTS_L)
+@pytest.mark.parametrize('context_r', CONTEXTS_R)
+def test_view_enumerate_works_without_banned_sequences(aa_seq, context_l, context_r):
+    helper_ban_sequences_and_check_enumerate(aa_seq, [], context_l, context_r)
+
+
+_ = '''def test_banned_sequence_entirely_in_left_context_gives_empty_space():
+    graph = CodonGraph('MIKEY', context_l='GAATTC')
+    view = graph.view()
+    view.set_banned_sequences(['GAATTC'])
+    assert view.n_valid_sequences == 0
+
+    graph = CodonGraph('MIKEY', context_l='GAATTC')
+    view = graph.view()
+    view.set_banned_sequences(['AATTC'])
+    assert view.n_valid_sequences == 0
+
+    graph = CodonGraph('MIKEY', context_l='GAATTC')
+    view = graph.view()
+    view.set_banned_sequences(['GAATT'])
+    assert view.n_valid_sequences == 0
+
+
+def test_banned_sequence_entirely_in_right_context_gives_empty_space():
+    graph = CodonGraph('MIKEY', context_l='GAATTC')
+    view = graph.view()
+    view.set_banned_sequences(['GAATTC'])
+    assert view.n_valid_sequences == 0
+
+    graph = CodonGraph('MIKEY', context_l='GAATTC')
+    view = graph.view()
+    view.set_banned_sequences(['AATTC'])
+    assert view.n_valid_sequences == 0
+
+    graph = CodonGraph('MIKEY', context_r='GAATTC')
+    view = graph.view()
+    view.set_banned_sequences(['AATT'])
+    assert view.n_valid_sequences == 0
 
 
 def helper_arbitrary_coding_sequence(aa_seq, translation_table):

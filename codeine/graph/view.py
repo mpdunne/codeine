@@ -1,6 +1,6 @@
 import random
 
-from typing import Dict, Generator, List, Optional, Sequence, Union
+from typing import Dict, FrozenSet, Generator, List, Optional, Sequence, Tuple, Union
 
 from codeine.utils.display import format_banned_sequences, format_count, format_restrictions
 from codeine.graph.graph import CodonGraph, CodonNode
@@ -8,6 +8,10 @@ from codeine.utils.sampling import Sampler, Seedable
 
 
 CodonRestriction = Union[str, Sequence[str]]
+Watch = Tuple[int, int]
+TrackerState = FrozenSet[Watch]
+ViewKey = Tuple[object, TrackerState]
+EMPTY_TRACKER_STATE: TrackerState = frozenset()
 
 
 class CodonGraphView:
@@ -149,6 +153,12 @@ class CodonGraphView:
 
         return '\n'.join(lines)
 
+    def _view_key(self, node, state: TrackerState = EMPTY_TRACKER_STATE) -> ViewKey:
+        """
+        Return the cache key for a node plus banned-sequence tracker state.
+        """
+        return node, state
+
     def pin_codons(self, pinned_codons: Dict[int, CodonRestriction]) -> None:
         """
         Pin (temporarily fix) a codon in this codon graph view
@@ -260,10 +270,11 @@ class CodonGraphView:
             raise IndexError(f'Sequence index {index} out of range for {self.n_valid_sequences} valid sequences.')
 
         node = self.graph.initial_node
+        state = EMPTY_TRACKER_STATE
         sequence = []
 
         while node is not self.graph.final_node:
-            choice_counts = self.valid_paths_by_choice[node]
+            choice_counts = self.valid_paths_by_choice[self._view_key(node, state)]
 
             if isinstance(node, CodonNode):
                 remaining = index
@@ -295,6 +306,7 @@ class CodonGraphView:
             raise ValueError('Cannot sample from an empty coding space.')
 
         node = self.graph.initial_node
+        state = EMPTY_TRACKER_STATE
         sequence = []
 
         while node is not self.graph.final_node:
@@ -302,7 +314,7 @@ class CodonGraphView:
                 raise RuntimeError(f'Reached non-final node {node.id} with no outgoing transitions.')
 
             if isinstance(node, CodonNode):
-                choice = self.samplers[node].sample()
+                choice = self.samplers[self._view_key(node, state)].sample()
                 sequence.append(choice)
 
             else:
@@ -389,12 +401,16 @@ class CodonGraphView:
 
     def _update_samplers(self) -> None:
         """
-        Make samplers for each codon node given the view's constraints. The probabilities
-        are calculated by combining descendant counts and the base probabilities.
+        Make samplers for each codon node and banned-sequence tracker state.
+
+        The probabilities are calculated by combining descendant weight masses
+        and the base codon probabilities.
         """
         samplers = {}
 
-        for node, choice_masses in self.weight_mass_by_choice.items():
+        for key, choice_masses in self.weight_mass_by_choice.items():
+            node, state = key
+
             if not isinstance(node, CodonNode):
                 continue
 
@@ -402,7 +418,7 @@ class CodonGraphView:
             weights = [choice_masses[codon] for codon in codons]
 
             if codons:
-                samplers[node] = Sampler(codons, weights, rng=self._rng)
+                samplers[key] = Sampler(codons, weights, rng=self._rng)
 
         self.samplers = samplers
 
@@ -423,12 +439,13 @@ class CodonGraphView:
         weight_mass_by_choice = {}
 
         right_choice = self.graph.right_context_node.sequence
+        right_key = self._view_key(self.graph.right_context_node)
 
-        valid_paths_by_choice[self.graph.right_context_node] = {right_choice: 1}
-        weight_mass_by_choice[self.graph.right_context_node] = {right_choice: 1.0}
+        valid_paths_by_choice[right_key] = {right_choice: 1}
+        weight_mass_by_choice[right_key] = {right_choice: 1.0}
 
-        next_counts = {self.graph.right_context_node: 1}
-        next_masses = {self.graph.right_context_node: 1.0}
+        next_counts = {right_key: 1}
+        next_masses = {right_key: 1.0}
 
         for node in reversed(self.graph.codon_nodes):
             current_counts = {}
@@ -441,9 +458,10 @@ class CodonGraphView:
 
             for codon in self._choices_for_node(node):
                 child = node.transitions[codon]
+                child_key = self._view_key(child)
 
-                count = next_counts.get(child, 0)
-                mass = self.graph.cw[codon] * next_masses.get(child, 0.0)
+                count = next_counts.get(child_key, 0)
+                mass = self.graph.cw[codon] * next_masses.get(child_key, 0.0)
 
                 if count:
                     choice_counts[codon] = count
@@ -453,31 +471,36 @@ class CodonGraphView:
                     choice_masses[codon] = mass
                     total_mass += mass
 
-            valid_paths_by_choice[node] = choice_counts
-            weight_mass_by_choice[node] = choice_masses
+            node_key = self._view_key(node)
 
-            current_counts[node] = total_count
-            current_masses[node] = total_mass
+            valid_paths_by_choice[node_key] = choice_counts
+            weight_mass_by_choice[node_key] = choice_masses
+
+            current_counts[node_key] = total_count
+            current_masses[node_key] = total_mass
 
             next_counts = current_counts
             next_masses = current_masses
 
         left_choice = self.graph.left_context_node.sequence
         left_child = self.graph.left_context_node.transitions.get(left_choice)
+        left_key = self._view_key(self.graph.left_context_node)
 
         if left_child is None:
-            valid_paths_by_choice[self.graph.left_context_node] = {}
-            weight_mass_by_choice[self.graph.left_context_node] = {}
+            valid_paths_by_choice[left_key] = {}
+            weight_mass_by_choice[left_key] = {}
             self.valid_paths_by_choice = valid_paths_by_choice
             self.weight_mass_by_choice = weight_mass_by_choice
             self.n_valid_sequences = 0
             return
 
-        total_count = next_counts.get(left_child, 0)
-        total_mass = next_masses.get(left_child, 0.0)
+        left_child_key = self._view_key(left_child)
 
-        valid_paths_by_choice[self.graph.left_context_node] = {left_choice: total_count}
-        weight_mass_by_choice[self.graph.left_context_node] = {left_choice: total_mass}
+        total_count = next_counts.get(left_child_key, 0)
+        total_mass = next_masses.get(left_child_key, 0.0)
+
+        valid_paths_by_choice[left_key] = {left_choice: total_count}
+        weight_mass_by_choice[left_key] = {left_choice: total_mass}
 
         self.valid_paths_by_choice = valid_paths_by_choice
         self.weight_mass_by_choice = weight_mass_by_choice
