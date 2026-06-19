@@ -10,15 +10,13 @@ from pathlib import Path
 from typing import Dict, Generator, List, Optional, Sequence, Union
 
 from codeine.motifs.restriction import RestrictionSite
+from codeine.motifs.constraints import expand_and_validate_sequence_constraints, ForbiddenMotif, ForbiddenMotifs
 from codeine.utils.display import format_banned_sequences, format_forbidden_motif,\
     format_count, format_restrictions
 from codeine.graph.graph import CodonGraph
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
 from codeine.utils.sampling import Seedable
-
-ForbiddenMotif = Union[str, RestrictionSite]
-ForbiddenMotifs = Optional[Union[ForbiddenMotif, Sequence[ForbiddenMotif]]]
 
 
 class CodingSpace:
@@ -67,7 +65,7 @@ class CodingSpace:
 
         self.forbidden_motifs = forbidden_motifs
         self.max_homopolymer = max_homopolymer
-        self.forbidden_sequences = self._expand_and_validate_sequence_constraints(
+        self.forbidden_sequences = expand_and_validate_sequence_constraints(
             forbidden_motifs=forbidden_motifs,
             max_homopolymer=max_homopolymer,
             rna=rna,
@@ -217,60 +215,6 @@ class CodingSpace:
         lines.append(f'Num. valid coding sequences: {format_count(self.n_valid_sequences)}')
 
         return '\n'.join(lines)
-
-    @staticmethod
-    def _expand_and_validate_forbidden_motifs(forbidden_motifs: ForbiddenMotifs, rna: bool) -> List[str]:
-        all_sequences = []
-
-        if forbidden_motifs is None:
-            return []
-
-        if isinstance(forbidden_motifs, (str, RestrictionSite)):
-            forbidden_motifs = [forbidden_motifs]
-
-        for motif in forbidden_motifs:
-            if isinstance(motif, RestrictionSite):
-                sequences = [*motif.motifs]
-
-            elif isinstance(motif, str):
-                if len(motif) == 0:
-                    raise ValueError('Forbidden motifs cannot be empty.')
-
-                sequences = [motif]
-
-            else:
-                raise TypeError('Forbidden motifs must be strings or codeine.RestrictionSite.')
-
-            sequences = [seq.upper() for seq in sequences]
-            sequences = [seq.replace('T', 'U') if rna else seq.replace('U', 'T') for seq in sequences]
-
-            all_sequences += sequences
-
-        return sorted(set(all_sequences))
-
-    @staticmethod
-    def _expand_and_validate_max_homopolymer(max_homopolymer: Optional[int], rna: bool = False) -> List[str]:
-        if max_homopolymer is None:
-            return []
-
-        if not isinstance(max_homopolymer, int):
-            raise TypeError('max_homopolymer must be an integer.')
-
-        if max_homopolymer < 1:
-            raise ValueError('max_homopolymer must be at least 1.')
-
-        nts = 'ACGU' if rna else 'ACGT'
-        return [nt * (max_homopolymer + 1) for nt in nts]
-
-    @staticmethod
-    def _expand_and_validate_sequence_constraints(
-            forbidden_motifs=None,
-            max_homopolymer=None,
-            rna: bool = False,
-    ):
-        forbidden_sequences = CodingSpace._expand_and_validate_forbidden_motifs(forbidden_motifs, rna=rna)
-        forbidden_homopolymers = CodingSpace._expand_and_validate_max_homopolymer(max_homopolymer, rna=rna)
-        return sorted(set(forbidden_sequences + forbidden_homopolymers))
 
     def sample(self) -> str:
         """
