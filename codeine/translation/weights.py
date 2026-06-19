@@ -57,25 +57,50 @@ class CodonWeights:
                 Whether to use rna (default is False, i.e. use DNA).
             """
         self._locked = False
-            
+
+        table = TranslationTable(rna=rna)
+
+        expected_aa = set(table.aa_to_codons)
+        observed_aa = {aa.upper() for aa in weights}
+
+        missing_aa = expected_aa - observed_aa
+        if missing_aa:
+            raise ValueError(f'Missing weights for amino acid(s): {sorted(missing_aa)}')
+
+        extra_aa = observed_aa - expected_aa
+        if extra_aa:
+            raise ValueError(f'Unknown amino acid(s): {sorted(extra_aa)}')
+
         weights_flat: Dict[str, float] = {}
-        aa_to_codons: Dict[str, Tuple[str]] = {}
+        aa_to_codons: Dict[str, Tuple[str, ...]] = {}
 
         for aa, codon_weights in weights.items():
             aa = aa.upper()
 
-            total = sum(codon_weights.values())
+            normalised_codon_weights = {
+                (codon.upper().replace('T', 'U') if rna else codon.upper().replace('U', 'T')): weight
+                for codon, weight in codon_weights.items()
+            }
+
+            expected_codons = set(table.aa_to_codons[aa])
+            observed_codons = set(normalised_codon_weights.keys())
+
+            missing_codons = expected_codons - observed_codons
+            if missing_codons:
+                raise ValueError(f'Missing weights for codon(s) for amino acid {aa}: {sorted(missing_codons)}')
+
+            extra_codons = observed_codons - expected_codons
+            if extra_codons:
+                raise ValueError(f'Unknown codon(s) for amino acid {aa}: {sorted(extra_codons)}')
+
+            total = sum(normalised_codon_weights.values())
             if total <= 0:
                 raise ValueError(f'Weights for amino acid {aa} must sum to > 0')
 
             codons = []
-
-            for codon, weight in codon_weights.items():
+            for codon, weight in normalised_codon_weights.items():
                 if weight < 0:
                     raise ValueError(f'Weight for codon {codon} cannot be negative')
-
-                codon = codon.upper()
-                codon = codon.replace('T', 'U') if rna else codon.replace('U', 'T')
 
                 codons.append(codon)
                 weights_flat[codon] = float(weight) / total

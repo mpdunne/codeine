@@ -7,14 +7,14 @@ from codeine.utils.dict import FrozenDict
 
 class TranslationTable:
     """
-    Translation table. Organises information from BioPython's CodonTable. Here we use the
-    NCBI translation table IDs (see https://www.ncbi.nlm.nih.gov/Taxonomy/Utils/wprintgc.cgi)
-    Uses DNA by default. If rna=True, uses RNA, i.e. codons are represented with U instead of T.
+    Translation table. Here we use the NCBI translation table IDs
+    (see https://www.ncbi.nlm.nih.gov/Taxonomy/Utils/wprintgc.cgi)
+    Uses DNA by default, but can switch to RNA by setting rna=True.
     """
 
     def __init__(self, table_id: int = 1, rna: bool = False) -> None:
         """
-        Constructor for the TranslationTable class. This class is immutable after construction!
+        Constructor for the TranslationTable class.
 
         Parameters
         ----------

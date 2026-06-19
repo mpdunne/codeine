@@ -24,6 +24,23 @@ def test_sampler_weights_work():
     assert counts[2] > counts[1] * 1.5
 
 
+def test_weights_are_copied():
+    weights = [1, 100]
+    sampler = Sampler(['a', 'b'], weights=weights, seed=8675309)
+    weights[0] = 5318008
+
+    sampled = [sampler.sample() for _ in range(1000)]
+    assert sampled.count('b') > sampled.count('a')
+
+
+def test_items_are_copied():
+    items = ['a', 'b']
+    sampler = Sampler(items, seed=8675309)
+    items += ['c']
+
+    assert sampler.items == ('a', 'b')
+
+
 def test_sampler_multiple_values_return_all_items():
     items = [1, 2, 3, 4, 5]
     s = Sampler(items, seed=8675309)
@@ -61,9 +78,11 @@ def test_sample_no_seed_is_not_consistent():
 
 
 def test_sampler_seed_and_rng_cannot_both_be_provided():
-    import random
     with pytest.raises(ValueError):
         Sampler([1, 2, 3], seed=123, rng=random.Random(123))
+
+    with pytest.raises(ValueError):
+        Sampler([55], seed=123, rng=random.Random(123))
 
 
 def test_sampler_seed_strategies_exhibit_similar_behaviour():
@@ -82,8 +101,8 @@ def test_sampler_seed_strategies_exhibit_similar_behaviour():
     assert set(sampled3) == set(items)
 
     counts1 = Counter(sampled1)
-    counts2 = Counter(sampled1)
-    counts3 = Counter(sampled1)
+    counts2 = Counter(sampled2)
+    counts3 = Counter(sampled3)
 
     assert [500 < counts1[i] < 5000 for i in items]
     assert [500 < counts2[i] < 5000 for i in items]
@@ -99,6 +118,17 @@ def test_sampler_rng_consistent():
 
     for _ in range(100):
         assert s1.sample() == s2.sample()
+
+
+def test_rng_object_is_advanced():
+    rng = random.Random(8675309)
+    sampler = Sampler(['x', 'y'], rng=rng)
+
+    before = rng.getstate()
+    sampler.sample()
+    after = rng.getstate()
+
+    assert before != after
 
 
 def test_weights_can_be_ints_or_floats():
@@ -162,3 +192,11 @@ def test_single_value_sampler_pickle():
     loaded = pickle.loads(pickle.dumps(sampler))
     assert loaded.sample() == 'a'
     assert loaded.items == ('a',)
+
+
+def test_pickle_preserves_config():
+    sampler = Sampler(['a', 'b', 'c'], weights=[1, 2, 3], seed=123)
+    loaded = pickle.loads(pickle.dumps(sampler))
+
+    assert loaded.items == ('a', 'b', 'c')
+    assert loaded._cumulative == sampler._cumulative

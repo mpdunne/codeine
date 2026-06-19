@@ -180,3 +180,18 @@ def test_translation_table_pickle_preserves_immutability():
     loaded = pickle.loads(pickle.dumps(table))
     with pytest.raises(AttributeError):
         loaded.rna = True
+
+
+@pytest.mark.parametrize('bad', ['AA', 'AAAA', 'XYZ', '', None])
+def test_normalise_codon_bad_inputs(bad):
+    tt = TranslationTable()
+    with pytest.raises(ValueError, TypeError):
+        tt.normalise_codon(bad)
+
+
+def test_non_standard_translation_tables_differ():
+    standard = TranslationTable(table_id=1)
+    mitochondrial = TranslationTable(table_id=2)
+
+    assert mitochondrial.table_id == 2
+    assert standard.codons_to_aa != mitochondrial.codons_to_aa
