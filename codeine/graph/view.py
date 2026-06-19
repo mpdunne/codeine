@@ -55,6 +55,8 @@ class CodonGraphView:
 
         self.valid_paths_by_choice = {}
         self.weight_mass_by_choice = {}
+        self.next_node_by_choice = {}
+        self.next_state_by_choice = {}
 
         self.n_valid_sequences = None
         self.samplers = {}
@@ -239,33 +241,25 @@ class CodonGraphView:
         node = self.graph.initial_node
         state = self._initial_banned_state()
 
-        while node is not self.graph.final_node:
+        final_node = self.graph.final_node
+        next_node_by_choice = self.next_node_by_choice
+        next_state_by_choice = self.next_state_by_choice
+        view_key = self._view_key
+
+        while node is not final_node:
+            key = view_key(node, state)
+
             if isinstance(node, CodonNode):
                 pos = node.pos
                 choice = seq[(pos - 1) * 3: pos * 3]
-
-                if pos in self.pinned_codons:
-                    if choice not in self.pinned_codons[pos]:
-                        return False
-
-                elif choice not in node.codons:
-                    return False
-
             else:
                 choice = node.sequence
 
-            child = node.transitions.get(choice)
-
-            if child is None:
+            try:
+                node = next_node_by_choice[key][choice]
+                state = next_state_by_choice[key][choice]
+            except KeyError:
                 return False
-
-            advance = self._advance_banned_state(state, node, choice)
-
-            if advance.banned:
-                return False
-
-            state = advance.state
-            node = child
 
         return True
 
@@ -291,8 +285,15 @@ class CodonGraphView:
         state = self._initial_banned_state()
         sequence = []
 
-        while node is not self.graph.final_node:
-            choice_counts = self.valid_paths_by_choice[self._view_key(node, state)]
+        final_node = self.graph.final_node
+        valid_paths_by_choice = self.valid_paths_by_choice
+        next_node_by_choice = self.next_node_by_choice
+        next_state_by_choice = self.next_state_by_choice
+        view_key = self._view_key
+
+        while node is not final_node:
+            key = view_key(node, state)
+            choice_counts = valid_paths_by_choice[key]
 
             if isinstance(node, CodonNode):
                 remaining = index
@@ -312,13 +313,8 @@ class CodonGraphView:
                 # Context nodes only have one valid outgoing choice.
                 chosen = next(iter(choice_counts.keys()))
 
-            advance = self._advance_banned_state(state, node, chosen)
-
-            if advance.banned:
-                raise RuntimeError('Indexed sequence resolved to a banned path.')
-
-            state = advance.state
-            node = node.transitions[chosen]
+            node = next_node_by_choice[key][chosen]
+            state = next_state_by_choice[key][chosen]
 
         return ''.join(sequence)
 
@@ -333,24 +329,23 @@ class CodonGraphView:
         state = self._initial_banned_state()
         sequence = []
 
-        while node is not self.graph.final_node:
-            if not node.transitions:
-                raise RuntimeError(f'Reached non-final node {node.id} with no outgoing transitions.')
+        final_node = self.graph.final_node
+        samplers = self.samplers
+        next_node_by_choice = self.next_node_by_choice
+        next_state_by_choice = self.next_state_by_choice
+        view_key = self._view_key
+
+        while node is not final_node:
+            key = view_key(node, state)
 
             if isinstance(node, CodonNode):
-                choice = self.samplers[self._view_key(node, state)].sample()
+                choice = samplers[key].sample()
                 sequence.append(choice)
-
             else:
                 choice = node.sequence
 
-            advance = self._advance_banned_state(state, node, choice)
-
-            if advance.banned:
-                raise RuntimeError('Sampler selected a banned path.')
-
-            state = advance.state
-            node = node.transitions[choice]
+            node = next_node_by_choice[key][choice]
+            state = next_state_by_choice[key][choice]
 
         return ''.join(sequence)
 
@@ -476,10 +471,16 @@ class CodonGraphView:
         """
         Calculate valid path counts and weight masses for each outgoing transition,
         tracking banned-sequence state as part of the cache key.
+
+        Also compile legal transitions so contains(), sample(), and sequence_at()
+        can follow precomputed state/node transitions instead of re-running the
+        banned-sequence tracker at runtime.
         """
 
         valid_paths_by_choice = {}
         weight_mass_by_choice = {}
+        next_node_by_choice = {}
+        next_state_by_choice = {}
         total_cache = {}
 
         initial_state = self._banned_tracker.initial_state
@@ -498,15 +499,17 @@ class CodonGraphView:
                 total_cache[key] = (1, 1.0)
                 valid_paths_by_choice[key] = {}
                 weight_mass_by_choice[key] = {}
+                next_node_by_choice[key] = {}
+                next_state_by_choice[key] = {}
                 continue
+
+            if isinstance(node, CodonNode):
+                choices = self._choices_for_node(node)
+            else:
+                choices = [node.sequence]
 
             if not expanded:
                 stack.append((node, state, True))
-
-                if isinstance(node, CodonNode):
-                    choices = self._choices_for_node(node)
-                else:
-                    choices = [node.sequence]
 
                 for choice in choices:
                     child = node.transitions.get(choice)
@@ -528,13 +531,10 @@ class CodonGraphView:
 
             choice_counts = {}
             choice_masses = {}
+            choice_next_nodes = {}
+            choice_next_states = {}
             total_count = 0
             total_mass = 0.0
-
-            if isinstance(node, CodonNode):
-                choices = self._choices_for_node(node)
-            else:
-                choices = [node.sequence]
 
             for choice in choices:
                 child = node.transitions.get(choice)
@@ -559,14 +559,21 @@ class CodonGraphView:
                     choice_counts[choice] = child_count
                     total_count += child_count
 
+                    choice_next_nodes[choice] = child
+                    choice_next_states[choice] = advance.state
+
                 if choice_mass:
                     choice_masses[choice] = choice_mass
                     total_mass += choice_mass
 
             valid_paths_by_choice[key] = choice_counts
             weight_mass_by_choice[key] = choice_masses
+            next_node_by_choice[key] = choice_next_nodes
+            next_state_by_choice[key] = choice_next_states
             total_cache[key] = (total_count, total_mass)
 
         self.valid_paths_by_choice = valid_paths_by_choice
         self.weight_mass_by_choice = weight_mass_by_choice
+        self.next_node_by_choice = next_node_by_choice
+        self.next_state_by_choice = next_state_by_choice
         self.n_valid_sequences = total_cache[initial_key][0]
