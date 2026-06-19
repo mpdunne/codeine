@@ -211,7 +211,7 @@ def test_find_matching_subpaths_no_match():
     assert not _find_matching_subpaths(graph, 'GGGG')
 
 
-def testfind_matching_subpaths_no_match_long():
+def test_find_matching_subpaths_no_match_long():
     graph = CodonGraph('MIKEY' * 1000)
 
     assert not _find_matching_subpaths(graph, 'AAAAAA')
@@ -219,17 +219,17 @@ def testfind_matching_subpaths_no_match_long():
     assert not _find_matching_subpaths(graph, 'GGGG')
 
 
-def testfind_matching_subpaths_sequence_longer_than_possible_returns_empty():
+def test_find_matching_subpaths_sequence_longer_than_possible_returns_empty():
     graph = CodonGraph('MIKEY')
     assert not _find_matching_subpaths(graph, 'A' * 10_000)
 
 
-def testfind_matching_subpaths_finds_lowercase_sequences():
+def test_find_matching_subpaths_finds_lowercase_sequences():
     graph = CodonGraph('MIKEY')
     assert _find_matching_subpaths(graph, 'atg')
 
 
-def testfind_matching_subpaths_single_nt():
+def test_find_matching_subpaths_single_nt():
     graph = CodonGraph('MIKEY')
 
     matches = _find_matching_subpaths(graph, 'T')
@@ -240,7 +240,7 @@ def testfind_matching_subpaths_single_nt():
         assert codon[offset] == 'T'
 
 
-def testfind_matching_subpaths_matches_inside_coding_sequence():
+def test_find_matching_subpaths_matches_inside_coding_sequence():
     graph = CodonGraph('MIKEY')
 
     assert _find_matching_subpaths(graph, 'TAAAAG')
@@ -248,7 +248,7 @@ def testfind_matching_subpaths_matches_inside_coding_sequence():
     assert _find_matching_subpaths(graph, 'ATGATA')
 
 
-def testfind_matching_subpaths_matches_inside_coding_sequence_long():
+def test_find_matching_subpaths_matches_inside_coding_sequence_long():
     graph = CodonGraph('MIKEY' * 1000)
 
     assert _find_matching_subpaths(graph, 'TAAAAG')
@@ -256,7 +256,7 @@ def testfind_matching_subpaths_matches_inside_coding_sequence_long():
     assert _find_matching_subpaths(graph, 'ATGATA')
 
 
-def testfind_matching_subpaths_offset_correct():
+def test_find_matching_subpaths_offset_correct():
     graph = CodonGraph('MIKEY')
 
     matches = _find_matching_subpaths(graph, 'ATGATAAAGGAATAC')
@@ -275,7 +275,7 @@ def testfind_matching_subpaths_offset_correct():
     assert offset == 2
 
 
-def testfind_matching_subpaths_fully_in_contexts():
+def test_find_matching_subpaths_fully_in_contexts():
     graph = CodonGraph('MIKEY', context_l='AAGGAAGGAAGGAAGG')
     assert _find_matching_subpaths(graph, 'GGAAGGAAGG')
 
@@ -283,7 +283,7 @@ def testfind_matching_subpaths_fully_in_contexts():
     assert _find_matching_subpaths(graph, 'AATTAATTAA')
 
 
-def testfind_matching_subpaths_overlapping_contexts():
+def test_find_matching_subpaths_overlapping_contexts():
     graph = CodonGraph('MIKEY', context_l='AAGGAAGGAAGGAAGG')
     matches = _find_matching_subpaths(graph, 'GGAAGGAAGG' + 'ATG')
     assert matches
@@ -301,7 +301,7 @@ def testfind_matching_subpaths_overlapping_contexts():
     assert isinstance(path[1][0], ContextNode)
 
 
-def testfind_matching_subpaths_matches_entire_left_context_plus_cds():
+def test_find_matching_subpaths_matches_entire_left_context_plus_cds():
     graph = CodonGraph('MIKEY', context_l='AAGG')
 
     matches = _find_matching_subpaths(graph, 'AAGGATG')
@@ -313,7 +313,7 @@ def testfind_matching_subpaths_matches_entire_left_context_plus_cds():
     assert isinstance(path[1][0], CodonNode)
 
 
-def testfind_matching_subpaths_matches_cds_plus_entire_right_context():
+def test_find_matching_subpaths_matches_cds_plus_entire_right_context():
     graph = CodonGraph('MIKEY', context_r='AAGG')
 
     matches = _find_matching_subpaths(graph, 'TACAAGG')
@@ -325,7 +325,7 @@ def testfind_matching_subpaths_matches_cds_plus_entire_right_context():
     assert isinstance(path[-1][0], ContextNode)
 
 
-def testfind_matching_subpaths_multiple_matches():
+def test_find_matching_subpaths_multiple_matches():
     graph = CodonGraph('MMMM')
 
     matches = _find_matching_subpaths(graph, 'ATGATG')
@@ -337,20 +337,20 @@ def testfind_matching_subpaths_multiple_matches():
         assert ''.join(codon for node, codon in path) == 'ATGATG'
 
 
-def testfind_matching_subpaths_single_codon_multiple_matches():
+def test_find_matching_subpaths_single_codon_multiple_matches():
     graph = CodonGraph('KKK')
     matches = _find_matching_subpaths(graph, 'AAA')
     assert len(matches) == 11
 
 
-def testfind_matching_subpaths_respects_codon_restrictions():
+def test_find_matching_subpaths_respects_codon_restrictions():
     graph = CodonGraph('MIKEY', codon_restrictions={2: 'ATA'})
 
     assert _find_matching_subpaths(graph, 'ATGATA')
     assert not _find_matching_subpaths(graph, 'ATGATT')
 
 
-def testfind_matching_subpaths_ends_inside_codon():
+def test_find_matching_subpaths_ends_inside_codon():
     graph = CodonGraph('MIKEY')
 
     matches = _find_matching_subpaths(graph, 'ATTAAGG')
@@ -390,7 +390,7 @@ CONTEXTS_R = ('', 'ttccttccttcc')
 )
 @pytest.mark.parametrize('context_l', CONTEXTS_L)
 @pytest.mark.parametrize('context_r', CONTEXTS_R)
-def testfind_matching_subpaths_full_sequences(aa_seq, context_l, context_r):
+def test_find_matching_subpaths_full_sequences(aa_seq, context_l, context_r):
     tt = TranslationTable()
 
     graph = CodonGraph(aa_seq, context_l=context_l, context_r=context_r, translation_table=tt)
