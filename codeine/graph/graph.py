@@ -30,6 +30,7 @@ class Node:
         """
         self.parents = set()
         self.transitions = {}
+        self.pos = None
 
 
 class ContextNode(Node):
@@ -39,27 +40,31 @@ class ContextNode(Node):
     the coding sequence, and can be empty.
     """
 
-    def __init__(self, sequence: str) -> None:
+    def __init__(self, pos: int, sequence: str) -> None:
         """
         Constructor for the ContextNode class.
 
         Parameters
         ----------
+        pos
+            The graph position. Left context is 0; right context is len(aa_seq) + 1.
         sequence
             The context sequence contained on this node.
         """
         super().__init__()
 
         # Basic info.
+        self.pos = pos
         self.sequence = sequence
 
         # Set an ID for this node.
-        self.id = f'context-{uuid.uuid4().hex[:8]}'
+        self.id = f'context-{pos}-{uuid.uuid4().hex[:8]}'
 
     def __repr__(self) -> str:
         return (
             f'ContextNode('
             f'id={self.id}'
+            f', pos={self.pos}'
             #f', seq={self.sequence}'
             f')'
         )
@@ -306,8 +311,8 @@ class CodonGraph:
         """
         Initialise the codon graph.
         """
-        left_context_node = ContextNode(self.context_l)
-        right_context_node = ContextNode(self.context_r)
+        left_context_node = ContextNode(0, self.context_l)
+        right_context_node = ContextNode(len(self.aa_seq) + 1, self.context_r)
         end_node = EndNode()
 
         codon_nodes = []

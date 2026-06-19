@@ -1,45 +1,88 @@
 from dataclasses import dataclass
 from typing import Dict, FrozenSet, List, Sequence, Tuple
 
-from codeine.graph.graph import Node, CodonNode, CodonGraph
+from codeine.graph.graph import Node, CodonGraph, CodonNode
 
 
-Watch = Tuple[int, int]          # (path_ix, matched_length)
-TrackerState = FrozenSet[Watch]
+# A step is a decision in the codon graph, i.e. (graph pos, choice)
+Step = Tuple[int, str]
 
 
 @dataclass(frozen=True)
 class SubPath:
+    """
+    A subpath in the codon graph, indicating a sequence that can be obtained
+    by following a specified sequence of steps, starting at a given offset.
+    """
     sequence: str
-    parts: Tuple[Tuple[Node, str], ...]
+    steps: Tuple[Step, ...]
     offset: int
+
+
+# A watch (path_ix, matched_length) is the status of a single
+# watched path, indicating how much of the path has been seen so far.
+Watch = Tuple[int, int]
+
+# The tracker state is a set of watches. We update the
+# watches every time we make a choice.
+TrackerState = FrozenSet[Watch]
 
 
 @dataclass(frozen=True)
 class AdvanceResult:
+    """
+    The result of moving the tracker state forward, indicating whether we are
+    currently in a disallowed state, and if not, what the new state is.
+    """
     banned: bool
     state: TrackerState = frozenset()
 
 
 class BannedSequenceTracker:
     """
-    Tracks progress along concrete banned graph paths.
+    Tracks progress along concrete "banned" graph subpaths.
+
+    A SubPath stores:
+
+        sequence
+            The sequence being tracked.
+
+        steps
+            Concrete graph emissions as (pos, choice) pairs.
+
+        offset
+            Where `sequence` starts inside the first choice.
 
     State is a frozenset of watches:
 
         (path_ix, matched_length)
 
     meaning that `matched_length` bases of paths[path_ix].sequence
-    have already matched on the current graph walk.
+    have already matched.
+
+    Transitions are precomputed:
+
+        (path_ix, matched_length), choice -> banned | next watch | dead
     """
 
-    def __init__(self, graph, banned_sequences: Sequence[str]) -> None:
+    def __init__(self, graph: CodonGraph, banned_sequences: Sequence[str]) -> None:
+        """
+        Constructor for the BannedSequenceTracker class.
+
+        Parameters
+        ----------
+        graph
+            The codon graph on which to operate.
+        banned_sequences
+            A collection of "banned" sequences that we need to watch out for.
+        """
         self.graph = graph
-        self.banned_sequences = tuple(banned_sequences)
+        self.banned_sequences = tuple(sequence.upper() for sequence in banned_sequences)
         self.initial_state: TrackerState = frozenset()
 
         self.paths = self._find_banned_paths()
         self.starts = self._build_starts()
+        self.transitions = self._build_transitions()
 
     @property
     def is_trivial(self) -> bool:
@@ -50,66 +93,115 @@ class BannedSequenceTracker:
 
         for sequence in self.banned_sequences:
             for parts, offset in _find_matching_subpaths(self.graph, sequence):
-                subpath = SubPath(sequence=sequence, parts=tuple(parts), offset=offset)
-                paths.append(subpath)
+                steps = tuple(
+                    (node.pos, choice)
+                    for node, choice in parts
+                )
+
+                paths.append(
+                    SubPath(sequence=sequence, steps=steps, offset=offset)
+                )
 
         return tuple(paths)
 
-    def _build_starts(self) -> Dict[Tuple[Node, str], Tuple[Watch, ...]]:
-        starts: Dict[Tuple[Node, str], List[Watch]] = {}
+    def _build_starts(self) -> Dict[Step, Tuple[AdvanceResult, ...]]:
+        starts: Dict[Step, List[AdvanceResult]] = {}
 
         for path_ix, path in enumerate(self.paths):
-            first_node, first_choice = path.parts[0]
+            first_step = path.steps[0]
+            _pos, first_choice = first_step
 
             emitted = first_choice[path.offset:]
             matched_length = min(len(emitted), len(path.sequence))
 
-            starts.setdefault((first_node, first_choice), []).append(
-                (path_ix, matched_length)
-            )
+            if matched_length >= len(path.sequence):
+                result = AdvanceResult(banned=True)
+            else:
+                state = frozenset({(path_ix, matched_length)})
+                result = AdvanceResult(banned=False, state=state)
+
+            starts.setdefault(first_step, []).append(result)
 
         return {
-            key: tuple(watches)
-            for key, watches in starts.items()
+            key: tuple(results)
+            for key, results in starts.items()
         }
+
+    def _build_transitions(self) -> Dict[Tuple[Watch, str], AdvanceResult]:
+        transitions = {}
+
+        for path_ix, path in enumerate(self.paths):
+            matched_length = min(
+                len(path.steps[0][1]) - path.offset,
+                len(path.sequence),
+            )
+
+            if matched_length >= len(path.sequence):
+                continue
+
+            for _pos, choice in path.steps[1:]:
+                watch = (path_ix, matched_length)
+                remaining = path.sequence[matched_length:]
+
+                if choice.startswith(remaining):
+                    transitions[(watch, choice)] = AdvanceResult(banned=True)
+                    break
+
+                if remaining.startswith(choice):
+                    matched_length += len(choice)
+                    state = frozenset({(path_ix, matched_length)})
+                    transitions[(watch, choice)] = AdvanceResult(
+                        banned=False,
+                        state=state,
+                    )
+                    continue
+
+                break
+
+        return transitions
 
     def advance(
         self,
-        node: Node,
+        step: Step,
         state: TrackerState,
-        choice: str,
     ) -> AdvanceResult:
         """
-        Advance after taking `choice` from `node`.
+        Move the tracker state forward after taking a graph step.
 
-        Returns an AdvanceResult describing whether a banned
-        sequence has been completed and which watches remain active.
+        Parameters
+        ----------
+        step
+            The graph step just taken, as (graph pos, choice).
+        state
+            The current tracker state.
+
+        Returns
+        -------
+        AdvanceResult
+            Whether the step completed a banned sequence, and otherwise the
+            updated tracker state.
         """
+        _pos, choice = step
         next_state = set()
 
-        # Start newly possible watches.
-        for path_ix, matched_length in self.starts.get((node, choice), ()):
-            path = self.paths[path_ix]
-
-            if matched_length >= len(path.sequence):
+        for result in self.starts.get(step, ()):
+            if result.banned:
                 return AdvanceResult(banned=True)
 
-            next_state.add((path_ix, matched_length))
+            next_state.update(result.state)
 
-        for path_ix, matched_length in state:
-            path = self.paths[path_ix]
-            remaining = path.sequence[matched_length:]
+        for watch in state:
+            result = self.transitions.get((watch, choice))
 
-            if choice.startswith(remaining):
+            if result is None:
+                continue
+
+            if result.banned:
                 return AdvanceResult(banned=True)
 
-            if remaining.startswith(choice):
-                next_state.add((path_ix, matched_length + len(choice)))
+            next_state.update(result.state)
 
-        return AdvanceResult(
-            banned=False,
-            state=frozenset(next_state),
-        )
+        return AdvanceResult(banned=False, state=frozenset(next_state))
 
 
 def _find_matching_subpaths(graph: CodonGraph, sequence: str) \
@@ -120,8 +212,8 @@ def _find_matching_subpaths(graph: CodonGraph, sequence: str) \
 
         (
             [
-                (node1, codon_1),
-                (node2, codon_2),
+                (node1, choice_1),
+                (node2, choice_2),
                 ...
             ]
             offset,  # Where the path starts relative to first node's codon choice.
