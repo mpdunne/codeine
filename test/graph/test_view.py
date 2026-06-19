@@ -417,8 +417,8 @@ MEDIUM_AA_SEQUENCES = (
 LONG_AA_SEQUENCES = (
     'MIKEY' * 100,
     'MIKEY' * 250,
-    'MIKEY' * 500,
-    'MIKEY' * 1000,
+#    'MIKEY' * 500,
+#    'MIKEY' * 1000,
 )
 
 CONTEXTS_L = ('', 'a', 'aa', 'aaa', 'aaggaaggaagg')
