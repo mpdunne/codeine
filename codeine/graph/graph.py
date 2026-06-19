@@ -221,12 +221,12 @@ class CodonGraph:
             if len(codons) == 0:
                 raise ValueError(f'Codon restriction at position {pos} cannot be empty.')
 
-            codons = [self.tt.normalise_codon(codon) for codon in codons]
+            codons = [self.tt.normalise_sequence(codon) for codon in codons]
 
             aa = self.aa_seq[pos - 1]
 
             if pos in self.codon_restrictions:
-                allowed_codons = [self.tt.normalise_codon(codon) for codon in self.codon_restrictions[pos]]
+                allowed_codons = [self.tt.normalise_sequence(codon) for codon in self.codon_restrictions[pos]]
             else:
                 allowed_codons = self.tt.aa_to_codons[aa]
 
