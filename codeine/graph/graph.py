@@ -9,7 +9,7 @@ import random
 import uuid
 
 from collections import Counter
-from typing import Dict, List, Optional, Sequence, Union, Set, Tuple
+from typing import Dict, List, Optional, Sequence, Union, Tuple
 
 from codeine.utils.display import format_restrictions
 from codeine.translation.tables import TranslationTable
@@ -170,8 +170,7 @@ class CodonGraph:
         self.right_context_node = None
         self.end_node = None
 
-        self.codon_nodes = set()
-        self.codon_nodes_by_pos = {pos: set() for pos in range(1, len(self.aa_seq) + 1)}
+        self.codon_nodes: Tuple[CodonNode, ...] = ()
 
         self.initial_node = None
         self.final_node = None
@@ -292,6 +291,17 @@ class CodonGraph:
 
         return sequence.replace('U', 'T')
 
+    def codon_node_by_pos(self, pos: int) -> CodonNode:
+        """
+        Return the codon node at a given amino-acid position.
+
+        Positioning is 1-based.
+        """
+        if pos < 1 or pos > len(self.codon_nodes):
+            raise ValueError(f'Position {pos} is out of range.')
+
+        return self.codon_nodes[pos - 1]
+
     def _initialise_graph(self) -> None:
         """
         Initialise the codon graph.
@@ -346,29 +356,22 @@ class CodonGraph:
         self.left_context_node = left_context_node
         self.right_context_node = right_context_node
         self.end_node = end_node
-        for codon_node in codon_nodes:
-            self.add_codon_node(codon_node)
+        self.codon_nodes = tuple(codon_nodes)
 
         self.initial_node = left_context_node
         self.final_node = end_node
 
     @property
-    def nodes(self) -> Set[Node]:
+    def nodes(self) -> Tuple[Node, ...]:
         """
         All nodes in the graph, including context and end nodes.
         """
-        return self.codon_nodes | {
+        return (
             self.left_context_node,
+            *self.codon_nodes,
             self.right_context_node,
             self.end_node,
-        }
-
-    def add_codon_node(self, node: CodonNode) -> None:
-        """
-        Add a codon node and update codon-node indexes.
-        """
-        self.codon_nodes.add(node)
-        self.codon_nodes_by_pos.setdefault(node.pos, set()).add(node)
+        )
 
     def view(self,
              seed: Optional[Seedable] = None,

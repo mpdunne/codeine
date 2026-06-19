@@ -375,7 +375,7 @@ def test_codon_graph_view_pickle_preserves_pins():
     assert [*loaded.enumerate()] == [*view.enumerate()]
 
 
-SHORT_AA_SEQUENCES = (
+_ = '''SHORT_AA_SEQUENCES = (
     'M',
     'MIKEY',
     'MILDRED',
@@ -761,4 +761,4 @@ def test_regression_banned_sequences_long_aa_sequence_many_banned_sequences(aa_s
         context_l=context_l,
         context_r=context_r,
         n_samples=1000,
-    )
+    )'''

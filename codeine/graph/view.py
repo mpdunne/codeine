@@ -172,7 +172,7 @@ class CodonGraphView:
             A list of positions to unpin.
         """
         for pos in positions:
-            if pos not in self.graph.codon_nodes_by_pos:
+            if pos < 1 or pos > len(self.graph.codon_nodes):
                 raise ValueError(f'Pinned codon position {pos} is out of range.')
 
             self.pinned_codons.pop(pos, None)
@@ -430,35 +430,34 @@ class CodonGraphView:
         next_counts = {self.graph.right_context_node: 1}
         next_masses = {self.graph.right_context_node: 1.0}
 
-        for pos in range(len(self.graph.aa_seq), 0, -1):
+        for node in reversed(self.graph.codon_nodes):
             current_counts = {}
             current_masses = {}
 
-            for node in self.graph.codon_nodes_by_pos[pos]:
-                choice_counts = {}
-                choice_masses = {}
-                total_count = 0
-                total_mass = 0.0
+            choice_counts = {}
+            choice_masses = {}
+            total_count = 0
+            total_mass = 0.0
 
-                for codon in self._choices_for_node(node):
-                    child = node.transitions[codon]
+            for codon in self._choices_for_node(node):
+                child = node.transitions[codon]
 
-                    count = next_counts.get(child, 0)
-                    mass = self.graph.cw[codon] * next_masses.get(child, 0.0)
+                count = next_counts.get(child, 0)
+                mass = self.graph.cw[codon] * next_masses.get(child, 0.0)
 
-                    if count:
-                        choice_counts[codon] = count
-                        total_count += count
+                if count:
+                    choice_counts[codon] = count
+                    total_count += count
 
-                    if mass:
-                        choice_masses[codon] = mass
-                        total_mass += mass
+                if mass:
+                    choice_masses[codon] = mass
+                    total_mass += mass
 
-                valid_paths_by_choice[node] = choice_counts
-                weight_mass_by_choice[node] = choice_masses
+            valid_paths_by_choice[node] = choice_counts
+            weight_mass_by_choice[node] = choice_masses
 
-                current_counts[node] = total_count
-                current_masses[node] = total_mass
+            current_counts[node] = total_count
+            current_masses[node] = total_mass
 
             next_counts = current_counts
             next_masses = current_masses
