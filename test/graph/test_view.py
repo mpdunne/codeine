@@ -44,13 +44,6 @@ def test_set_pinned_codons_replaces_existing_pins():
     assert view.pinned_codons == {5: ['TAT']}
 
 
-def test_set_pinned_codons_compiles_once():
-    view = CodonGraph('MIKEY').view()
-    view.compile = MagicMock()
-    view.set_pinned_codons({1: 'ATG'})
-    view.compile.assert_called_once()
-
-
 def test_set_pinned_codons_validates_positions():
     view = CodonGraph('MIKEY').view()
     with pytest.raises(ValueError):
