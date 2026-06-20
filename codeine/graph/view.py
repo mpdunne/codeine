@@ -38,6 +38,7 @@ class CompiledView:
     initial_state: NodeState
     n_valid_sequences: int
     choices_by_state: Dict[NodeState, Dict[str, ChoiceResult]]
+    choice_start_by_state: Dict[NodeState, int]
     choice_results_by_state: Dict[NodeState, Tuple[ChoiceResult, ...]]
     codon_pos_by_state: Dict[NodeState, int]
     fixed_choice_by_state: Dict[NodeState, str]
@@ -87,6 +88,7 @@ class CodonGraphView:
         self.initial_state = None
         self.n_valid_sequences = None
         self.choices_by_state = {}
+        self.choice_start_by_state = {}
         self.choice_results_by_state = {}
         self.codon_pos_by_state = {}
         self.fixed_choice_by_state = {}
@@ -266,16 +268,15 @@ class CodonGraphView:
 
         state = self.initial_state
         choices_by_state = self.choices_by_state
-        codon_pos_by_state = self.codon_pos_by_state
+        choice_start_by_state = self.choice_start_by_state
         fixed_choice_by_state = self.fixed_choice_by_state
 
         while state is not None:
-            pos = codon_pos_by_state.get(state)
+            start = choice_start_by_state.get(state)
 
-            if pos is None:
+            if start is None:
                 choice = fixed_choice_by_state[state]
             else:
-                start = (pos - 1) * 3
                 choice = seq[start:start + 3]
 
             result = choices_by_state[state].get(choice)
@@ -395,6 +396,7 @@ class CodonGraphView:
         self.n_valid_sequences = compiled.n_valid_sequences
         self.choices_by_state = compiled.choices_by_state
         self.choice_results_by_state = compiled.choice_results_by_state
+        self.choice_start_by_state = compiled.choice_start_by_state
         self.codon_pos_by_state = compiled.codon_pos_by_state
         self.fixed_choice_by_state = compiled.fixed_choice_by_state
         self.samplers = compiled.samplers
@@ -452,6 +454,7 @@ class ViewCompiler:
 
         self.totals_by_state: Dict[NodeState, Tuple[int, float]] = {}
         self.choices_by_state: Dict[NodeState, Dict[str, ChoiceResult]] = {}
+        self.choice_start_by_state: Dict[NodeState, int] = {}
         self.choice_results_by_state: Dict[NodeState, Tuple[ChoiceResult, ...]] = {}
         self.codon_pos_by_state: Dict[NodeState, int] = {}
         self.fixed_choice_by_state: Dict[NodeState, str] = {}
@@ -464,6 +467,7 @@ class ViewCompiler:
         self._compile_from(initial_state)
 
         self._compile_choice_result_tuples()
+        self._compile_choice_starts()
         samplers, sample_steps = self._make_samplers()
 
         return CompiledView(
@@ -471,6 +475,7 @@ class ViewCompiler:
             n_valid_sequences=self.totals_by_state[initial_state][0],
             choices_by_state=self.choices_by_state,
             choice_results_by_state=self.choice_results_by_state,
+            choice_start_by_state=self.choice_start_by_state,
             codon_pos_by_state=self.codon_pos_by_state,
             fixed_choice_by_state=self.fixed_choice_by_state,
             samplers=samplers,
@@ -660,6 +665,15 @@ class ViewCompiler:
             return frozenset()
 
         return self.tracker.initial_state
+
+    def _compile_choice_starts(self) -> None:
+        """
+        Store sequence slice starts for coding states.
+        """
+        self.choice_start_by_state = {
+            state: (pos - 1) * 3
+            for state, pos in self.codon_pos_by_state.items()
+        }
 
     def _advance_tracker(self, tracker_state: TrackerState, node: Node, choice: str) -> AdvanceResult:
         """
