@@ -44,6 +44,9 @@ class Sampler:
         if any(weight < 0 for weight in weights):
             raise ValueError('Weights cannot be negative.')
 
+        if seed is not None and rng is not None:
+            raise ValueError('Provide either seed or rng, not both.')
+
         total = sum(weights)
         if total <= 0:
             raise ValueError('Weights must sum to a positive number.')
@@ -52,9 +55,6 @@ class Sampler:
         self._single = len(items) == 1
 
         if not self._single:
-
-            if seed is not None and rng is not None:
-                raise ValueError('Provide either seed or rng, not both.')
 
             if rng is None:
                 if seed is not None:

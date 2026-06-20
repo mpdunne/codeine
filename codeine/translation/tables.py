@@ -1,20 +1,21 @@
-from typing import Any
+import re
 
 from Bio.Data import CodonTable
+from typing import Any
 
 from codeine.utils.dict import FrozenDict
 
 
 class TranslationTable:
     """
-    Translation table. Organises information from BioPython's CodonTable. Here we use the
-    NCBI translation table IDs (see https://www.ncbi.nlm.nih.gov/Taxonomy/Utils/wprintgc.cgi)
-    Uses DNA by default. If rna=True, uses RNA, i.e. codons are represented with U instead of T.
+    Translation table. Here we use the NCBI translation table IDs
+    (see https://www.ncbi.nlm.nih.gov/Taxonomy/Utils/wprintgc.cgi)
+    Uses DNA by default, but can switch to RNA by setting rna=True.
     """
 
     def __init__(self, table_id: int = 1, rna: bool = False) -> None:
         """
-        Constructor for the TranslationTable class. This class is immutable after construction!
+        Constructor for the TranslationTable class.
 
         Parameters
         ----------
@@ -43,13 +44,13 @@ class TranslationTable:
             aa_to_dna.setdefault(aa, []).append(codon)
 
         codons_to_aa = {
-            self.normalise_codon(codon): aa
+            self.normalise_sequence(codon): aa
             for codon, aa in dna_to_aa.items()
         }
 
         aa_to_codons = {
             aa: tuple(
-                self.normalise_codon(codon)
+                self.normalise_sequence(codon)
                 for codon in codons
             )
             for aa, codons in aa_to_dna.items()
@@ -85,7 +86,7 @@ class TranslationTable:
     def __getitem__(self, codon: str) -> str:
         return self.codons_to_aa[codon]
 
-    def normalise_codon(self, codon: str) -> str:
+    def normalise_sequence(self, seq: str) -> str:
         """
         Format a codon in the format specified by this codon table, i.e. convert to
         RNA/DNA and cast to upper case.
@@ -99,5 +100,10 @@ class TranslationTable:
         -------
         The normalised codon.
         """
-        codon = codon.upper()
-        return codon.replace('T', 'U') if self.rna else codon.replace('U', 'T')
+        seq = seq.upper().replace(' ', '')
+        seq = seq.replace('T', 'U') if self.rna else seq.replace('U', 'T')
+        regex = r'^[ACGU]*$' if self.rna else r'^[ACGT]*$'
+        if not re.match(regex, seq):
+            raise ValueError('Sequence to normalise must be a nucleotide sequence')
+        else:
+            return seq

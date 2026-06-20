@@ -1,9 +1,9 @@
 from typing import Collection, FrozenSet, Generator, Optional, Set
 
-from codeine.sequence.display import format_banned_sequences, format_forbidden_motif,\
+from codeine.utils.display import format_banned_sequences, format_forbidden_motif,\
     format_count, format_restrictions, format_positions
 from codeine.motifs.restriction import RestrictionSite
-from codeine.sequence.space import CodingSpace
+from codeine.space.coding import CodingSpace
 
 
 class MutationSpace:
@@ -237,28 +237,6 @@ class MutationSpace:
         pins = {**self._base_pins, **frozen_pins}
         self.view.set_pinned_codons(pins)
 
-    def contains(self, seq: str) -> bool:
-        """
-        Check whether a DNA sequence is contained in this mutation space.
-
-        Parameters
-        ----------
-        seq
-            The sequence to check
-
-        Returns
-        -------
-        True if and only if the sequence is contained in this mutation space.
-        """
-        return self.view.contains(seq)
-
-    @property
-    def n_valid_variants(self) -> int:
-        """
-        Number of valid variants under the current mutation constraints.
-        """
-        return self.view.n_valid_sequences
-
     def set_free_positions(self, positions: Collection[int]) -> None:
         """
         Replace the current set of free positions.
@@ -297,6 +275,28 @@ class MutationSpace:
         """
         self._free_positions = set(range(1, len(self.view.aa_seq) + 1))
         self._update_pins()
+
+    @property
+    def n_valid_variants(self) -> int:
+        """
+        Number of valid variants under the current mutation constraints.
+        """
+        return self.view.n_valid_sequences
+
+    def contains(self, seq: str) -> bool:
+        """
+        Check whether a DNA sequence is contained in this mutation space.
+
+        Parameters
+        ----------
+        seq
+            The sequence to check
+
+        Returns
+        -------
+        True if and only if the sequence is contained in this mutation space.
+        """
+        return self.view.contains(seq)
 
     def sample(self) -> str:
         """

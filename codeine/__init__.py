@@ -1,4 +1,4 @@
-from codeine.sequence.space import CodingSpace
+from codeine.space.coding import CodingSpace
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
 

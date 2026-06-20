@@ -1,7 +1,7 @@
 import pytest
 
-from codeine.sequence.space import CodingSpace
-from codeine.sequence.mutate import MutationSpace
+from codeine.space.coding import CodingSpace
+from codeine.space.mutation import MutationSpace
 
 
 def test_mutation_space_requires_cds_in_space():

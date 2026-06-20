@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from codeine.sequence.mutate import MutationSpace
+    from codeine.space.mutation import MutationSpace
 
 import pickle
 import random
@@ -10,15 +10,13 @@ from pathlib import Path
 from typing import Dict, Generator, List, Optional, Sequence, Union
 
 from codeine.motifs.restriction import RestrictionSite
-from codeine.sequence.display import format_banned_sequences, format_forbidden_motif,\
+from codeine.motifs.constraints import expand_and_validate_sequence_constraints, ForbiddenMotif, ForbiddenMotifs
+from codeine.utils.display import format_banned_sequences, format_forbidden_motif,\
     format_count, format_restrictions
-from codeine.sequence.graph import CodonGraph
+from codeine.graph.graph import CodonGraph
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
 from codeine.utils.sampling import Seedable
-
-ForbiddenMotif = Union[str, RestrictionSite]
-ForbiddenMotifs = Optional[Union[ForbiddenMotif, Sequence[ForbiddenMotif]]]
 
 
 class CodingSpace:
@@ -67,24 +65,28 @@ class CodingSpace:
 
         self.forbidden_motifs = forbidden_motifs
         self.max_homopolymer = max_homopolymer
-        self.forbidden_sequences = self._expand_and_validate_sequence_constraints(
+        self.forbidden_sequences = expand_and_validate_sequence_constraints(
             forbidden_motifs=forbidden_motifs,
             max_homopolymer=max_homopolymer,
             rna=rna,
         )
 
-        self.view = CodonGraph(
+        graph = CodonGraph(
             aa_seq,
             codon_restrictions=codon_restrictions,
-            banned_sequences=self.forbidden_sequences,
             translation_table=translation_table,
             weights=codon_weights,
             context_l=context_l,
             context_r=context_r,
-        ).view(
+        )
+
+        view = graph.view(
             seed=seed,
             rng=rng,
         )
+
+        view.set_banned_sequences(self.forbidden_sequences)
+        self.view = view
 
     @classmethod
     def from_view(cls, view) -> 'CodingSpace':
@@ -92,7 +94,7 @@ class CodingSpace:
         obj.view = view
         obj.forbidden_motifs = []
         obj.max_homopolymer = None
-        obj.forbidden_sequences = list(view.graph.banned_sequences)
+        obj.forbidden_sequences = list(view.banned_sequences)
         return obj
 
     @classmethod
@@ -105,7 +107,7 @@ class CodingSpace:
 
     def save(self, path) -> None:
         """
-        Save this coding space to disk.
+        Save this coding space to disc.
         """
         with Path(path).open('wb') as f:
             pickle.dump(self, f)
@@ -214,60 +216,6 @@ class CodingSpace:
 
         return '\n'.join(lines)
 
-    @staticmethod
-    def _expand_and_validate_forbidden_motifs(forbidden_motifs: ForbiddenMotifs, rna: bool) -> List[str]:
-        all_sequences = []
-
-        if forbidden_motifs is None:
-            return []
-
-        if isinstance(forbidden_motifs, (str, RestrictionSite)):
-            forbidden_motifs = [forbidden_motifs]
-
-        for motif in forbidden_motifs:
-            if isinstance(motif, RestrictionSite):
-                sequences = [*motif.motifs]
-
-            elif isinstance(motif, str):
-                if len(motif) == 0:
-                    raise ValueError('Forbidden motifs cannot be empty.')
-
-                sequences = [motif]
-
-            else:
-                raise TypeError('Forbidden motifs must be strings or codeine.RestrictionSite.')
-
-            sequences = [seq.upper() for seq in sequences]
-            sequences = [seq.replace('T', 'U') if rna else seq.replace('U', 'T') for seq in sequences]
-
-            all_sequences += sequences
-
-        return sorted(set(all_sequences))
-
-    @staticmethod
-    def _expand_and_validate_max_homopolymer(max_homopolymer: Optional[int], rna: bool = False) -> List[str]:
-        if max_homopolymer is None:
-            return []
-
-        if not isinstance(max_homopolymer, int):
-            raise TypeError('max_homopolymer must be an integer.')
-
-        if max_homopolymer < 1:
-            raise ValueError('max_homopolymer must be at least 1.')
-
-        nts = 'ACGU' if rna else 'ACGT'
-        return [nt * (max_homopolymer + 1) for nt in nts]
-
-    @staticmethod
-    def _expand_and_validate_sequence_constraints(
-            forbidden_motifs=None,
-            max_homopolymer=None,
-            rna: bool = False,
-    ):
-        forbidden_sequences = CodingSpace._expand_and_validate_forbidden_motifs(forbidden_motifs, rna=rna)
-        forbidden_homopolymers = CodingSpace._expand_and_validate_max_homopolymer(max_homopolymer, rna=rna)
-        return sorted(set(forbidden_sequences + forbidden_homopolymers))
-
     def sample(self) -> str:
         """
         Sample a DNA sequence from this coding space.
@@ -287,7 +235,6 @@ class CodingSpace:
         pinned_codons:
             A dict specifying which codons to pin, by pos: codon
         """
-
         self.view.pin_codons(pinned_codons)
 
     def unpin_codons(self, positions: Sequence[int]):
@@ -400,7 +347,7 @@ class CodingSpace:
         if not self.contains(cds):
             raise ValueError('CDS is not contained in this coding space.')
 
-        from codeine.sequence.mutate import MutationSpace
+        from codeine.space.mutation import MutationSpace
 
         return MutationSpace(
             space=self,

@@ -115,18 +115,18 @@ def test_codon_tables_are_read_only():
 
 def test_normalise_codon():
     tt = TranslationTable(rna=False)
-    assert tt.normalise_codon('aug') == 'ATG'
-    assert tt.normalise_codon('ATG') == 'ATG'
-    assert tt.normalise_codon('ATg') == 'ATG'
-    assert tt.normalise_codon('ccc') == 'CCC'
-    assert tt.normalise_codon('ggg') == 'GGG'
+    assert tt.normalise_sequence('aug') == 'ATG'
+    assert tt.normalise_sequence('ATG') == 'ATG'
+    assert tt.normalise_sequence('ATg') == 'ATG'
+    assert tt.normalise_sequence('ccc') == 'CCC'
+    assert tt.normalise_sequence('ggg') == 'GGG'
 
     tt = TranslationTable(rna=True)
-    assert tt.normalise_codon('aug') == 'AUG'
-    assert tt.normalise_codon('ATG') == 'AUG'
-    assert tt.normalise_codon('ATg') == 'AUG'
-    assert tt.normalise_codon('ccc') == 'CCC'
-    assert tt.normalise_codon('ggg') == 'GGG'
+    assert tt.normalise_sequence('aug') == 'AUG'
+    assert tt.normalise_sequence('ATG') == 'AUG'
+    assert tt.normalise_sequence('ATg') == 'AUG'
+    assert tt.normalise_sequence('ccc') == 'CCC'
+    assert tt.normalise_sequence('ggg') == 'GGG'
 
 
 def test_getitem_returns_amino_acid():
@@ -180,3 +180,17 @@ def test_translation_table_pickle_preserves_immutability():
     loaded = pickle.loads(pickle.dumps(table))
     with pytest.raises(AttributeError):
         loaded.rna = True
+
+
+def test_normalise_sequence_bad_inputs():
+    tt = TranslationTable()
+    with pytest.raises(ValueError):
+        tt.normalise_sequence('xyz')
+
+
+def test_non_standard_translation_tables_differ():
+    standard = TranslationTable(table_id=1)
+    mitochondrial = TranslationTable(table_id=2)
+
+    assert mitochondrial.table_id == 2
+    assert standard.codons_to_aa != mitochondrial.codons_to_aa

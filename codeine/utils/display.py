@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from codeine.sequence.space import ForbiddenMotif
+    from codeine.space.coding import ForbiddenMotif
 
 from typing import Dict, List, Sequence, Union
 
