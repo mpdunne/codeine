@@ -380,9 +380,10 @@ class CodonGraphView:
         A copy of the view.
         """
         view = self.graph.view()
+
         view.pinned_codons = self.pinned_codons.copy()
-        view.banned_sequences = self.banned_sequences.copy()
-        view.compile()
+        view.set_banned_sequences(self.banned_sequences)
+
         return view
 
     def compile(self) -> None:
