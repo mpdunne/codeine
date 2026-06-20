@@ -263,10 +263,20 @@ class CodonGraphView:
             return False
 
         state = self.initial_state
+        choices_by_state = self.choices_by_state
+        codon_pos_by_state = self.codon_pos_by_state
+        fixed_choice_by_state = self.fixed_choice_by_state
 
         while state is not None:
-            choice = self._choice_from_sequence(seq, state)
-            result = self.choices_by_state[state].get(choice)
+            pos = codon_pos_by_state.get(state)
+
+            if pos is None:
+                choice = fixed_choice_by_state[state]
+            else:
+                start = (pos - 1) * 3
+                choice = seq[start:start + 3]
+
+            result = choices_by_state[state].get(choice)
 
             if result is None:
                 return False
@@ -407,18 +417,6 @@ class CodonGraphView:
             return node.codons
 
         return [node.sequence]
-
-    def _choice_from_sequence(self, seq: str, state: NodeState) -> str:
-        """
-        Return the graph choice implied by a sequence at one compiled state.
-        """
-        pos = self.codon_pos_by_state.get(state)
-
-        if pos is None:
-            return self.fixed_choice_by_state[state]
-
-        start = (pos - 1) * 3
-        return seq[start:start + 3]
 
     def _choice_result_at_index(self, state: NodeState, index: int) -> Tuple[ChoiceResult, int]:
         """
