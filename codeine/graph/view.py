@@ -1,19 +1,47 @@
 import random
 
-from typing import Dict, FrozenSet, Generator, List, Optional, Sequence, Tuple, Union
+from dataclasses import dataclass
+from typing import Dict, Generator, List, Optional, Sequence, Tuple, Union
 
+from codeine.graph.graph import CodonGraph, CodonRestriction
+from codeine.graph.nodes import CodonNode, Node
+from codeine.graph.tracking import AdvanceResult,BannedSequenceTracker, TrackerState
 from codeine.utils.display import format_banned_sequences, format_count, format_restrictions
-from codeine.graph.graph import CodonGraph
-from codeine.graph.nodes import CodonNode
-from codeine.graph.tracking import AdvanceResult, BannedSequenceTracker
 from codeine.utils.sampling import Sampler, Seedable
 
 
-CodonRestriction = Union[str, Sequence[str]]
-Watch = Tuple[int, int]
-TrackerState = FrozenSet[Watch]
-ViewKey = Tuple[object, TrackerState]
-EMPTY_TRACKER_STATE: TrackerState = frozenset()
+NodeState = Tuple[Node, TrackerState]
+
+
+@dataclass(frozen=True)
+class ChoiceResult:
+    """
+    Cached result of taking one graph choice from one compiled state. The
+    "choice" is the graph edge label, i.e. a codon or a context sequence.
+
+    Each ChoiceResult is specific to its location in the graph. The descendant
+    counts and weight mass are calculated iteratively by summing the values of
+    downstream nodes.
+    """
+    choice: str
+    descendant_count: int
+    descendant_weight_mass: float
+    next_state: Optional[NodeState]
+    is_coding: bool
+
+
+@dataclass
+class CompiledView:
+    """
+    Cached data for a compiled CodonGraphView, to speed up sampling and enumeration.
+    """
+    initial_state: NodeState
+    n_valid_sequences: int
+    choices_by_state: Dict[NodeState, Dict[str, ChoiceResult]]
+    codon_pos_by_state: Dict[NodeState, int]
+    fixed_choice_by_state: Dict[NodeState, str]
+    samplers: dict
+    sample_steps: dict
 
 
 class CodonGraphView:
@@ -53,19 +81,15 @@ class CodonGraphView:
         self.pinned_codons: Dict[int, List[str]] = {}
         self.banned_sequences: List[str] = self._validate_banned_sequences(banned_sequences)
         self._banned_tracker = None
+        self._compiled = None
 
-        self.valid_paths_by_choice = {}
-        self.weight_mass_by_choice = {}
-        self.next_node_by_choice = {}
-        self.next_state_by_choice = {}
-        self.next_key_by_choice = {}
-        self.codon_pos_by_key = {}
-        self.fixed_choice_by_key = {}
-
+        self.initial_state = None
         self.n_valid_sequences = None
+        self.choices_by_state = {}
+        self.codon_pos_by_state = {}
+        self.fixed_choice_by_state = {}
         self.samplers = {}
         self.sample_steps = {}
-        self.initial_key = None
 
         self.compile()
 
@@ -163,12 +187,6 @@ class CodonGraphView:
 
         return '\n'.join(lines)
 
-    def _view_key(self, node, state: TrackerState = EMPTY_TRACKER_STATE) -> ViewKey:
-        """
-        Return the cache key for a node plus banned-sequence tracker state.
-        """
-        return node, state
-
     def pin_codons(self, pinned_codons: Dict[int, CodonRestriction]) -> None:
         """
         Pin (temporarily fix) a codon in this codon graph view
@@ -241,27 +259,14 @@ class CodonGraphView:
         """
         seq = seq.upper()
 
-        if len(seq) != len(self.graph.aa_seq) * 3:
-            return False
+        while state is not None:
+            choice = self._choice_from_sequence(seq, state)
+            result = self.choices_by_state[state].get(choice)
 
-        key = self.initial_key
-        next_key_by_choice = self.next_key_by_choice
-        codon_pos_by_key = self.codon_pos_by_key
-        fixed_choice_by_key = self.fixed_choice_by_key
-
-        while key is not None:
-            pos = codon_pos_by_key.get(key)
-
-            if pos is None:
-                choice = fixed_choice_by_key[key]
-            else:
-                start = (pos - 1) * 3
-                choice = seq[start:start + 3]
-
-            try:
-                key = next_key_by_choice[key][choice]
-            except KeyError:
+            if result is None:
                 return False
+
+            state = result.next_state
 
         return True
 
@@ -279,44 +284,19 @@ class CodonGraphView:
         str
             The indexed valid DNA sequence.
         """
-
         if index < 0 or index >= self.n_valid_sequences:
             raise IndexError(f'Sequence index {index} out of range for {self.n_valid_sequences} valid sequences.')
 
-        node = self.graph.initial_node
-        state = self._initial_banned_state()
+        state = self.initial_state
         sequence = []
 
-        final_node = self.graph.final_node
-        valid_paths_by_choice = self.valid_paths_by_choice
-        next_node_by_choice = self.next_node_by_choice
-        next_state_by_choice = self.next_state_by_choice
-        view_key = self._view_key
+        while state is not None:
+            result, index = self._choice_result_at_index(state, index)
 
-        while node is not final_node:
-            key = view_key(node, state)
-            choice_counts = valid_paths_by_choice[key]
+            if result.is_coding:
+                sequence.append(result.choice)
 
-            if isinstance(node, CodonNode):
-                remaining = index
-
-                for choice, count in choice_counts.items():
-                    if remaining < count:
-                        chosen = choice
-                        break
-                    remaining -= count
-                else:
-                    raise RuntimeError('Failed to resolve sequence index.')
-
-                sequence.append(chosen)
-                index = remaining
-
-            else:
-                # Context nodes only have one valid outgoing choice.
-                chosen = next(iter(choice_counts.keys()))
-
-            node = next_node_by_choice[key][chosen]
-            state = next_state_by_choice[key][chosen]
+            state = result.next_state
 
         return ''.join(sequence)
 
@@ -327,15 +307,14 @@ class CodonGraphView:
         if self.n_valid_sequences == 0:
             raise ValueError('Cannot sample from an empty coding space.')
 
-        key = self.initial_key
+        state = self.initial_state
         sequence = []
-        sample_steps = self.sample_steps
 
-        while key is not None:
-            emitted, key = sample_steps[key].sample()
+        while state is not None:
+            choice, is_coding, state = self.sample_steps[state].sample()
 
-            if emitted is not None:
-                sequence.append(emitted)
+            if is_coding:
+                sequence.append(choice)
 
         return ''.join(sequence)
 
@@ -372,13 +351,19 @@ class CodonGraphView:
 
         Remember to do this after editing constraints!
         """
-        self._banned_tracker = BannedSequenceTracker(self.graph, self.banned_sequences)
+        compiler = ViewCompiler(self)
+        compiled = compiler.compile()
 
-        # Calculate descendant counts!
-        self._update_descendant_counts()
+        self._banned_tracker = compiler.tracker
+        self._compiled = compiled
 
-        # Update the samplers!
-        self._update_samplers()
+        self.initial_state = compiled.initial_state
+        self.n_valid_sequences = compiled.n_valid_sequences
+        self.choices_by_state = compiled.choices_by_state
+        self.codon_pos_by_state = compiled.codon_pos_by_state
+        self.fixed_choice_by_state = compiled.fixed_choice_by_state
+        self.samplers = compiled.samplers
+        self.sample_steps = compiled.sample_steps
 
     def _validate_banned_sequences(self, banned_sequences: Sequence[str]) -> List[str]:
         """
@@ -406,198 +391,272 @@ class CodonGraphView:
 
         return sorted(set(normalised))
 
-    def _initial_banned_state(self) -> TrackerState:
+    def _choices_for_node(self, node) -> List[str]:
         """
-        Return the initial banned-sequence tracker state.
+        Return choices available to this node in this view.
         """
-        if not self.banned_sequences:
-            return EMPTY_TRACKER_STATE
+        if isinstance(node, CodonNode):
+            if node.pos in self.pinned_codons:
+                return self.pinned_codons[node.pos]
 
-        return self._banned_tracker.initial_state
+            return node.codons
 
-    def _advance_banned_state(self, state, node, choice) -> AdvanceResult:
+        return [node.sequence]
+
+    def _choice_from_sequence(self, seq: str, state: NodeState) -> str:
         """
-        Advance banned-sequence tracking after taking a graph step.
+        Return the graph choice implied by a sequence at one compiled state.
         """
-        if self._banned_tracker.is_trivial:
-            return AdvanceResult(banned=False, state=state)
+        pos = self.codon_pos_by_state.get(state)
 
-        step = (node.pos, choice)
-        return self._banned_tracker.advance(step, state)
+        if pos is None:
+            return self.fixed_choice_by_state[state]
 
-    def _update_samplers(self) -> None:
+        start = (pos - 1) * 3
+        return seq[start:start + 3]
+
+    def _choice_result_at_index(self, state: NodeState, index: int) -> Tuple[ChoiceResult, int]:
+        """
+        Return the outgoing choice containing a sequence index.
+        """
+        results = self.choices_by_state[state]
+
+        if state not in self.codon_pos_by_state:
+            result = next(iter(results.values()))
+            return result, index
+
+        remaining = index
+
+        for result in results.values():
+            if remaining < result.descendant_count:
+                return result, remaining
+
+            remaining -= result.descendant_count
+
+        raise RuntimeError('Failed to resolve sequence index.')
+
+
+class ViewCompiler:
+    """
+    Compile a CodonGraphView into cached choice, count, and sampling data.
+    """
+
+    def __init__(self, view: CodonGraphView) -> None:
+        self.view = view
+        self.graph = view.graph
+        self.tracker = BannedSequenceTracker(view.graph, view.banned_sequences)
+
+        self.totals_by_state: Dict[NodeState, Tuple[int, float]] = {}
+        self.choices_by_state: Dict[NodeState, Dict[str, ChoiceResult]] = {}
+        self.codon_pos_by_state: Dict[NodeState, int] = {}
+        self.fixed_choice_by_state: Dict[NodeState, str] = {}
+
+    def compile(self) -> CompiledView:
+        """
+        Compile descendant counts, graph choices, and samplers.
+        """
+        initial_state = self._initial_state()
+        self._compile_from(initial_state)
+
+        samplers, sample_steps = self._make_samplers()
+
+        return CompiledView(
+            initial_state=initial_state,
+            n_valid_sequences=self.totals_by_state[initial_state][0],
+            choices_by_state=self.choices_by_state,
+            codon_pos_by_state=self.codon_pos_by_state,
+            fixed_choice_by_state=self.fixed_choice_by_state,
+            samplers=samplers,
+            sample_steps=sample_steps,
+        )
+
+    def _compile_from(self, initial_state: NodeState) -> None:
+        """
+        Walk the reachable graph states and compile each one after its children.
+        """
+        initial_node, initial_tracker_state = initial_state
+        stack = [(initial_node, initial_tracker_state, False)]
+
+        while stack:
+            node, tracker_state, expanded = stack.pop()
+            state = self._state(node, tracker_state)
+
+            if state in self.totals_by_state:
+                continue
+
+            if node is self.graph.final_node:
+                self._compile_final_state(state)
+                continue
+
+            if not expanded:
+                stack.append((node, tracker_state, True))
+                stack.extend(self._uncompiled_children(node, tracker_state))
+                continue
+
+            self._compile_state(node, tracker_state)
+
+    def _compile_final_state(self, state: NodeState) -> None:
+        """
+        Compile the final graph state.
+        """
+        self.totals_by_state[state] = (1, 1.0)
+        self.choices_by_state[state] = {}
+
+    def _compile_state(self, node, tracker_state: TrackerState) -> None:
+        """
+        Compile one non-final graph state after all valid children have been compiled.
+        """
+        state = self._state(node, tracker_state)
+        choice_results = {}
+
+        descendant_count = 0
+        descendant_weight_mass = 0.0
+
+        self._record_state_kind(state, node)
+
+        for choice in self.view._choices_for_node(node):
+            result = self._choice_result(node, tracker_state, choice)
+
+            if result is None:
+                continue
+
+            choice_results[choice] = result
+            descendant_count += result.descendant_count
+            descendant_weight_mass += result.descendant_weight_mass
+
+        self.choices_by_state[state] = choice_results
+        self.totals_by_state[state] = (descendant_count, descendant_weight_mass)
+
+    def _choice_result(self, node, tracker_state: TrackerState, choice: str) -> Optional[ChoiceResult]:
+        """
+        Compile the result of taking one outgoing choice from a graph node.
+        """
+        child = node.transitions.get(choice)
+
+        if child is None:
+            return None
+
+        advance = self._advance_tracker(tracker_state, node, choice)
+
+        if advance.banned:
+            return None
+
+        child_state = self._state(child, advance.state)
+        child_count, child_weight_mass = self.totals_by_state[child_state]
+
+        if child_count == 0:
+            return None
+
+        return ChoiceResult(
+            choice=choice,
+            descendant_count=child_count,
+            descendant_weight_mass=self._choice_weight_mass(node, choice, child_weight_mass),
+            next_state=None if child is self.graph.final_node else child_state,
+            is_coding=isinstance(node, CodonNode),
+        )
+
+    def _uncompiled_children(self, node, tracker_state: TrackerState) -> List[Tuple[object, TrackerState, bool]]:
+        """
+        Return uncompiled child states reachable from a graph state.
+        """
+        children = []
+
+        for choice in self.view._choices_for_node(node):
+            child = node.transitions.get(choice)
+
+            if child is None:
+                continue
+
+            advance = self._advance_tracker(tracker_state, node, choice)
+
+            if advance.banned:
+                continue
+
+            child_state = self._state(child, advance.state)
+
+            if child_state not in self.totals_by_state:
+                children.append((child, advance.state, False))
+
+        return children
+
+    def _make_samplers(self) -> Tuple[dict, dict]:
         """
         Make samplers for each reachable graph state.
-
-        ``samplers`` keeps the public/debug codon samplers keyed by
-        ``(node, tracker_state)``. ``sample_steps`` is the compiled runtime
-        sampler used by sample(); it returns ``(emitted_codon, next_key)`` so
-        sampling does not need to recompute or look up graph transitions.
         """
         samplers = {}
         sample_steps = {}
-        final_node = self.graph.final_node
 
-        for key, choice_masses in self.weight_mass_by_choice.items():
-            node, state = key
+        for state, choice_results in self.choices_by_state.items():
+            node, _ = state
 
-            if node is final_node:
+            if node is self.graph.final_node:
                 continue
 
             runtime_items = []
             runtime_weights = []
 
-            for choice, mass in choice_masses.items():
-                child = self.next_node_by_choice[key][choice]
-                next_state = self.next_state_by_choice[key][choice]
-                next_key = None if child is final_node else (child, next_state)
-                emitted = choice if isinstance(node, CodonNode) else None
-
-                runtime_items.append((emitted, next_key))
-                runtime_weights.append(mass)
+            for result in choice_results.values():
+                runtime_items.append((result.choice, result.is_coding, result.next_state))
+                runtime_weights.append(result.descendant_weight_mass)
 
             if runtime_items:
-                sample_steps[key] = Sampler(runtime_items, runtime_weights, rng=self._rng)
+                sample_steps[state] = Sampler(runtime_items, runtime_weights, rng=self.view._rng)
 
             if isinstance(node, CodonNode):
-                codons = list(choice_masses)
-                weights = [choice_masses[codon] for codon in codons]
+                codons = [result.choice for result in choice_results.values()]
+                weights = [result.descendant_weight_mass for result in choice_results.values()]
 
                 if codons:
-                    samplers[key] = Sampler(codons, weights, rng=self._rng)
+                    samplers[state] = Sampler(codons, weights, rng=self.view._rng)
 
-        self.samplers = samplers
-        self.sample_steps = sample_steps
+        return samplers, sample_steps
 
-    def _choices_for_node(self, node: CodonNode) -> List[str]:
+    def _record_state_kind(self, state: NodeState, node) -> None:
         """
-        Return codon choices available to this node in this view.
+        Record whether a graph state consumes a codon from the user sequence
+        or follows a fixed context sequence.
         """
-        if node.pos in self.pinned_codons:
-            return self.pinned_codons[node.pos]
+        if isinstance(node, CodonNode):
+            self.codon_pos_by_state[state] = node.pos
+        else:
+            self.fixed_choice_by_state[state] = node.sequence
 
-        return node.codons
-
-    def _update_descendant_counts(self) -> None:
+    def _choice_weight_mass(self, node, choice: str, child_weight_mass: float) -> float:
         """
-        Calculate valid path counts and weight masses for each outgoing transition,
-        tracking banned-sequence state as part of the cache key.
-
-        Also compile legal transitions so contains(), sample(), and sequence_at()
-        can follow precomputed state/node transitions instead of re-running the
-        banned-sequence tracker at runtime.
+        Return the weighted mass for a choice.
         """
+        if isinstance(node, CodonNode):
+            return self.graph.cw[choice] * child_weight_mass
 
-        valid_paths_by_choice = {}
-        weight_mass_by_choice = {}
-        next_node_by_choice = {}
-        next_state_by_choice = {}
-        next_key_by_choice = {}
-        codon_pos_by_key = {}
-        fixed_choice_by_key = {}
-        total_cache = {}
+        return child_weight_mass
 
-        initial_state = self._banned_tracker.initial_state
-        initial_key = self._view_key(self.graph.initial_node, initial_state)
-        self.initial_key = initial_key
+    def _initial_state(self) -> NodeState:
+        """
+        Return the initial compiled graph state.
+        """
+        return self._state(self.graph.initial_node, self._initial_tracker_state())
 
-        stack = [(self.graph.initial_node, initial_state, False)]
+    def _initial_tracker_state(self) -> TrackerState:
+        """
+        Return the initial banned-sequence tracker state.
+        """
+        if not self.view.banned_sequences:
+            return frozenset()
 
-        while stack:
-            node, state, expanded = stack.pop()
-            key = self._view_key(node, state)
+        return self.tracker.initial_state
 
-            if key in total_cache:
-                continue
+    def _advance_tracker(self, tracker_state: TrackerState, node, choice: str) -> AdvanceResult:
+        """
+        Advance banned-sequence tracking after taking a graph step.
+        """
+        if self.tracker.is_trivial:
+            return AdvanceResult(banned=False, state=tracker_state)
 
-            if node is self.graph.final_node:
-                total_cache[key] = (1, 1.0)
-                valid_paths_by_choice[key] = {}
-                weight_mass_by_choice[key] = {}
-                next_node_by_choice[key] = {}
-                next_state_by_choice[key] = {}
-                next_key_by_choice[key] = {}
-                continue
+        step = (node.pos, choice)
+        return self.tracker.advance(step, tracker_state)
 
-            if isinstance(node, CodonNode):
-                choices = self._choices_for_node(node)
-                codon_pos_by_key[key] = node.pos
-            else:
-                choices = [node.sequence]
-                fixed_choice_by_key[key] = node.sequence
-
-            if not expanded:
-                stack.append((node, state, True))
-
-                for choice in choices:
-                    child = node.transitions.get(choice)
-
-                    if child is None:
-                        continue
-
-                    advance = self._advance_banned_state(state, node, choice)
-
-                    if advance.banned:
-                        continue
-
-                    child_key = self._view_key(child, advance.state)
-
-                    if child_key not in total_cache:
-                        stack.append((child, advance.state, False))
-
-                continue
-
-            choice_counts = {}
-            choice_masses = {}
-            choice_next_nodes = {}
-            choice_next_states = {}
-            choice_next_keys = {}
-            total_count = 0
-            total_mass = 0.0
-
-            for choice in choices:
-                child = node.transitions.get(choice)
-
-                if child is None:
-                    continue
-
-                advance = self._advance_banned_state(state, node, choice)
-
-                if advance.banned:
-                    continue
-
-                child_key = self._view_key(child, advance.state)
-                child_count, child_mass = total_cache[child_key]
-
-                if isinstance(node, CodonNode):
-                    choice_mass = self.graph.cw[choice] * child_mass
-                else:
-                    choice_mass = child_mass
-
-                if child_count:
-                    choice_counts[choice] = child_count
-                    total_count += child_count
-
-                    choice_next_nodes[choice] = child
-                    choice_next_states[choice] = advance.state
-                    choice_next_keys[choice] = None if child is self.graph.final_node else child_key
-
-                if choice_mass:
-                    choice_masses[choice] = choice_mass
-                    total_mass += choice_mass
-
-            valid_paths_by_choice[key] = choice_counts
-            weight_mass_by_choice[key] = choice_masses
-            next_node_by_choice[key] = choice_next_nodes
-            next_state_by_choice[key] = choice_next_states
-            next_key_by_choice[key] = choice_next_keys
-            total_cache[key] = (total_count, total_mass)
-
-        self.valid_paths_by_choice = valid_paths_by_choice
-        self.weight_mass_by_choice = weight_mass_by_choice
-        self.next_node_by_choice = next_node_by_choice
-        self.next_state_by_choice = next_state_by_choice
-        self.next_key_by_choice = next_key_by_choice
-        self.codon_pos_by_key = codon_pos_by_key
-        self.fixed_choice_by_key = fixed_choice_by_key
-        self.n_valid_sequences = total_cache[initial_key][0]
+    def _state(self, node, tracker_state: TrackerState = frozenset()) -> NodeState:
+        """
+        Return the compiled state for a graph node plus banned-sequence tracker state.
+        """
+        return node, tracker_state
