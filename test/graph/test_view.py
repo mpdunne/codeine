@@ -2,12 +2,12 @@ import pickle
 import pytest
 import random
 
-from collections import Counter
 from itertools import product
 from unittest.mock import MagicMock
 
 from codeine.translation.tables import TranslationTable
-from codeine.graph.graph import CodonGraph, CodonNode
+from codeine.graph.graph import CodonGraph
+from codeine.graph.nodes import CodonNode
 from codeine.graph.tracking import BannedSequenceTracker
 
 
@@ -721,7 +721,7 @@ def test_regression_banned_sequences_short_aa_sequence_overlapping_banned_sequen
         'GGAATA',
     )
     helper_ban_sequences_and_check_enumerate(aa_seq, banned_seqs,
-                                                 context_l=context_l, context_r=context_r)
+                                             context_l=context_l, context_r=context_r)
 
 
 @pytest.mark.parametrize('aa_seq', SHORT_AA_SEQUENCES + MEDIUM_AA_SEQUENCES + LONG_AA_SEQUENCES)
@@ -835,7 +835,7 @@ def test_regression_banned_sequences_long_aa_sequence_overlapping_banned_sequenc
     ]
 
     helper_ban_sequences_and_check_sample(aa_seq, banned_sequences,
-                                                 context_l, context_r, n_samples=1000)
+                                          context_l, context_r, n_samples=1000)
 
 
 @pytest.mark.parametrize('aa_seq', MEDIUM_AA_SEQUENCES + LONG_AA_SEQUENCES)

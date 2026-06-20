@@ -3,7 +3,8 @@ import random
 from typing import Dict, FrozenSet, Generator, List, Optional, Sequence, Tuple, Union
 
 from codeine.utils.display import format_banned_sequences, format_count, format_restrictions
-from codeine.graph.graph import CodonGraph, CodonNode
+from codeine.graph.graph import CodonGraph
+from codeine.graph.nodes import CodonNode
 from codeine.graph.tracking import AdvanceResult, BannedSequenceTracker
 from codeine.utils.sampling import Sampler, Seedable
 

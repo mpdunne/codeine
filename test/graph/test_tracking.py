@@ -1,6 +1,7 @@
 import pytest
 
-from codeine.graph.graph import CodonGraph, CodonNode, ContextNode
+from codeine.graph.graph import CodonGraph
+from codeine.graph.nodes import ContextNode, CodonNode
 from codeine.translation.tables import TranslationTable
 from codeine.graph.tracking import BannedSequenceTracker, AdvanceResult, _find_matching_subpaths
 

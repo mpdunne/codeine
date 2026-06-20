@@ -1,7 +1,8 @@
 import pytest
 import pickle
 
-from codeine.graph.graph import CodonGraph, CodonNode, ContextNode, EndNode
+from codeine.graph.graph import CodonGraph
+from codeine.graph.nodes import ContextNode, CodonNode, EndNode
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
 
@@ -108,13 +109,8 @@ def test_right_context_node_points_to_final_node():
 def test_codon_nodes_excludes_context_and_final_nodes():
     graph = CodonGraph('MIKEY')
     codon_nodes = graph.codon_nodes
-    assert all(node is CodonNode for node in codon_nodes)
+    assert all(isinstance(node, CodonNode) for node in codon_nodes)
     assert set([node.pos for node in codon_nodes]) == {1, 2, 3, 4, 5}
-
-
-def test_codon_nodes_excludes_context_and_final_nodes():
-    graph = CodonGraph('MIKEY')
-    assert all(isinstance(node, CodonNode) for node in graph.codon_nodes)
     assert graph.left_context_node not in graph.codon_nodes
     assert graph.right_context_node not in graph.codon_nodes
     assert graph.final_node not in graph.codon_nodes

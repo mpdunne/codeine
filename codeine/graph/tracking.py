@@ -1,8 +1,8 @@
 from dataclasses import dataclass
 from typing import Dict, FrozenSet, List, Sequence, Tuple
 
-from codeine.graph.graph import Node, CodonGraph, CodonNode
-
+from codeine.graph.graph import CodonGraph
+from codeine.graph.nodes import Node, CodonNode
 
 # A step is a decision in the codon graph, i.e. (graph pos, choice)
 Step = Tuple[int, str]
@@ -150,10 +150,7 @@ class BannedSequenceTracker:
                 if remaining.startswith(choice):
                     matched_length += len(choice)
                     state = frozenset({(path_ix, matched_length)})
-                    transitions[(watch, choice)] = AdvanceResult(
-                        banned=False,
-                        state=state,
-                    )
+                    transitions[(watch, choice)] = AdvanceResult(banned=False, state=state)
                     continue
 
                 break
