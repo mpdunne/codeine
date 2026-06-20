@@ -238,22 +238,17 @@ def test_space_contains():
         assert seq + 'ATG' not in space
 
 
-@pytest.fixture
-def disable_banned_sequence_filtering(monkeypatch):
-    monkeypatch.setattr(CodonGraphView, '_check_banned_sequence_support', lambda self: None)
-
-
-def test_forbidden_motifs_are_stored(disable_banned_sequence_filtering):
+def test_forbidden_motifs_are_stored():
     space = CodingSpace('MIKEY', forbidden_motifs=[RestrictionSite.EcoRI, 'AAAA'])
     assert space.forbidden_sequences == ['AAAA', 'GAATTC']
 
 
-def test_max_homopolymer_is_stored(disable_banned_sequence_filtering):
+def test_max_homopolymer_is_stored():
     space = CodingSpace('MIKEY', max_homopolymer=4)
     assert space.max_homopolymer == 4
 
 
-def test_max_homopolymer_is_expanded_correctly(disable_banned_sequence_filtering):
+def test_max_homopolymer_is_expanded_correctly():
     space = CodingSpace('MIKEY', max_homopolymer=None)
     assert not space.forbidden_sequences
 
@@ -261,12 +256,12 @@ def test_max_homopolymer_is_expanded_correctly(disable_banned_sequence_filtering
     assert all(nt * 5 in space.forbidden_sequences for nt in 'ACGT')
 
 
-def test_mixed_restrictions(disable_banned_sequence_filtering):
+def test_mixed_restrictions():
     space = CodingSpace('MIKEY', max_homopolymer=4, forbidden_motifs=[RestrictionSite.BsaI, 'GGTTCC'])
     assert set(space.forbidden_sequences) == {'GAGACC', 'GGTCTC', 'GGTTCC', 'AAAAA', 'CCCCC', 'GGGGG', 'TTTTT'}
 
 
-def test_forbidden_motifs_repr(disable_banned_sequence_filtering):
+def test_forbidden_motifs_repr():
     space = CodingSpace('MIKEY', forbidden_motifs=[RestrictionSite.EcoRI, 'AAAA'],)
 
     text = repr(space)
@@ -276,7 +271,7 @@ def test_forbidden_motifs_repr(disable_banned_sequence_filtering):
     assert 'AAAA' in text
 
 
-def test_max_homopolymer_repr(disable_banned_sequence_filtering):
+def test_max_homopolymer_repr():
     space = CodingSpace('MIKEY', max_homopolymer=4)
 
     text = repr(space)
@@ -343,7 +338,7 @@ def test_coding_space_pickle_preserves_pins():
     assert [*loaded.enumerate()] == [*space.enumerate()]
 
 
-def test_coding_space_pickle_preserves_constraints(disable_banned_sequence_filtering):
+def test_coding_space_pickle_preserves_constraints():
     space = CodingSpace(
         'MIKEY',
         codon_restrictions={2: 'ATC'},

@@ -82,7 +82,8 @@ class CodonGraphView:
         self.graph = graph
         self.pinned_codons: Dict[int, List[str]] = {}
         self.banned_sequences: List[str] = self._validate_banned_sequences(banned_sequences)
-        self._banned_tracker = None
+        self._banned_tracker = BannedSequenceTracker(self.graph, self.banned_sequences)
+        self._advance_cache: Dict[Tuple[Node, TrackerState, str], AdvanceResult] = {}
         self._compiled = None
 
         self.initial_state = None
@@ -244,8 +245,13 @@ class CodonGraphView:
     def set_banned_sequences(self, banned_sequences: Sequence[str]) -> None:
         """
         Set banned nucleotide sequences for this view.
+
+        Banned-sequence tracking depends only on the graph and banned sequences,
+        not on temporary pins, so it is rebuilt only when the banned list changes.
         """
         self.banned_sequences = self._validate_banned_sequences(banned_sequences)
+        self._banned_tracker = BannedSequenceTracker(self.graph, self.banned_sequences)
+        self._advance_cache.clear()
         self.compile()
 
     def contains(self, seq: str) -> bool:
@@ -389,7 +395,6 @@ class CodonGraphView:
         compiler = ViewCompiler(self)
         compiled = compiler.compile()
 
-        self._banned_tracker = compiler.tracker
         self._compiled = compiled
 
         self.initial_state = compiled.initial_state
@@ -449,8 +454,8 @@ class ViewCompiler:
     def __init__(self, view: CodonGraphView) -> None:
         self.view = view
         self.graph = view.graph
-        self.tracker = BannedSequenceTracker(view.graph, view.banned_sequences)
-        self.advance_cache: Dict[Tuple[Node, TrackerState, str], AdvanceResult] = {}
+        self.tracker = view._banned_tracker
+        self.advance_cache = view._advance_cache
 
         self.totals_by_state: Dict[NodeState, Tuple[int, float]] = {}
         self.choices_by_state: Dict[NodeState, Dict[str, ChoiceResult]] = {}

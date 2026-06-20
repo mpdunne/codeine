@@ -400,6 +400,32 @@ def test_codon_graph_view_pickle_preserves_pins():
     assert [*loaded.enumerate()] == [*view.enumerate()]
 
 
+def test_pinning_reuses_banned_tracker():
+    view = CodonGraph('MIKEY').view()
+    view.set_banned_sequences(['GAATTC'])
+
+    tracker = view._banned_tracker
+    view.pin_codons({1: ['ATG']})
+    assert view._banned_tracker is tracker
+
+    tracker = view._banned_tracker
+    view.clear_pins()
+    assert view._banned_tracker is tracker
+
+
+def test_setting_banned_sequences_rebuilds_tracker():
+    view = CodonGraph('MIKEY').view()
+    view.set_banned_sequences(['GAATTC'])
+
+    tracker = view._banned_tracker
+
+    view.set_banned_sequences(['GAATTC'])
+    assert view._banned_tracker is not tracker
+
+    view.set_banned_sequences(['GAATTC', 'ccgatt'])
+    assert view._banned_tracker is not tracker
+
+
 SHORT_AA_SEQUENCES = (
     'M',
     'MIKEY',
