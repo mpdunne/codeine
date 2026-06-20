@@ -5,7 +5,7 @@ from typing import Dict, Generator, List, Optional, Sequence, Tuple, Union
 
 from codeine.graph.graph import CodonGraph, CodonRestriction
 from codeine.graph.nodes import CodonNode, Node
-from codeine.graph.tracking import AdvanceResult,BannedSequenceTracker, TrackerState
+from codeine.graph.tracking import AdvanceResult, BannedSequenceTracker, TrackerState
 from codeine.utils.display import format_banned_sequences, format_count, format_restrictions
 from codeine.utils.sampling import Sampler, Seedable
 
@@ -38,6 +38,7 @@ class CompiledView:
     initial_state: NodeState
     n_valid_sequences: int
     choices_by_state: Dict[NodeState, Dict[str, ChoiceResult]]
+    choice_results_by_state: Dict[NodeState, Tuple[ChoiceResult, ...]]
     codon_pos_by_state: Dict[NodeState, int]
     fixed_choice_by_state: Dict[NodeState, str]
     samplers: dict
@@ -86,6 +87,7 @@ class CodonGraphView:
         self.initial_state = None
         self.n_valid_sequences = None
         self.choices_by_state = {}
+        self.choice_results_by_state = {}
         self.codon_pos_by_state = {}
         self.fixed_choice_by_state = {}
         self.samplers = {}
@@ -305,10 +307,26 @@ class CodonGraphView:
         state = self.initial_state
         sequence = []
 
-        while state is not None:
-            result, index = self._choice_result_at_index(state, index)
+        choice_results_by_state = self.choice_results_by_state
+        codon_pos_by_state = self.codon_pos_by_state
 
-            if result.is_coding:
+        while state is not None:
+            results = choice_results_by_state[state]
+
+            if state not in codon_pos_by_state:
+                result = results[0]
+            else:
+                remaining = index
+
+                for result in results:
+                    if remaining < result.descendant_count:
+                        index = remaining
+                        break
+
+                    remaining -= result.descendant_count
+                else:
+                    raise RuntimeError('Failed to resolve sequence index.')
+
                 sequence.append(result.choice)
 
             state = result.next_state
@@ -324,9 +342,10 @@ class CodonGraphView:
 
         state = self.initial_state
         sequence = []
+        sample_steps = self.sample_steps
 
         while state is not None:
-            choice, is_coding, state = self.sample_steps[state].sample()
+            choice, is_coding, state = sample_steps[state].sample()
 
             if is_coding:
                 sequence.append(choice)
@@ -375,6 +394,7 @@ class CodonGraphView:
         self.initial_state = compiled.initial_state
         self.n_valid_sequences = compiled.n_valid_sequences
         self.choices_by_state = compiled.choices_by_state
+        self.choice_results_by_state = compiled.choice_results_by_state
         self.codon_pos_by_state = compiled.codon_pos_by_state
         self.fixed_choice_by_state = compiled.fixed_choice_by_state
         self.samplers = compiled.samplers
@@ -418,29 +438,6 @@ class CodonGraphView:
 
         return [node.sequence]
 
-    def _choice_result_at_index(self, state: NodeState, index: int) -> Tuple[ChoiceResult, int]:
-        """
-        Each node + tracking state has a fixed number of descendants and can be enumerated.
-
-        Given a specified index in those descendants, return the choice that contains the
-        requested sequence together with the index relative to that chosen subtree.
-        """
-        results = self.choices_by_state[state]
-
-        if state not in self.codon_pos_by_state:
-            result = next(iter(results.values()))
-            return result, index
-
-        remaining = index
-
-        for result in results.values():
-            if remaining < result.descendant_count:
-                return result, remaining
-
-            remaining -= result.descendant_count
-
-        raise RuntimeError('Failed to resolve sequence index.')
-
 
 class ViewCompiler:
     """
@@ -455,6 +452,7 @@ class ViewCompiler:
 
         self.totals_by_state: Dict[NodeState, Tuple[int, float]] = {}
         self.choices_by_state: Dict[NodeState, Dict[str, ChoiceResult]] = {}
+        self.choice_results_by_state: Dict[NodeState, Tuple[ChoiceResult, ...]] = {}
         self.codon_pos_by_state: Dict[NodeState, int] = {}
         self.fixed_choice_by_state: Dict[NodeState, str] = {}
 
@@ -465,12 +463,14 @@ class ViewCompiler:
         initial_state = self._initial_state()
         self._compile_from(initial_state)
 
+        self._compile_choice_result_tuples()
         samplers, sample_steps = self._make_samplers()
 
         return CompiledView(
             initial_state=initial_state,
             n_valid_sequences=self.totals_by_state[initial_state][0],
             choices_by_state=self.choices_by_state,
+            choice_results_by_state=self.choice_results_by_state,
             codon_pos_by_state=self.codon_pos_by_state,
             fixed_choice_by_state=self.fixed_choice_by_state,
             samplers=samplers,
@@ -534,6 +534,15 @@ class ViewCompiler:
         self.choices_by_state[state] = choice_results
         self.totals_by_state[state] = (descendant_count, descendant_weight_mass)
 
+    def _compile_choice_result_tuples(self) -> None:
+        """
+        Store each state's choice results as tuples for fast indexed traversal.
+        """
+        self.choice_results_by_state = {
+            state: tuple(choice_results.values())
+            for state, choice_results in self.choices_by_state.items()
+        }
+
     def _choice_result(self, node, tracker_state: TrackerState, choice: str) -> Optional[ChoiceResult]:
         """
         Compile the result of taking one outgoing choice from a graph node.
@@ -593,7 +602,7 @@ class ViewCompiler:
         samplers = {}
         sample_steps = {}
 
-        for state, choice_results in self.choices_by_state.items():
+        for state, choice_results in self.choice_results_by_state.items():
             node, _ = state
 
             if node is self.graph.final_node:
@@ -602,7 +611,7 @@ class ViewCompiler:
             runtime_items = []
             runtime_weights = []
 
-            for result in choice_results.values():
+            for result in choice_results:
                 runtime_items.append((result.choice, result.is_coding, result.next_state))
                 runtime_weights.append(result.descendant_weight_mass)
 
@@ -610,8 +619,8 @@ class ViewCompiler:
                 sample_steps[state] = Sampler(runtime_items, runtime_weights, rng=self.view._rng)
 
             if isinstance(node, CodonNode):
-                codons = [result.choice for result in choice_results.values()]
-                weights = [result.descendant_weight_mass for result in choice_results.values()]
+                codons = [result.choice for result in choice_results]
+                weights = [result.descendant_weight_mass for result in choice_results]
 
                 if codons:
                     samplers[state] = Sampler(codons, weights, rng=self.view._rng)
