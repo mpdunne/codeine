@@ -478,9 +478,20 @@ def test_clear_pins_marks_view_for_compile():
 def test_public_methods_compile_if_required():
     view = CodonGraph('MIKEY').view()
     view.pin_codons({2: 'ATC'})
+    assert view._requires_compile
 
-    assert view.sample()[3:6] == 'ATC'
-    assert view[0][3:6] == 'ATC'
+    view = CodonGraph('MIKEY').view()
+    assert view._requires_compile
+    _ = view.sample()
+    assert not view._requires_compile
+
+    view = CodonGraph('MIKEY').view()
+    assert view._requires_compile
+    _ = view[0]
+    assert not view._requires_compile
+
+    view = CodonGraph('MIKEY').view()
+    assert view._requires_compile
     assert 'ATGATCAAAGAGTAT' in view
     assert not view._requires_compile
 
