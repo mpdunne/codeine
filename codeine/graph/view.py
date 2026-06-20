@@ -259,6 +259,11 @@ class CodonGraphView:
         """
         seq = seq.upper()
 
+        if len(seq) != len(self.graph.aa_seq) * 3:
+            return False
+
+        state = self.initial_state
+
         while state is not None:
             choice = self._choice_from_sequence(seq, state)
             result = self.choices_by_state[state].get(choice)
@@ -417,7 +422,10 @@ class CodonGraphView:
 
     def _choice_result_at_index(self, state: NodeState, index: int) -> Tuple[ChoiceResult, int]:
         """
-        Return the outgoing choice containing a sequence index.
+        Each node + tracking state has a fixed number of descendants and can be enumerated.
+
+        Given a specified index in those descendants, return the choice that contains the
+        requested sequence together with the index relative to that chosen subtree.
         """
         results = self.choices_by_state[state]
 
@@ -445,6 +453,7 @@ class ViewCompiler:
         self.view = view
         self.graph = view.graph
         self.tracker = BannedSequenceTracker(view.graph, view.banned_sequences)
+        self.advance_cache: Dict[Tuple[Node, TrackerState, str], AdvanceResult] = {}
 
         self.totals_by_state: Dict[NodeState, Tuple[int, float]] = {}
         self.choices_by_state: Dict[NodeState, Dict[str, ChoiceResult]] = {}
@@ -645,15 +654,23 @@ class ViewCompiler:
 
         return self.tracker.initial_state
 
-    def _advance_tracker(self, tracker_state: TrackerState, node, choice: str) -> AdvanceResult:
+    def _advance_tracker(self, tracker_state: TrackerState, node: Node, choice: str) -> AdvanceResult:
         """
-        Advance banned-sequence tracking after taking a graph step.
+        Advance banned-sequence tracking after taking a graph step. Results are cached.
         """
-        if self.tracker.is_trivial:
-            return AdvanceResult(banned=False, state=tracker_state)
+        key = (node, tracker_state, choice)
 
-        step = (node.pos, choice)
-        return self.tracker.advance(step, tracker_state)
+        if key in self.advance_cache:
+            return self.advance_cache[key]
+
+        if self.tracker.is_trivial:
+            result = AdvanceResult(banned=False, state=tracker_state)
+        else:
+            step = (node.pos, choice)
+            result = self.tracker.advance(step, tracker_state)
+
+        self.advance_cache[key] = result
+        return result
 
     def _state(self, node, tracker_state: TrackerState = frozenset()) -> NodeState:
         """
