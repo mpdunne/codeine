@@ -426,6 +426,96 @@ def test_setting_banned_sequences_rebuilds_tracker():
     assert view._banned_tracker is not tracker
 
 
+def test_view_doesnt_compile_immediately():
+    view = CodonGraph('MIKEY').view()
+    assert view._requires_compile
+
+
+def test_n_valid_sequences_compiles_view():
+    view = CodonGraph('MIKEY').view()
+
+    assert view.n_valid_sequences == 24
+    assert not view._requires_compile
+
+
+def test_set_pinned_codons_marks_view_for_compile():
+    view = CodonGraph('MIKEY').view()
+    _ = view.n_valid_sequences
+
+    view.compile = MagicMock(wraps=view.compile)
+    view.set_pinned_codons({1: 'ATG'})
+
+    view.compile.assert_not_called()
+    assert view._requires_compile
+
+
+def test_pin_codons_marks_view_for_compile():
+    view = CodonGraph('MIKEY').view()
+    _ = view.n_valid_sequences
+
+    view.pin_codons({2: 'ATC'})
+
+    assert view._requires_compile
+    assert view.n_valid_sequences == 8
+    assert not view._requires_compile
+
+
+def test_unpin_codons_marks_view_for_compile():
+    view = CodonGraph('MIKEY').view()
+    view.pin_codons({2: 'ATC'})
+    _ = view.n_valid_sequences
+
+    view.unpin_codons([2])
+
+    assert view._requires_compile
+    assert view.n_valid_sequences == 24
+
+
+def test_clear_pins_marks_view_for_compile():
+    view = CodonGraph('MIKEY').view()
+    view.pin_codons({2: 'ATC'})
+    _ = view.n_valid_sequences
+
+    view.clear_pins()
+
+    assert view._requires_compile
+    assert view.n_valid_sequences == 24
+
+
+def test_public_methods_compile_if_required():
+    view = CodonGraph('MIKEY').view()
+    view.pin_codons({2: 'ATC'})
+
+    assert view.sample()[3:6] == 'ATC'
+    assert view[0][3:6] == 'ATC'
+    assert 'ATGATCAAAGAGTAT' in view
+    assert not view._requires_compile
+
+
+def test_copy_preserves_compile_state():
+    view = CodonGraph('MIKEY').view()
+    view.pin_codons({2: 'ATC'})
+    _ = view.n_valid_sequences
+
+    copied = view.copy()
+
+    assert not copied._requires_compile
+    assert copied._compiled is view._compiled
+    assert copied.n_valid_sequences == view.n_valid_sequences
+    assert [*copied.enumerate()] == [*view.enumerate()]
+
+
+def test_copy_preserves_uncompiled_state():
+    view = CodonGraph('MIKEY').view()
+    view.pin_codons({2: 'ATC'})
+
+    copied = view.copy()
+
+    assert copied._requires_compile
+    assert copied.pinned_codons == view.pinned_codons
+    assert copied.n_valid_sequences == 8
+
+
 SHORT_AA_SEQUENCES = (
     'M',
     'MIKEY',
