@@ -5,6 +5,7 @@ import random
 from itertools import product
 from unittest.mock import MagicMock
 
+from codeine.graph.constraints import PathConstraint
 from codeine.translation.tables import TranslationTable
 from codeine.graph.graph import CodonGraph
 from codeine.graph.nodes import CodonNode
@@ -1071,3 +1072,45 @@ def test_regression_banned_sequences_long_aa_sequence_many_banned_sequences(aa_s
         context_r=context_r,
         n_samples=1000,
     )
+
+
+class RejectAllConstraint(PathConstraint):
+    def advance(self, state, node, choice):
+        return None
+
+
+def test_path_constraint_can_reject_all_sequences():
+    view = CodonGraph('MIKEY', context_l='aaa', context_r='ttt').view()
+
+    view.set_path_constraint(RejectAllConstraint())
+
+    assert view.n_valid_sequences == 0
+    assert [*view.enumerate()] == []
+
+    with pytest.raises(ValueError):
+        view.sample()
+
+
+def test_clear_path_constraint_restores_default_behaviour():
+    view = CodonGraph('MIKEY', context_l='aaa', context_r='ttt').view()
+
+    expected_sequences = [*view.enumerate()]
+    expected_count = view.n_valid_sequences
+
+    view.set_path_constraint(RejectAllConstraint())
+    assert view.n_valid_sequences == 0
+
+    view.clear_path_constraint()
+
+    assert view.n_valid_sequences == expected_count
+    assert [*view.enumerate()] == expected_sequences
+
+
+def test_path_constraint_is_copied_with_view():
+    view = CodonGraph('MIKEY', context_l='aaa', context_r='ttt').view()
+    view.set_path_constraint(RejectAllConstraint())
+
+    copied = view.copy()
+
+    assert copied.n_valid_sequences == 0
+    assert [*copied.enumerate()] == []
