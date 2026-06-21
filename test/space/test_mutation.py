@@ -245,3 +245,185 @@ def test_mutation_space_does_not_modify_original_space():
 
     assert space.view.pinned_codons == {}
     assert muts.view.pinned_codons != {}
+
+
+def test_mutation_space_has_no_distance_constraints_by_default():
+    space = CodingSpace('MIKEY')
+    cds = space.sample()
+    muts = MutationSpace(space, cds)
+
+    assert muts.min_nts is None
+    assert muts.max_nts is None
+    assert muts.min_codons is None
+    assert muts.max_codons is None
+    assert not muts.has_distance_constraints
+
+
+def test_mutation_space_accepts_distance_constraints_in_constructor():
+    space = CodingSpace('MIKEY')
+    cds = space.sample()
+    muts = MutationSpace(space, cds, min_nts=3, max_nts=4, min_codons=1, max_codons=2)
+
+    assert muts.min_nts == 3
+    assert muts.max_nts == 4
+    assert muts.min_codons == 1
+    assert muts.max_codons == 2
+    assert muts.has_distance_constraints
+
+
+def test_mutation_space_accepts_exact_nt_distance_in_constructor():
+    space = CodingSpace('MIKEY')
+    cds = space.sample()
+    muts = MutationSpace(space, cds, min_nts=3, max_nts=5)
+
+    assert muts.min_nts == 3
+    assert muts.max_nts == 5
+
+
+def test_mutation_space_accepts_exact_codon_distance_in_constructor():
+    space = CodingSpace('MIKEY')
+    cds = space.sample()
+    muts = MutationSpace(space, cds, min_codons=3, max_codons=5)
+
+    assert muts.min_codons == 3
+    assert muts.max_codons == 5
+
+
+def test_set_distance_sets_nt_range():
+    space = CodingSpace('MIKEY')
+    cds = space.sample()
+    muts = MutationSpace(space, cds)
+
+    muts.set_distance_constraints(min_nts=3, max_nts=4)
+
+    assert muts.min_nts == 3
+    assert muts.max_nts == 4
+    assert muts.min_codons is None
+    assert muts.max_codons is None
+
+
+def test_set_distance_sets_codon_range():
+    space = CodingSpace('MIKEY')
+    cds = space.sample()
+    muts = MutationSpace(space, cds)
+
+    muts.set_distance_constraints(min_codons=3, max_codons=10)
+
+    assert muts.min_codons == 3
+    assert muts.max_codons == 10
+    assert muts.min_nts is None
+    assert muts.max_nts is None
+
+
+def test_set_distance_can_set_nt_and_codon_constraints_together():
+    space = CodingSpace('MIKEY')
+    cds = space.sample()
+    muts = MutationSpace(space, cds)
+
+    muts.set_distance_constraints(min_nts=3, max_nts=6, min_codons=2, max_codons=3)
+
+    assert muts.min_nts == 3
+    assert muts.max_nts == 6
+    assert muts.min_codons == 2
+    assert muts.max_codons == 3
+
+
+@pytest.mark.parametrize(
+    'kwargs',
+    [
+        {'min_nts': -1},
+        {'max_nts': -1},
+        {'min_codons': -1},
+        {'max_codons': -1},
+    ],
+)
+def test_set_distance_rejects_negative_distances(kwargs):
+    space = CodingSpace('MIKEY')
+    cds = space.sample()
+    muts = MutationSpace(space, cds)
+    with pytest.raises(ValueError):
+        muts.set_distance_constraints(**kwargs)
+
+
+def test_set_distance_rejects_min_nts_greater_than_max_nts():
+    space = CodingSpace('MIKEY')
+    cds = space.sample()
+    muts = MutationSpace(space, cds)
+    with pytest.raises(ValueError):
+        muts.set_distance_constraints(min_nts=5, max_nts=3)
+
+
+def test_set_distance_rejects_min_codons_greater_than_max_codons():
+    space = CodingSpace('MIKEY')
+    cds = space.sample()
+    muts = MutationSpace(space, cds)
+    with pytest.raises(ValueError):
+        muts.set_distance_constraints(min_codons=5, max_codons=3)
+
+
+def test_set_distance_with_no_args_clears_distance_constraints():
+    space = CodingSpace('MIKEY')
+    cds = space.sample()
+    muts = MutationSpace(space, cds, min_nts=1, max_nts=10, min_codons=1, max_codons=5)
+
+    muts.set_distance_constraints()
+    assert muts.min_nts is None
+    assert muts.max_nts is None
+    assert muts.min_codons is None
+    assert muts.max_codons is None
+    assert not muts.has_distance_constraints
+
+
+def test_clear_distance_constraints():
+    space = CodingSpace('MIKEY')
+    cds = space.sample()
+    muts = MutationSpace(space, cds, min_nts=1, max_nts=10, min_codons=1, max_codons=5)
+
+    muts.clear_distance_constraints()
+    assert muts.min_nts is None
+    assert muts.max_nts is None
+    assert muts.min_codons is None
+    assert muts.max_codons is None
+    assert not muts.has_distance_constraints
+
+
+def test_distance_constraints_raise_on_methods():
+    space = CodingSpace('MIKEY')
+    cds = space.sample()
+    muts = MutationSpace(space, cds, max_nts=5)
+
+    with pytest.raises(NotImplementedError):
+        _ = muts.n_valid_variants
+
+    with pytest.raises(NotImplementedError):
+        _ = muts.contains(cds)
+
+    with pytest.raises(NotImplementedError):
+        _ = muts.sample()
+
+    with pytest.raises(NotImplementedError):
+        _ = [*muts.enumerate()]
+
+
+def test_distance_constraints_raise_for_contains():
+    space = CodingSpace('MIKEY')
+    cds = space.sample()
+    muts = MutationSpace(space, cds, max_nts=5)
+    with pytest.raises(NotImplementedError):
+        _ = cds in muts
+
+
+def test_distance_constraints_raise_for_iter():
+    space = CodingSpace('MIKEY')
+    cds = space.sample()
+    muts = MutationSpace(space, cds, max_nts=5)
+    with pytest.raises(NotImplementedError):
+        _ = [*muts]
+
+
+def test_distance_constraints_raise_for_getitem():
+    space = CodingSpace('MIKEY')
+    cds = space.sample()
+    muts = MutationSpace(space, cds, max_nts=5)
+    with pytest.raises(NotImplementedError):
+        _ = muts[0]
