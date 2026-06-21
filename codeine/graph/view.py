@@ -1,7 +1,7 @@
 import random
 
 from dataclasses import dataclass
-from typing import Dict, Generator, List, Optional, Sequence, Tuple, Union
+from typing import Dict, Generator, List, Optional, Sequence, Tuple
 
 from codeine.graph.graph import CodonGraph, CodonRestriction
 from codeine.graph.nodes import CodonNode, Node
@@ -82,12 +82,14 @@ class CodonGraphView:
         self.graph = graph
         self.pinned_codons: Dict[int, List[str]] = {}
         self.banned_sequences: List[str] = self._validate_banned_sequences(banned_sequences)
+
         self._banned_tracker = BannedSequenceTracker(self.graph, self.banned_sequences)
         self._advance_cache: Dict[Tuple[Node, TrackerState, str], AdvanceResult] = {}
+
         self._compiled = None
+        self._requires_compile = True
 
         self.initial_state = None
-        self.n_valid_sequences = None
         self.choices_by_state = {}
         self.choice_start_by_state = {}
         self.choice_results_by_state = {}
@@ -95,8 +97,6 @@ class CodonGraphView:
         self.fixed_choice_by_state = {}
         self.samplers = {}
         self.sample_steps = {}
-
-        self.compile()
 
     @property
     def aa_seq(self):
@@ -108,6 +108,16 @@ class CodonGraphView:
         The aa seq.
         """
         return self.graph.aa_seq
+
+    @property
+    def n_valid_sequences(self) -> int:
+        """
+        Number of valid coding sequences in this view.
+        """
+        if self._requires_compile:
+            self.compile()
+
+        return self._compiled.n_valid_sequences
 
     def __getitem__(self, index: int) -> str:
         """
@@ -146,6 +156,9 @@ class CodonGraphView:
         return self.contains(seq)
 
     def __repr__(self) -> str:
+        if self._requires_compile:
+            self.compile()
+
         molecule = 'RNA' if self.graph.tt.rna else 'DNA'
 
         lines = [
@@ -188,7 +201,7 @@ class CodonGraphView:
                 '',
                 ]
 
-        lines.append(f'Num. valid coding sequences: {format_count(self.n_valid_sequences)}')
+        lines.append(f'Num. valid coding sequences: {format_count(self._compiled.n_valid_sequences)}')
 
         return '\n'.join(lines)
 
@@ -203,7 +216,7 @@ class CodonGraphView:
         """
         pinned_codons = self.graph.validate_codon_restrictions(pinned_codons)
         self.pinned_codons.update(pinned_codons)
-        self.compile()
+        self._requires_compile = True
 
     def unpin_codons(self, positions: Sequence[int]) -> None:
         """
@@ -220,7 +233,7 @@ class CodonGraphView:
 
             self.pinned_codons.pop(pos, None)
 
-        self.compile()
+        self._requires_compile = True
 
     def set_pinned_codons(self, pinned_codons: Dict[int, CodonRestriction]) -> None:
         """
@@ -233,14 +246,14 @@ class CodonGraphView:
         """
         pinned_codons = self.graph.validate_codon_restrictions(pinned_codons)
         self.pinned_codons = dict(pinned_codons)
-        self.compile()
+        self._requires_compile = True
 
     def clear_pins(self) -> None:
         """
         Remove all codon pins from this graph view
         """
         self.pinned_codons.clear()
-        self.compile()
+        self._requires_compile = True
 
     def set_banned_sequences(self, banned_sequences: Sequence[str]) -> None:
         """
@@ -252,7 +265,7 @@ class CodonGraphView:
         self.banned_sequences = self._validate_banned_sequences(banned_sequences)
         self._banned_tracker = BannedSequenceTracker(self.graph, self.banned_sequences)
         self._advance_cache.clear()
-        self.compile()
+        self._requires_compile = True
 
     def contains(self, seq: str) -> bool:
         """
@@ -267,6 +280,9 @@ class CodonGraphView:
         -------
         True if and only if the sequence is contained in this coding space.
         """
+        if self._requires_compile:
+            self.compile()
+
         seq = seq.upper()
 
         if len(seq) != len(self.graph.aa_seq) * 3:
@@ -308,8 +324,13 @@ class CodonGraphView:
         str
             The indexed valid DNA sequence.
         """
-        if index < 0 or index >= self.n_valid_sequences:
-            raise IndexError(f'Sequence index {index} out of range for {self.n_valid_sequences} valid sequences.')
+        if self._requires_compile:
+            self.compile()
+
+        if index < 0 or index >= self._compiled.n_valid_sequences:
+            raise IndexError(
+                f'Sequence index {index} out of range for {self._compiled.n_valid_sequences} valid sequences.'
+            )
 
         state = self.initial_state
         sequence = []
@@ -344,7 +365,10 @@ class CodonGraphView:
         """
         Sample a DNA sequence from this graph view.
         """
-        if self.n_valid_sequences == 0:
+        if self._requires_compile:
+            self.compile()
+
+        if self._compiled.n_valid_sequences == 0:
             raise ValueError('Cannot sample from an empty coding space.')
 
         state = self.initial_state
@@ -368,7 +392,10 @@ class CodonGraphView:
         str
             A valid DNA sequence.
         """
-        for index in range(self.n_valid_sequences):
+        if self._requires_compile:
+            self.compile()
+
+        for index in range(self._compiled.n_valid_sequences):
             yield self[index]
 
     def copy(self) -> 'CodonGraphView':
@@ -382,7 +409,21 @@ class CodonGraphView:
         view = self.graph.view()
 
         view.pinned_codons = self.pinned_codons.copy()
-        view.set_banned_sequences(self.banned_sequences)
+        view.banned_sequences = self.banned_sequences.copy()
+        view._banned_tracker = self._banned_tracker
+        view._advance_cache = self._advance_cache.copy()
+
+        view._compiled = self._compiled
+        view._requires_compile = self._requires_compile
+
+        view.initial_state = self.initial_state
+        view.choices_by_state = self.choices_by_state
+        view.choice_start_by_state = self.choice_start_by_state
+        view.choice_results_by_state = self.choice_results_by_state
+        view.codon_pos_by_state = self.codon_pos_by_state
+        view.fixed_choice_by_state = self.fixed_choice_by_state
+        view.samplers = self.samplers
+        view.sample_steps = self.sample_steps
 
         return view
 
@@ -397,9 +438,9 @@ class CodonGraphView:
         compiled = compiler.compile()
 
         self._compiled = compiled
+        self._requires_compile = False
 
         self.initial_state = compiled.initial_state
-        self.n_valid_sequences = compiled.n_valid_sequences
         self.choices_by_state = compiled.choices_by_state
         self.choice_results_by_state = compiled.choice_results_by_state
         self.choice_start_by_state = compiled.choice_start_by_state
