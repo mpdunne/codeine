@@ -387,43 +387,88 @@ def test_clear_distance_constraints():
     assert not muts.has_distance_constraints
 
 
-def test_distance_constraints_raise_on_methods():
+def test_max_nts_zero_only_allows_reference_sequence():
+    space = CodingSpace('K')
+    muts = MutationSpace(space, 'AAA')
+
+    muts.set_distance_constraints(max_nts=0)
+
+    assert [*muts.enumerate()] == ['AAA']
+
+
+def test_exact_nt_distance_one():
+    space = CodingSpace('K')
+    muts = MutationSpace(space, 'AAA')
+
+    muts.set_distance_constraints(min_nts=1, max_nts=1)
+
+    assert [*muts.enumerate()] == ['AAG']
+
+
+def test_exact_codon_distance_zero():
+    space = CodingSpace('K')
+    muts = MutationSpace(space, 'AAA')
+
+    muts.set_distance_constraints(min_codons=0, max_codons=0)
+
+    assert [*muts.enumerate()] == ['AAA']
+
+
+def test_exact_codon_distance_one():
+    space = CodingSpace('K')
+    muts = MutationSpace(space, 'AAA')
+
+    muts.set_distance_constraints(min_codons=1, max_codons=1)
+
+    assert [*muts.enumerate()] == ['AAG']
+
+
+def test_distance_constraints_reduce_count():
     space = CodingSpace('MIKEY')
     cds = space.sample()
-    muts = MutationSpace(space, cds, max_nts=5)
 
-    with pytest.raises(NotImplementedError):
-        _ = muts.n_valid_variants
+    unconstrained = MutationSpace(space, cds)
+    constrained = MutationSpace(space, cds, max_nts=3)
 
-    with pytest.raises(NotImplementedError):
-        _ = muts.contains(cds)
-
-    with pytest.raises(NotImplementedError):
-        _ = muts.sample()
-
-    with pytest.raises(NotImplementedError):
-        _ = [*muts.enumerate()]
+    assert constrained.n_valid_variants < unconstrained.n_valid_variants
 
 
-def test_distance_constraints_raise_for_contains():
+def test_distance_constraints_allow_contains_for_reference():
+    space = CodingSpace('K')
+    muts = MutationSpace(space, 'AAA')
+
+    muts.set_distance_constraints(max_nts=0)
+
+    assert 'AAA' in muts
+
+
+def test_distance_constraints_reject_contains_for_wrong_distance():
+    space = CodingSpace('K')
+    muts = MutationSpace(space, 'AAA')
+
+    muts.set_distance_constraints(max_nts=0)
+
+    assert 'AAG' not in muts
+
+
+def test_distance_constraints_affect_sampling():
+    space = CodingSpace('K')
+    muts = MutationSpace(space, 'AAA')
+
+    muts.set_distance_constraints(max_nts=0)
+
+    for _ in range(100):
+        assert muts.sample() == 'AAA'
+
+
+def test_clear_distance_constraints_restores_original_count():
     space = CodingSpace('MIKEY')
     cds = space.sample()
-    muts = MutationSpace(space, cds, max_nts=5)
-    with pytest.raises(NotImplementedError):
-        _ = cds in muts
 
+    muts = MutationSpace(space, cds)
+    original_count = muts.n_valid_variants
 
-def test_distance_constraints_raise_for_iter():
-    space = CodingSpace('MIKEY')
-    cds = space.sample()
-    muts = MutationSpace(space, cds, max_nts=5)
-    with pytest.raises(NotImplementedError):
-        _ = [*muts]
+    muts.set_distance_constraints(max_nts=5)
+    muts.clear_distance_constraints()
 
-
-def test_distance_constraints_raise_for_getitem():
-    space = CodingSpace('MIKEY')
-    cds = space.sample()
-    muts = MutationSpace(space, cds, max_nts=5)
-    with pytest.raises(NotImplementedError):
-        _ = muts[0]
+    assert muts.n_valid_variants == original_count

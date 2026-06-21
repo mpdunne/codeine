@@ -1,9 +1,12 @@
-from typing import Collection, FrozenSet, Generator, Optional, Set
+from dataclasses import dataclass
+from typing import Collection, FrozenSet, Generator, Optional, Set, Tuple
 
 from codeine.utils.display import format_banned_sequences, format_forbidden_motif,\
     format_count, format_restrictions, format_positions
 from codeine.motifs.restriction import RestrictionSite
 from codeine.space.coding import CodingSpace
+from codeine.graph.constraints import ConstraintState, PathConstraint
+from codeine.graph.nodes import CodonNode
 
 
 class MutationSpace:
@@ -90,7 +93,6 @@ class MutationSpace:
         str
             The indexed valid DNA sequence.
         """
-        self._check_distance_constraints_available()
         return self.view[index]
 
     def __iter__(self) -> Generator[str, None, None]:
@@ -102,7 +104,6 @@ class MutationSpace:
         ----------
         All valid sequences in the coding space, in order.
         """
-        self._check_distance_constraints_available()
         yield from self.view
 
     def __contains__(self, seq: str) -> bool:
@@ -113,7 +114,6 @@ class MutationSpace:
         ----------
         True if and only if this is a valid sequence in this space.
         """
-        self._check_distance_constraints_available()
         return seq in self.view
 
     def __repr__(self) -> str:
@@ -195,7 +195,6 @@ class MutationSpace:
                 f'    nts: {self._format_distance(self.min_nts, self.max_nts)}',
                 f'    codons: {self._format_distance(self.min_codons, self.max_codons)}',
                 '',
-                'Num. valid variants: not yet available',
             ]
         else:
             lines.append(
@@ -255,11 +254,28 @@ class MutationSpace:
         self.min_codons = min_codons
         self.max_codons = max_codons
 
+        self._update_path_constraint()
+
     def clear_distance_constraints(self) -> None:
         """
         Remove all mutation distance constraints.
         """
         self.set_distance_constraints()
+
+    def _update_path_constraint(self) -> None:
+        if not self.has_distance_constraints:
+            self.view.clear_path_constraint()
+            return
+
+        self.view.set_path_constraint(
+            MutationDistanceConstraint(
+                reference_cds=self.cds,
+                min_nts=self.min_nts,
+                max_nts=self.max_nts,
+                min_codons=self.min_codons,
+                max_codons=self.max_codons,
+            )
+        )
 
     def _validate_positions(self, positions: Collection[int]) -> Set[int]:
         """
@@ -301,19 +317,6 @@ class MutationSpace:
             return f'at least {minimum}'
 
         return f'{minimum}..{maximum}'
-
-    def _check_distance_constraints_available(self) -> None:
-        """
-        Check whether distance constraints are currently supported.
-
-        This is deliberately a temporary guard. Distance constraints are stored
-        and displayed, but they are not yet applied during counting, sampling,
-        enumeration, or membership checks.
-        """
-        if self.has_distance_constraints:
-            raise NotImplementedError(
-                'Mutation distance constraints are not yet applied by the view.'
-            )
 
     def _validate_cds(self, cds: str) -> str:
         """
@@ -402,7 +405,6 @@ class MutationSpace:
         """
         Number of valid variants under the current mutation constraints.
         """
-        self._check_distance_constraints_available()
         return self.view.n_valid_sequences
 
     def contains(self, seq: str) -> bool:
@@ -418,7 +420,6 @@ class MutationSpace:
         -------
         True if and only if the sequence is contained in this mutation space.
         """
-        self._check_distance_constraints_available()
         return self.view.contains(seq)
 
     def sample(self) -> str:
@@ -429,7 +430,6 @@ class MutationSpace:
         -------
         A sampled string sequence from this mutation space.
         """
-        self._check_distance_constraints_available()
         return self.view.sample()
 
     def enumerate(self) -> Generator[str, None, None]:
@@ -441,5 +441,59 @@ class MutationSpace:
         str
             A valid DNA sequence.
         """
-        self._check_distance_constraints_available()
         yield from self.view.enumerate()
+
+
+# nt_diffs, codon_diffs
+MutationDistanceState = Tuple[int, int]
+
+
+@dataclass(frozen=True)
+class MutationDistanceConstraint(PathConstraint):
+    """
+    Constrain graph walks by nucleotide and codon distance from a reference CDS.
+    """
+
+    reference_cds: str
+    min_nts: Optional[int] = None
+    max_nts: Optional[int] = None
+    min_codons: Optional[int] = None
+    max_codons: Optional[int] = None
+
+    @property
+    def initial_state(self) -> MutationDistanceState:
+        return 0, 0
+
+    def advance(
+        self,
+        state: ConstraintState,
+        node,
+        choice: str,
+    ) -> Optional[MutationDistanceState]:
+        if not isinstance(node, CodonNode):
+            return state
+
+        nt_diffs, codon_diffs = state
+        ref_codon = self.reference_cds[3 * (node.pos - 1):3 * node.pos]
+
+        nt_diffs += sum(a != b for a, b in zip(ref_codon, choice))
+        codon_diffs += int(ref_codon != choice)
+
+        if self.max_nts is not None and nt_diffs > self.max_nts:
+            return None
+
+        if self.max_codons is not None and codon_diffs > self.max_codons:
+            return None
+
+        return nt_diffs, codon_diffs
+
+    def accepts_final(self, state: ConstraintState) -> bool:
+        nt_diffs, codon_diffs = state
+
+        if self.min_nts is not None and nt_diffs < self.min_nts:
+            return False
+
+        if self.min_codons is not None and codon_diffs < self.min_codons:
+            return False
+
+        return True
