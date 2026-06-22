@@ -596,10 +596,7 @@ class ViewCompiler:
         Compile one non-final graph state after all valid children have been compiled.
         """
         state = self._state(node, tracker_state, constraint_state)
-        choice_results = {}
-
-        descendant_count = 0
-        descendant_weight_mass = 0.0
+        raw_results = []
 
         self._record_state_kind(state, node)
 
@@ -609,7 +606,16 @@ class ViewCompiler:
             if result is None:
                 continue
 
-            choice_results[choice] = result
+            raw_results.append(result)
+
+        results = self._normalise_choice_results(raw_results)
+
+        choice_results = {}
+        descendant_count = 0
+        descendant_weight_mass = 0.0
+
+        for result in results:
+            choice_results[result.choice] = result
             descendant_count += result.descendant_count
             descendant_weight_mass += result.descendant_weight_mass
 
@@ -706,6 +712,43 @@ class ViewCompiler:
 
         return children
 
+    def _normalise_choice_results(self, results: List[ChoiceResult]) -> List[ChoiceResult]:
+        """
+        Rescale descendant weight masses within one state.
+
+        Only relative weights matter for sampling, so this prevents long paths
+        from underflowing toward zero.
+        """
+        max_mass = max((result.descendant_weight_mass for result in results), default=0.0)
+
+        if max_mass <= 0:
+            return results
+
+        return [
+            ChoiceResult(
+                choice=result.choice,
+                descendant_count=result.descendant_count,
+                descendant_weight_mass=result.descendant_weight_mass / max_mass,
+                next_state=result.next_state,
+                is_coding=result.is_coding,
+            )
+            for result in results
+        ]
+
+    def _normalise_weights(self, weights: List[float]) -> List[float]:
+        """
+        Rescale sampler weights defensively.
+        """
+        if not weights:
+            return weights
+
+        max_weight = max(weights)
+
+        if max_weight <= 0:
+            return [1.0] * len(weights)
+
+        return [weight / max_weight for weight in weights]
+
     def _make_samplers(self) -> Tuple[dict, dict]:
         """
         Make samplers for each reachable graph state.
@@ -727,6 +770,7 @@ class ViewCompiler:
                 runtime_weights.append(result.descendant_weight_mass)
 
             if runtime_items:
+                runtime_weights = self._normalise_weights(runtime_weights)
                 sample_steps[state] = Sampler(runtime_items, runtime_weights, rng=self.view._rng)
 
             if isinstance(node, CodonNode):
@@ -734,6 +778,7 @@ class ViewCompiler:
                 weights = [result.descendant_weight_mass for result in choice_results]
 
                 if codons:
+                    weights = self._normalise_weights(weights)
                     samplers[state] = Sampler(codons, weights, rng=self.view._rng)
 
         return samplers, sample_steps
