@@ -1,7 +1,7 @@
 import random
 
 from dataclasses import dataclass
-from typing import Dict, Generator, List, Optional, Sequence, Tuple
+from typing import Dict, Generator, List, Optional, Sequence, Tuple, Union
 
 from codeine.graph.constraints import ConstraintState, PathConstraint
 from codeine.graph.graph import CodonGraph, CodonRestriction
@@ -121,20 +121,23 @@ class CodonGraphView:
 
         return self._compiled.n_valid_sequences
 
-    def __getitem__(self, index: int) -> str:
+    def __getitem__(self, index: Union[int, slice]) -> Union[str, List[str]]:
         """
-        Return the valid sequence at a given index.
+        Return one valid sequence, or a list of valid sequences for a slice.
 
         Parameters
         ----------
         index
-            Zero-based sequence index.
+            Zero-based sequence index, or slice of sequence indices.
 
         Returns
         -------
-        str
-            The indexed valid DNA sequence.
+        str or list of str
+            The indexed valid DNA sequence, or a list of valid DNA sequences.
         """
+        if isinstance(index, slice):
+            return self.sequences_at(index)
+
         return self.sequence_at(index)
 
     def __iter__(self) -> Generator[str, None, None]:
@@ -402,6 +405,41 @@ class CodonGraphView:
 
         return ''.join(sequence)
 
+    def sequences_at(self, index_slice: slice) -> List[str]:
+        """
+        Return valid sequences from a slice.
+
+        Parameters
+        ----------
+        index_slice
+            Slice of zero-based sequence indices.
+
+        Returns
+        -------
+        list of str
+            The sliced valid DNA sequences.
+        """
+        if self._requires_compile:
+            self.compile()
+
+        start, stop, step = index_slice.indices(self._compiled.n_valid_sequences)
+
+        if step != 1:
+            return [
+                self.sequence_at(index)
+                for index in range(start, stop, step)
+            ]
+
+        sequences = []
+        for index, sequence in enumerate(self.enumerate()):
+            if index >= stop:
+                break
+
+            if index >= start:
+                sequences.append(sequence)
+
+        return sequences
+
     def enumerate(self) -> Generator[str, None, None]:
         """
         Enumerate all valid sequences in this view.
@@ -414,8 +452,33 @@ class CodonGraphView:
         if self._requires_compile:
             self.compile()
 
-        for index in range(self._compiled.n_valid_sequences):
-            yield self[index]
+        yield from self._enumerate_from(self.initial_state, [])
+
+    def _enumerate_from(
+            self,
+            state: Optional[NodeState],
+            sequence_parts: List[str],
+    ) -> Generator[str, None, None]:
+        """
+        Enumerate valid sequences below a compiled state.
+        """
+        if state is None:
+            yield ''.join(sequence_parts)
+            return
+
+        results = self.choice_results_by_state[state]
+
+        if not results:
+            return
+
+        if state not in self.codon_pos_by_state:
+            yield from self._enumerate_from(results[0].next_state, sequence_parts)
+            return
+
+        for result in results:
+            sequence_parts.append(result.choice)
+            yield from self._enumerate_from(result.next_state, sequence_parts)
+            sequence_parts.pop()
 
     def copy(self) -> 'CodonGraphView':
         """
