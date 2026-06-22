@@ -3,6 +3,7 @@ import random
 from dataclasses import dataclass
 from typing import Dict, Generator, List, Optional, Sequence, Tuple
 
+from codeine.graph.constraints import ConstraintState, PathConstraint
 from codeine.graph.graph import CodonGraph, CodonRestriction
 from codeine.graph.nodes import CodonNode, Node
 from codeine.graph.tracking import AdvanceResult, BannedSequenceTracker, TrackerState
@@ -10,7 +11,7 @@ from codeine.utils.display import format_banned_sequences, format_count, format_
 from codeine.utils.sampling import Sampler, Seedable
 
 
-NodeState = Tuple[Node, TrackerState]
+NodeState = Tuple[Node, TrackerState, ConstraintState]
 
 
 @dataclass(frozen=True)
@@ -82,6 +83,7 @@ class CodonGraphView:
         self.graph = graph
         self.pinned_codons: Dict[int, List[str]] = {}
         self.banned_sequences: List[str] = self._validate_banned_sequences(banned_sequences)
+        self.path_constraint: PathConstraint = PathConstraint()
 
         self._banned_tracker = BannedSequenceTracker(self.graph, self.banned_sequences)
         self._advance_cache: Dict[Tuple[Node, TrackerState, str], AdvanceResult] = {}
@@ -267,6 +269,23 @@ class CodonGraphView:
         self._advance_cache.clear()
         self._requires_compile = True
 
+    def set_path_constraint(self, path_constraint: PathConstraint) -> None:
+        """
+        Set an additional generic path constraint for this view.
+
+        The view does not interpret the constraint. It only lets the constraint
+        track state while walking the graph and reject choices or final states.
+        """
+        self.path_constraint = path_constraint
+        self._requires_compile = True
+
+    def clear_path_constraint(self) -> None:
+        """
+        Remove the additional generic path constraint from this view.
+        """
+        self.path_constraint = PathConstraint()
+        self._requires_compile = True
+
     def contains(self, seq: str) -> bool:
         """
         Check whether a DNA sequence is contained in this view.
@@ -410,6 +429,7 @@ class CodonGraphView:
 
         view.pinned_codons = self.pinned_codons.copy()
         view.banned_sequences = self.banned_sequences.copy()
+        view.path_constraint = self.path_constraint
         view._banned_tracker = self._banned_tracker
         view._advance_cache = self._advance_cache.copy()
 
@@ -498,6 +518,7 @@ class ViewCompiler:
         self.graph = view.graph
         self.tracker = view._banned_tracker
         self.advance_cache = view._advance_cache
+        self.path_constraint = view.path_constraint
 
         self.totals_by_state: Dict[NodeState, Tuple[int, float]] = {}
         self.choices_by_state: Dict[NodeState, Dict[str, ChoiceResult]] = {}
@@ -533,53 +554,68 @@ class ViewCompiler:
         """
         Walk the reachable graph states and compile each one after its children.
         """
-        initial_node, initial_tracker_state = initial_state
-        stack = [(initial_node, initial_tracker_state, False)]
+        initial_node, initial_tracker_state, initial_constraint_state = initial_state
+        stack = [(initial_node, initial_tracker_state, initial_constraint_state, False)]
 
         while stack:
-            node, tracker_state, expanded = stack.pop()
-            state = self._state(node, tracker_state)
+            node, tracker_state, constraint_state, expanded = stack.pop()
+            state = self._state(node, tracker_state, constraint_state)
 
             if state in self.totals_by_state:
                 continue
 
             if node is self.graph.final_node:
-                self._compile_final_state(state)
+                self._compile_final_state(state, constraint_state)
                 continue
 
             if not expanded:
-                stack.append((node, tracker_state, True))
-                stack.extend(self._uncompiled_children(node, tracker_state))
+                stack.append((node, tracker_state, constraint_state, True))
+                stack.extend(self._uncompiled_children(node, tracker_state, constraint_state))
                 continue
 
-            self._compile_state(node, tracker_state)
+            self._compile_state(node, tracker_state, constraint_state)
 
-    def _compile_final_state(self, state: NodeState) -> None:
+    def _compile_final_state(self, state: NodeState, constraint_state: ConstraintState) -> None:
         """
         Compile the final graph state.
         """
-        self.totals_by_state[state] = (1, 1.0)
+        if self.path_constraint.accepts_final(constraint_state):
+            self.totals_by_state[state] = (1, 1.0)
+        else:
+            self.totals_by_state[state] = (0, 0.0)
+
         self.choices_by_state[state] = {}
 
-    def _compile_state(self, node, tracker_state: TrackerState) -> None:
+    def _compile_state(
+        self,
+        node,
+        tracker_state: TrackerState,
+        constraint_state: ConstraintState,
+    ) -> None:
         """
         Compile one non-final graph state after all valid children have been compiled.
         """
-        state = self._state(node, tracker_state)
-        choice_results = {}
-
-        descendant_count = 0
-        descendant_weight_mass = 0.0
+        state = self._state(node, tracker_state, constraint_state)
+        raw_results = []
 
         self._record_state_kind(state, node)
 
         for choice in self.view._choices_for_node(node):
-            result = self._choice_result(node, tracker_state, choice)
+            result = self._choice_result(node, tracker_state, constraint_state, choice)
 
             if result is None:
                 continue
 
-            choice_results[choice] = result
+            raw_results.append(result)
+
+        results = self._normalise_choice_results(raw_results)
+
+        choice_results = {}
+        descendant_count = 0
+        descendant_weight_mass = 0.0
+
+        for result in results:
+            choice_results[result.choice] = result
             descendant_count += result.descendant_count
             descendant_weight_mass += result.descendant_weight_mass
 
@@ -595,7 +631,13 @@ class ViewCompiler:
             for state, choice_results in self.choices_by_state.items()
         }
 
-    def _choice_result(self, node, tracker_state: TrackerState, choice: str) -> Optional[ChoiceResult]:
+    def _choice_result(
+        self,
+        node,
+        tracker_state: TrackerState,
+        constraint_state: ConstraintState,
+        choice: str,
+    ) -> Optional[ChoiceResult]:
         """
         Compile the result of taking one outgoing choice from a graph node.
         """
@@ -609,7 +651,16 @@ class ViewCompiler:
         if advance.banned:
             return None
 
-        child_state = self._state(child, advance.state)
+        next_constraint_state = self.path_constraint.advance(
+            constraint_state,
+            node,
+            choice,
+        )
+
+        if next_constraint_state is None:
+            return None
+
+        child_state = self._state(child, advance.state, next_constraint_state)
         child_count, child_weight_mass = self.totals_by_state[child_state]
 
         if child_count == 0:
@@ -623,7 +674,12 @@ class ViewCompiler:
             is_coding=isinstance(node, CodonNode),
         )
 
-    def _uncompiled_children(self, node, tracker_state: TrackerState) -> List[Tuple[object, TrackerState, bool]]:
+    def _uncompiled_children(
+        self,
+        node,
+        tracker_state: TrackerState,
+        constraint_state: ConstraintState,
+    ) -> List[Tuple[object, TrackerState, ConstraintState, bool]]:
         """
         Return uncompiled child states reachable from a graph state.
         """
@@ -640,12 +696,58 @@ class ViewCompiler:
             if advance.banned:
                 continue
 
-            child_state = self._state(child, advance.state)
+            next_constraint_state = self.path_constraint.advance(
+                constraint_state,
+                node,
+                choice,
+            )
+
+            if next_constraint_state is None:
+                continue
+
+            child_state = self._state(child, advance.state, next_constraint_state)
 
             if child_state not in self.totals_by_state:
-                children.append((child, advance.state, False))
+                children.append((child, advance.state, next_constraint_state, False))
 
         return children
+
+    def _normalise_choice_results(self, results: List[ChoiceResult]) -> List[ChoiceResult]:
+        """
+        Rescale descendant weight masses within one state.
+
+        Only relative weights matter for sampling, so this prevents long paths
+        from underflowing toward zero.
+        """
+        max_mass = max((result.descendant_weight_mass for result in results), default=0.0)
+
+        if max_mass <= 0:
+            return results
+
+        return [
+            ChoiceResult(
+                choice=result.choice,
+                descendant_count=result.descendant_count,
+                descendant_weight_mass=result.descendant_weight_mass / max_mass,
+                next_state=result.next_state,
+                is_coding=result.is_coding,
+            )
+            for result in results
+        ]
+
+    def _normalise_weights(self, weights: List[float]) -> List[float]:
+        """
+        Rescale sampler weights defensively.
+        """
+        if not weights:
+            return weights
+
+        max_weight = max(weights)
+
+        if max_weight <= 0:
+            return [1.0] * len(weights)
+
+        return [weight / max_weight for weight in weights]
 
     def _make_samplers(self) -> Tuple[dict, dict]:
         """
@@ -655,7 +757,7 @@ class ViewCompiler:
         sample_steps = {}
 
         for state, choice_results in self.choice_results_by_state.items():
-            node, _ = state
+            node, _, _ = state
 
             if node is self.graph.final_node:
                 continue
@@ -668,6 +770,7 @@ class ViewCompiler:
                 runtime_weights.append(result.descendant_weight_mass)
 
             if runtime_items:
+                runtime_weights = self._normalise_weights(runtime_weights)
                 sample_steps[state] = Sampler(runtime_items, runtime_weights, rng=self.view._rng)
 
             if isinstance(node, CodonNode):
@@ -675,6 +778,7 @@ class ViewCompiler:
                 weights = [result.descendant_weight_mass for result in choice_results]
 
                 if codons:
+                    weights = self._normalise_weights(weights)
                     samplers[state] = Sampler(codons, weights, rng=self.view._rng)
 
         return samplers, sample_steps
@@ -702,7 +806,11 @@ class ViewCompiler:
         """
         Return the initial compiled graph state.
         """
-        return self._state(self.graph.initial_node, self._initial_tracker_state())
+        return self._state(
+            self.graph.initial_node,
+            self._initial_tracker_state(),
+            self.path_constraint.initial_state,
+        )
 
     def _initial_tracker_state(self) -> TrackerState:
         """
@@ -740,8 +848,13 @@ class ViewCompiler:
         self.advance_cache[key] = result
         return result
 
-    def _state(self, node, tracker_state: TrackerState = frozenset()) -> NodeState:
+    def _state(
+            self,
+            node,
+            tracker_state: TrackerState = frozenset(),
+            constraint_state: ConstraintState = (),
+    ) -> NodeState:
         """
-        Return the compiled state for a graph node plus banned-sequence tracker state.
+        Return the compiled state for a graph node plus tracker states.
         """
-        return node, tracker_state
+        return node, tracker_state, constraint_state

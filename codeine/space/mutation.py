@@ -1,9 +1,12 @@
-from typing import Collection, FrozenSet, Generator, Optional, Set
+from dataclasses import dataclass
+from typing import Collection, FrozenSet, Generator, Optional, Set, Tuple
 
 from codeine.utils.display import format_banned_sequences, format_forbidden_motif,\
     format_count, format_restrictions, format_positions
 from codeine.motifs.restriction import RestrictionSite
 from codeine.space.coding import CodingSpace
+from codeine.graph.constraints import ConstraintState, PathConstraint
+from codeine.graph.nodes import CodonNode
 
 
 class MutationSpace:
@@ -25,6 +28,10 @@ class MutationSpace:
                  space: CodingSpace,
                  cds: str,
                  free_positions: Optional[Collection[int]] = None,
+                 min_nts: Optional[int] = None,
+                 max_nts: Optional[int] = None,
+                 min_codons: Optional[int] = None,
+                 max_codons: Optional[int] = None,
                  ):
         """
         Constructor for the MutationSpace class.
@@ -37,6 +44,14 @@ class MutationSpace:
             The parent/reference CDS.
         free_positions
             Which positions are allowed to change?
+        min_nts
+            Minimum number of nucleotide differences from the reference CDS.
+        max_nts
+            Maximum number of nucleotide differences from the reference CDS.
+        min_codons
+            Minimum number of codon differences from the reference CDS.
+        max_codons
+            Maximum number of codon differences from the reference CDS.
         """
         self.forbidden_motifs = space.forbidden_motifs
         self.max_homopolymer = space.max_homopolymer
@@ -51,6 +66,18 @@ class MutationSpace:
 
         self._free_positions: Set[int] = set()
         self.set_free_positions(free_positions)
+
+        self.min_nts: Optional[int] = None
+        self.max_nts: Optional[int] = None
+        self.min_codons: Optional[int] = None
+        self.max_codons: Optional[int] = None
+
+        self.set_distance_constraints(
+            min_nts=min_nts,
+            max_nts=max_nts,
+            min_codons=min_codons,
+            max_codons=max_codons,
+        )
 
     def __getitem__(self, index: int) -> str:
         """
@@ -162,9 +189,17 @@ class MutationSpace:
             '',
         ]
 
-        lines.append(
-            f'Num. valid variants: {format_count(self.n_valid_variants)}'
-        )
+        if self.has_distance_constraints:
+            lines += [
+                'Mutation distance:',
+                f'    nts: {self._format_distance(self.min_nts, self.max_nts)}',
+                f'    codons: {self._format_distance(self.min_codons, self.max_codons)}',
+                '',
+            ]
+        else:
+            lines.append(
+                f'Num. valid variants: {format_count(self.n_valid_variants)}'
+            )
 
         return '\n'.join(lines)
 
@@ -183,6 +218,65 @@ class MutationSpace:
         all_positions = set(range(1, len(self.view.aa_seq) + 1))
         return frozenset(all_positions - self._free_positions)
 
+    @property
+    def has_distance_constraints(self) -> bool:
+        """
+        Whether this mutation space has mutation distance constraints.
+        """
+        distance_constraints = [self.min_nts, self.max_nts, self.min_codons, self.max_codons]
+        return any(value is not None for value in distance_constraints)
+
+    def set_distance_constraints(self,
+                                 min_nts: Optional[int] = None,
+                                 max_nts: Optional[int] = None,
+                                 min_codons: Optional[int] = None,
+                                 max_codons: Optional[int] = None,
+                                 ) -> None:
+        """
+        Set mutation distance constraints.
+
+        Distances are measured from the reference CDS.
+        """
+
+        self._validate_distance('min_nts', min_nts)
+        self._validate_distance('max_nts', max_nts)
+        self._validate_distance('min_codons', min_codons)
+        self._validate_distance('max_codons', max_codons)
+
+        if min_nts is not None and max_nts is not None and min_nts > max_nts:
+            raise ValueError('min_nts cannot be greater than max_nts.')
+
+        if min_codons is not None and max_codons is not None and min_codons > max_codons:
+            raise ValueError('min_codons cannot be greater than max_codons.')
+
+        self.min_nts = min_nts
+        self.max_nts = max_nts
+        self.min_codons = min_codons
+        self.max_codons = max_codons
+
+        self._update_path_constraint()
+
+    def clear_distance_constraints(self) -> None:
+        """
+        Remove all mutation distance constraints.
+        """
+        self.set_distance_constraints()
+
+    def _update_path_constraint(self) -> None:
+        if not self.has_distance_constraints:
+            self.view.clear_path_constraint()
+            return
+
+        self.view.set_path_constraint(
+            MutationDistanceConstraint(
+                reference_cds=self.cds,
+                min_nts=self.min_nts,
+                max_nts=self.max_nts,
+                min_codons=self.min_codons,
+                max_codons=self.max_codons,
+            )
+        )
+
     def _validate_positions(self, positions: Collection[int]) -> Set[int]:
         """
         Validate a collection of codon positions.
@@ -193,6 +287,36 @@ class MutationSpace:
             raise ValueError(f'Invalid codon positions: {sorted(invalid)}')
 
         return positions
+
+    @staticmethod
+    def _validate_distance(name: str, value: Optional[int]) -> None:
+        """
+        Validate a mutation distance value.
+        """
+        if value is None:
+            return
+
+        if value < 0:
+            raise ValueError(f'{name} must be non-negative.')
+
+    @staticmethod
+    def _format_distance(minimum: Optional[int], maximum: Optional[int]) -> str:
+        """
+        Format a distance range for display.
+        """
+        if minimum is None and maximum is None:
+            return 'any'
+
+        if minimum == maximum:
+            return str(minimum)
+
+        if minimum is None:
+            return f'up to {maximum}'
+
+        if maximum is None:
+            return f'at least {minimum}'
+
+        return f'{minimum}..{maximum}'
 
     def _validate_cds(self, cds: str) -> str:
         """
@@ -235,6 +359,10 @@ class MutationSpace:
         """
         frozen_pins = {pos: self._codon_at_position(pos) for pos in self.frozen_positions}
         pins = {**self._base_pins, **frozen_pins}
+
+        if pins == self.view.pinned_codons:
+            return
+
         self.view.set_pinned_codons(pins)
 
     def set_free_positions(self, positions: Collection[int]) -> None:
@@ -318,3 +446,117 @@ class MutationSpace:
             A valid DNA sequence.
         """
         yield from self.view.enumerate()
+
+
+# nt_diffs, codon_diffs
+MutationDistanceState = Tuple[int, int]
+
+
+@dataclass()
+class MutationDistanceConstraint(PathConstraint):
+    """
+    Constrain graph walks by nucleotide and/or codon distance from a reference CDS.
+    """
+
+    reference_cds: str
+    min_nts: Optional[int] = None
+    max_nts: Optional[int] = None
+    min_codons: Optional[int] = None
+    max_codons: Optional[int] = None
+
+    def __post_init__(self) -> None:
+        ref_codons = [self.reference_cds[i:i + 3] for i in range(0, len(self.reference_cds), 3)]
+        self._ref_codons = tuple(ref_codons)
+        self._diff_cache = {}
+
+    @property
+    def tracks_nts(self) -> bool:
+        """
+        Whether nucleotide differences should be tracked.
+        """
+        return self.min_nts is not None or self.max_nts is not None
+
+    @property
+    def tracks_codons(self) -> bool:
+        """
+        Whether codon differences should be tracked.
+        """
+        return self.min_codons is not None or self.max_codons is not None
+
+    @property
+    def initial_state(self) -> MutationDistanceState:
+        """
+        Initial mutation-distance state.
+
+        Counts start at zero for each distance type being tracked.
+        Distance types that are not constrained are stored as None.
+        """
+        nt_diffs = 0 if self.tracks_nts else None
+        codon_diffs = 0 if self.tracks_codons else None
+        return nt_diffs, codon_diffs
+
+    def advance(
+        self,
+        state: ConstraintState,
+        node,
+        choice: str,
+    ) -> Optional[MutationDistanceState]:
+        """
+        Advance mutation-distance tracking by one graph step.
+
+        When a codon node is traversed, nucleotide and codon differences
+        relative to the reference CDS are accumulated.
+
+        Returns
+        -------
+        MutationDistanceState
+            Updated mutation-distance state.
+
+        None
+            If a maximum-distance constraint has been exceeded.
+        """
+        if not isinstance(node, CodonNode):
+            return state
+
+        nt_diffs, codon_diffs = state
+        key = (node.pos, choice)
+
+        cached = self._diff_cache.get(key)
+        if cached is None:
+            ref_codon = self._ref_codons[node.pos - 1]
+            cached = (
+                sum(a != b for a, b in zip(ref_codon, choice)),
+                int(ref_codon != choice),
+            )
+            self._diff_cache[key] = cached
+
+        nt_diff, codon_diff = cached
+
+        if self.tracks_nts:
+            nt_diffs += nt_diff
+
+            if self.max_nts is not None and nt_diffs > self.max_nts:
+                return None
+
+        if self.tracks_codons:
+            codon_diffs += codon_diff
+
+            if self.max_codons is not None and codon_diffs > self.max_codons:
+                return None
+
+        return nt_diffs, codon_diffs
+
+    def accepts_final(self, state: ConstraintState) -> bool:
+        """
+        Check whether a completed sequence satisfies the minimum
+        mutation-distance constraints.
+        """
+        nt_diffs, codon_diffs = state
+
+        if self.min_nts is not None and nt_diffs < self.min_nts:
+            return False
+
+        if self.min_codons is not None and codon_diffs < self.min_codons:
+            return False
+
+        return True
