@@ -425,20 +425,19 @@ class CodonGraphView:
         start, stop, step = index_slice.indices(self._compiled.n_valid_sequences)
 
         if step != 1:
-            return [
-                self.sequence_at(index)
-                for index in range(start, stop, step)
-            ]
+            return [self.sequence_at(index) for index in range(start, stop, step)]
 
-        sequences = []
-        for index, sequence in enumerate(self.enumerate()):
-            if index >= stop:
-                break
+        if start == 0:
+            sequences = []
+            for index, sequence in enumerate(self.enumerate()):
+                if index >= stop:
+                    break
 
-            if index >= start:
                 sequences.append(sequence)
 
-        return sequences
+            return sequences
+
+        return [*self.enumerate_range(start, stop)]
 
     def enumerate(self) -> Generator[str, None, None]:
         """
@@ -452,33 +451,47 @@ class CodonGraphView:
         if self._requires_compile:
             self.compile()
 
-        yield from self._enumerate_from(self.initial_state, [])
+        stack = [(self.initial_state, [])]
 
-    def _enumerate_from(
-            self,
-            state: Optional[NodeState],
-            sequence_parts: List[str],
-    ) -> Generator[str, None, None]:
+        while stack:
+            state, sequence_parts = stack.pop()
+
+            if state is None:
+                yield ''.join(sequence_parts)
+                continue
+
+            results = self.choice_results_by_state[state]
+
+            if not results:
+                continue
+
+            if state not in self.codon_pos_by_state:
+                stack.append((results[0].next_state, sequence_parts))
+                continue
+
+            for result in reversed(results):
+                stack.append((
+                    result.next_state,
+                    [*sequence_parts, result.choice],
+                ))
+
+    def enumerate_range(self, start: int = 0, stop: Optional[int] = None) -> Generator[str, None, None]:
         """
-        Enumerate valid sequences below a compiled state.
+        Enumerate valid sequences from start up to, but not including, stop.
         """
-        if state is None:
-            yield ''.join(sequence_parts)
-            return
+        if self._requires_compile:
+            self.compile()
 
-        results = self.choice_results_by_state[state]
+        n_sequences = self._compiled.n_valid_sequences
 
-        if not results:
-            return
+        if stop is None:
+            stop = n_sequences
 
-        if state not in self.codon_pos_by_state:
-            yield from self._enumerate_from(results[0].next_state, sequence_parts)
-            return
+        if start < 0 or stop < start or stop > n_sequences:
+            raise IndexError('Enumeration range is out of bounds.')
 
-        for result in results:
-            sequence_parts.append(result.choice)
-            yield from self._enumerate_from(result.next_state, sequence_parts)
-            sequence_parts.pop()
+        for index in range(start, stop):
+            yield self.sequence_at(index)
 
     def copy(self) -> 'CodonGraphView':
         """
