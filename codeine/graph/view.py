@@ -44,7 +44,6 @@ class CompiledView:
     codon_pos_by_state: Dict[NodeState, int]
     fixed_choice_by_state: Dict[NodeState, str]
     samplers: dict
-    sample_steps: dict
 
 
 class CodonGraphView:
@@ -98,7 +97,6 @@ class CodonGraphView:
         self.codon_pos_by_state = {}
         self.fixed_choice_by_state = {}
         self.samplers = {}
-        self.sample_steps = {}
 
     @property
     def aa_seq(self):
@@ -395,10 +393,10 @@ class CodonGraphView:
 
         state = self.initial_state
         sequence = []
-        sample_steps = self.sample_steps
+        samplers = self.samplers
 
         while state is not None:
-            choice, is_coding, state = sample_steps[state].sample()
+            choice, is_coding, state = samplers[state].sample()
 
             if is_coding:
                 sequence.append(choice)
@@ -519,7 +517,6 @@ class CodonGraphView:
         view.codon_pos_by_state = self.codon_pos_by_state
         view.fixed_choice_by_state = self.fixed_choice_by_state
         view.samplers = self.samplers
-        view.sample_steps = self.sample_steps
 
         return view
 
@@ -543,7 +540,6 @@ class CodonGraphView:
         self.codon_pos_by_state = compiled.codon_pos_by_state
         self.fixed_choice_by_state = compiled.fixed_choice_by_state
         self.samplers = compiled.samplers
-        self.sample_steps = compiled.sample_steps
 
     def _validate_banned_sequences(self, banned_sequences: Sequence[str]) -> List[str]:
         """
@@ -606,7 +602,7 @@ class ViewCompiler:
 
         self._compile_choice_result_tuples()
         self._compile_choice_starts()
-        samplers, sample_steps = self._make_samplers()
+        samplers = self._make_samplers()
 
         return CompiledView(
             initial_state=initial_state,
@@ -617,7 +613,6 @@ class ViewCompiler:
             codon_pos_by_state=self.codon_pos_by_state,
             fixed_choice_by_state=self.fixed_choice_by_state,
             samplers=samplers,
-            sample_steps=sample_steps,
         )
 
     def _compile_from(self, initial_state: NodeState) -> None:
@@ -831,12 +826,11 @@ class ViewCompiler:
 
         return [weight / max_weight for weight in weights]
 
-    def _make_samplers(self) -> Tuple[dict, dict]:
+    def _make_samplers(self) -> dict:
         """
         Make samplers for each reachable graph state.
         """
         samplers = {}
-        sample_steps = {}
 
         for state, choice_results in self.choice_results_by_state.items():
             node, _, _ = state
@@ -853,17 +847,9 @@ class ViewCompiler:
 
             if runtime_items:
                 runtime_weights = self._normalise_weights(runtime_weights)
-                sample_steps[state] = Sampler(runtime_items, runtime_weights, rng=self.view._rng)
+                samplers[state] = Sampler(runtime_items, runtime_weights, rng=self.view._rng)
 
-            if isinstance(node, CodonNode):
-                codons = [result.choice for result in choice_results]
-                weights = [result.descendant_weight_mass for result in choice_results]
-
-                if codons:
-                    weights = self._normalise_weights(weights)
-                    samplers[state] = Sampler(codons, weights, rng=self.view._rng)
-
-        return samplers, sample_steps
+        return samplers
 
     def _record_state_kind(self, state: NodeState, node) -> None:
         """
