@@ -1,7 +1,10 @@
+import itertools
 import pytest
+import random
 
 from codeine.space.coding import CodingSpace
 from codeine.space.mutation import MutationSpace
+from codeine import TranslationTable
 
 
 def test_mutation_space_requires_cds_in_space():
@@ -387,88 +390,221 @@ def test_clear_distance_constraints():
     assert not muts.has_distance_constraints
 
 
+standard_table = TranslationTable().aa_to_codons
+
+
+def sample_naive(aa_seq, n=1):
+    seqs = []
+
+    for _ in range(n):
+        codons = []
+        for aa in aa_seq:
+            codon = random.choice(standard_table[aa])
+            codons.append(codon)
+        seq = ''.join(codons)
+        seqs.append(seq)
+
+    if n == 1:
+        return seqs[0]
+    else:
+        return seqs
+
+
+def enumerate_naive(aa_seq):
+    all_codons = [standard_table[aa] for aa in aa_seq]
+    all_seqs = [''.join(entry) for entry in itertools.product(*all_codons)]
+    return all_seqs
+
+
+def get_nt_diffs(cds1, cds2):
+    if len(cds1) != len(cds2):
+        raise ValueError('Sequences must be same length')
+
+    diffs = 0
+    for nt1, nt2 in zip(cds1.upper(), cds2.upper()):
+        if nt1 != nt2:
+            diffs += 1
+
+    return diffs
+
+
+def get_codon_diffs(cds1, cds2):
+    if len(cds1) != len(cds2):
+        raise ValueError('Sequences must be same length')
+
+    if len(cds1) % 3 != 0:
+        raise ValueError('Sequence lengths must both be multiples of 3')
+
+    diffs = 0
+    for pos in range(1, 1 + (len(cds1) // 3)):
+        codon1 = cds1[3 * (pos - 1): 3 * pos]
+        codon2 = cds2[3 * (pos - 1): 3 * pos]
+
+        if codon1 != codon2:
+            diffs += 1
+
+    return diffs
+
+
 def test_max_nts_zero_only_allows_reference_sequence():
-    space = CodingSpace('K')
-    muts = MutationSpace(space, 'AAA')
+    space = CodingSpace('MIKEY')
+    muts = MutationSpace(space, 'ATGATTAAAGAATAT')
 
     muts.set_distance_constraints(max_nts=0)
 
-    assert [*muts.enumerate()] == ['AAA']
+    assert [*muts.enumerate()] == ['ATGATTAAAGAATAT']
 
 
 def test_exact_nt_distance_one():
-    space = CodingSpace('K')
-    muts = MutationSpace(space, 'AAA')
+    space = CodingSpace('MIKEY')
+    muts = MutationSpace(space, 'ATGATTAAAGAATAT')
 
     muts.set_distance_constraints(min_nts=1, max_nts=1)
 
-    assert [*muts.enumerate()] == ['AAG']
+    expected = [
+        'ATGATTAAAGAATAC',
+        'ATGATTAAAGAGTAT',
+        'ATGATTAAGGAATAT',
+        'ATGATCAAAGAATAT',
+        'ATGATAAAAGAATAT'
+    ]
+
+    assert [*muts] == expected
 
 
 def test_exact_codon_distance_zero():
-    space = CodingSpace('K')
-    muts = MutationSpace(space, 'AAA')
+    space = CodingSpace('MIKEY')
+    muts = MutationSpace(space, 'ATGATTAAAGAATAT')
 
     muts.set_distance_constraints(min_codons=0, max_codons=0)
 
-    assert [*muts.enumerate()] == ['AAA']
+    assert [*muts.enumerate()] == ['ATGATTAAAGAATAT']
 
 
 def test_exact_codon_distance_one():
-    space = CodingSpace('K')
-    muts = MutationSpace(space, 'AAA')
+    space = CodingSpace('MIKEY')
+    muts = MutationSpace(space, 'ATGATTAAAGAATAT')
 
     muts.set_distance_constraints(min_codons=1, max_codons=1)
 
-    assert [*muts.enumerate()] == ['AAG']
+    expected = [
+        'ATGATTAAAGAATAC',
+        'ATGATTAAAGAGTAT',
+        'ATGATTAAGGAATAT',
+        'ATGATCAAAGAATAT',
+        'ATGATAAAAGAATAT'
+    ]
+
+    assert [*muts.enumerate()] == expected
 
 
 def test_distance_constraints_reduce_count():
     space = CodingSpace('MIKEY')
-    cds = space.sample()
+    cds = space[0]
 
     unconstrained = MutationSpace(space, cds)
-    constrained = MutationSpace(space, cds, max_nts=3)
+    constrained = MutationSpace(space, cds, max_nts=2)
 
-    assert constrained.n_valid_variants < unconstrained.n_valid_variants
+    assert unconstrained.n_valid_variants == 24
+    assert constrained.n_valid_variants == 15
 
 
-def test_distance_constraints_allow_contains_for_reference():
-    space = CodingSpace('K')
-    muts = MutationSpace(space, 'AAA')
+def test_distance_constraints_allow_contains_only_constrained_cdss():
+    space = CodingSpace('MIKEY')
+    all_seqs = [*space]
+    reference = all_seqs[0]
+
+    muts = MutationSpace(space, reference)
+    muts.set_distance_constraints(max_nts=3)
+
+    for seq in all_seqs:
+        if get_nt_diffs(seq, reference) <= 3:
+            assert seq in muts
+        else:
+            assert seq not in muts
+
+
+def test_distance_constraints_affect_sampling_and_enumeration():
+    space = CodingSpace('SASSAFRAS')
+    assert space.n_valid_sequences == 995328
+
+    reference = 'TCTGCTTCTTCTGCTTTTCGTGCTTCT'
+    muts = MutationSpace(space, reference)
 
     muts.set_distance_constraints(max_nts=0)
-
-    assert 'AAA' in muts
-
-
-def test_distance_constraints_reject_contains_for_wrong_distance():
-    space = CodingSpace('K')
-    muts = MutationSpace(space, 'AAA')
-
-    muts.set_distance_constraints(max_nts=0)
-
-    assert 'AAG' not in muts
-
-
-def test_distance_constraints_affect_sampling():
-    space = CodingSpace('K')
-    muts = MutationSpace(space, 'AAA')
-
-    muts.set_distance_constraints(max_nts=0)
-
+    assert muts.n_valid_variants == 1
+    assert len([*muts]) == 1
     for _ in range(100):
-        assert muts.sample() == 'AAA'
+        assert muts.sample() == reference
+
+    muts.set_distance_constraints(min_nts=1, max_nts=1)
+    assert muts.n_valid_variants == 25
+    assert len([*muts]) == 25
+    for _ in range(100):
+        assert get_nt_diffs(reference, muts.sample()) == 1
+
+    muts.set_distance_constraints(max_nts=3)
+    assert muts.n_valid_variants == 2208
+    assert len([*muts]) == 2208
+    for _ in range(100):
+        assert get_nt_diffs(reference, muts.sample()) <= 3
+
+    muts.set_distance_constraints(max_codons=0)
+    assert muts.n_valid_variants == 1
+    assert len([*muts]) == 1
+    for _ in range(100):
+        assert muts.sample() == reference
+
+    muts.set_distance_constraints(min_codons=1, max_codons=1)
+    assert muts.n_valid_variants == 35
+    assert len([*muts]) == 35
+    for _ in range(100):
+        assert get_codon_diffs(reference, muts.sample()) == 1
+
+    muts.set_distance_constraints(max_codons=3)
+    assert muts.n_valid_variants == 5276
+    assert len([*muts]) == 5276
+    for _ in range(100):
+        assert get_codon_diffs(reference, muts.sample()) <= 5
 
 
 def test_clear_distance_constraints_restores_original_count():
     space = CodingSpace('MIKEY')
-    cds = space.sample()
+    cds = space[0]
 
     muts = MutationSpace(space, cds)
-    original_count = muts.n_valid_variants
+    assert muts.n_valid_variants == 24
+
+    muts.set_distance_constraints(max_nts=2)
+    assert muts.n_valid_variants == 15
+
+    muts.clear_distance_constraints()
+    assert muts.n_valid_variants == 24
+
+
+def test_banned_sequences_work_with_distance_constraints():
+    space = CodingSpace('SASSAFRAS', context_l='AAAAAA', context_r='GGGGGG')
+    assert space.n_valid_sequences == 995328
+
+    banned = ['TTTT', 'AAATCT', 'TCTGGG']
+    space = CodingSpace('SASSAFRAS', context_l='AAAAAA', context_r='GGGGGG', forbidden_motifs=banned)
+    assert space.n_valid_sequences == 604800
+
+    reference = space[0]
+    assert reference == 'TCCGCTTCTTCTGCTTTCCGTGCTTCC'
+
+    muts = space.mutants(reference)
+    assert muts.n_valid_variants == 604800
 
     muts.set_distance_constraints(max_nts=5)
-    muts.clear_distance_constraints()
+    assert muts.n_valid_variants == 23155
 
-    assert muts.n_valid_variants == original_count
+    muts.set_distance_constraints(min_codons=5, max_codons=5)
+    assert muts.n_valid_variants == 60866
+
+
+SHORT_AA_SEQUENCES = ['M', 'K', 'S', 'MIKEY', 'SASSAFRAS']
+LONG_AA_SEQUENCES = ['MIKEY' * 100, ]
+
+@pytest.mark.parametrize
+def test_combinatorial_constraints_and_sequences_short():
