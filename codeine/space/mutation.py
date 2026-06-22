@@ -471,14 +471,26 @@ class MutationDistanceConstraint(PathConstraint):
 
     @property
     def tracks_nts(self) -> bool:
+        """
+        Whether nucleotide differences should be tracked.
+        """
         return self.min_nts is not None or self.max_nts is not None
 
     @property
     def tracks_codons(self) -> bool:
+        """
+        Whether codon differences should be tracked.
+        """
         return self.min_codons is not None or self.max_codons is not None
 
     @property
     def initial_state(self) -> MutationDistanceState:
+        """
+        Initial mutation-distance state.
+
+        Counts start at zero for each distance type being tracked.
+        Distance types that are not constrained are stored as None.
+        """
         nt_diffs = 0 if self.tracks_nts else None
         codon_diffs = 0 if self.tracks_codons else None
         return nt_diffs, codon_diffs
@@ -489,6 +501,20 @@ class MutationDistanceConstraint(PathConstraint):
         node,
         choice: str,
     ) -> Optional[MutationDistanceState]:
+        """
+        Advance mutation-distance tracking by one graph step.
+
+        When a codon node is traversed, nucleotide and codon differences
+        relative to the reference CDS are accumulated.
+
+        Returns
+        -------
+        MutationDistanceState
+            Updated mutation-distance state.
+
+        None
+            If a maximum-distance constraint has been exceeded.
+        """
         if not isinstance(node, CodonNode):
             return state
 
@@ -521,6 +547,10 @@ class MutationDistanceConstraint(PathConstraint):
         return nt_diffs, codon_diffs
 
     def accepts_final(self, state: ConstraintState) -> bool:
+        """
+        Check whether a completed sequence satisfies the minimum
+        mutation-distance constraints.
+        """
         nt_diffs, codon_diffs = state
 
         if self.min_nts is not None and nt_diffs < self.min_nts:
