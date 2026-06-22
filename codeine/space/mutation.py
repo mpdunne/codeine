@@ -451,7 +451,7 @@ MutationDistanceState = Tuple[int, int]
 @dataclass(frozen=True)
 class MutationDistanceConstraint(PathConstraint):
     """
-    Constrain graph walks by nucleotide and codon distance from a reference CDS.
+    Constrain graph walks by nucleotide and/or codon distance from a reference CDS.
     """
 
     reference_cds: str
@@ -461,8 +461,18 @@ class MutationDistanceConstraint(PathConstraint):
     max_codons: Optional[int] = None
 
     @property
+    def tracks_nts(self) -> bool:
+        return self.min_nts is not None or self.max_nts is not None
+
+    @property
+    def tracks_codons(self) -> bool:
+        return self.min_codons is not None or self.max_codons is not None
+
+    @property
     def initial_state(self) -> MutationDistanceState:
-        return 0, 0
+        nt_diffs = 0 if self.tracks_nts else None
+        codon_diffs = 0 if self.tracks_codons else None
+        return nt_diffs, codon_diffs
 
     def advance(
         self,
@@ -476,14 +486,17 @@ class MutationDistanceConstraint(PathConstraint):
         nt_diffs, codon_diffs = state
         ref_codon = self.reference_cds[3 * (node.pos - 1):3 * node.pos]
 
-        nt_diffs += sum(a != b for a, b in zip(ref_codon, choice))
-        codon_diffs += int(ref_codon != choice)
+        if self.tracks_nts:
+            nt_diffs += sum(a != b for a, b in zip(ref_codon, choice))
 
-        if self.max_nts is not None and nt_diffs > self.max_nts:
-            return None
+            if self.max_nts is not None and nt_diffs > self.max_nts:
+                return None
 
-        if self.max_codons is not None and codon_diffs > self.max_codons:
-            return None
+        if self.tracks_codons:
+            codon_diffs += int(ref_codon != choice)
+
+            if self.max_codons is not None and codon_diffs > self.max_codons:
+                return None
 
         return nt_diffs, codon_diffs
 
