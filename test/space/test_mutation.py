@@ -4,7 +4,10 @@ import random
 
 from codeine.space.coding import CodingSpace
 from codeine.space.mutation import MutationSpace
-from codeine import TranslationTable
+from codeine.motifs.restriction import RestrictionSite
+from codeine.translation.tables import TranslationTable
+
+from test.data import NORMAL_PROTEINS, DIFFICULT_PROTEINS, ANTIBODIES, LARGE_PROTEINS
 
 
 def test_mutation_space_requires_cds_in_space():
@@ -603,8 +606,187 @@ def test_banned_sequences_work_with_distance_constraints():
     assert muts.n_valid_variants == 60866
 
 
-SHORT_AA_SEQUENCES = ['M', 'K', 'S', 'MIKEY', 'SASSAFRAS']
-LONG_AA_SEQUENCES = ['MIKEY' * 100, ]
+def has_banned_sequence(cds, banned_sequences=(), context_l='', context_r=''):
+    full_seq = context_l + cds + context_r
+    return any(banned in full_seq for banned in banned_sequences)
 
-@pytest.mark.parametrize
-def test_combinatorial_constraints_and_sequences_short():
+
+def enumerate_naive_mutants(
+    aa_seq,
+    reference,
+    banned_sequences=(),
+    context_l='',
+    context_r='',
+    min_nts=None,
+    max_nts=None,
+    min_codons=None,
+    max_codons=None,
+):
+    seqs = []
+
+    for cds in enumerate_naive(aa_seq):
+        nt_diffs = get_nt_diffs(cds, reference)
+        codon_diffs = get_codon_diffs(cds, reference)
+
+        if min_nts is not None and nt_diffs < min_nts:
+            continue
+        if max_nts is not None and nt_diffs > max_nts:
+            continue
+        if min_codons is not None and codon_diffs < min_codons:
+            continue
+        if max_codons is not None and codon_diffs > max_codons:
+            continue
+        if has_banned_sequence(cds, banned_sequences, context_l, context_r):
+            continue
+
+        seqs.append(cds)
+
+    return seqs
+
+
+SHORT_AA_SEQUENCES = ['K', 'KK', 'MIKEY', 'SASSY']
+
+CONTEXTS = [
+    ('', ''),
+    ('AAAAAA', ''),
+    ('', 'GGGGGG'),
+    ('AAAAAA', 'GGGGGG'),
+]
+
+BANNED_SEQUENCE_SETS = [
+    [],
+    ['AAA'],
+    ['TTTT'],
+    ['AAATCT'],
+    ['TCTGGG'],
+    ['TTTT', 'AAATCT', 'TCTGGG'],
+]
+
+DISTANCE_CONSTRAINTS = [
+    {},
+    {'max_nts': 0},
+    {'max_nts': 1},
+    {'max_nts': 3},
+    {'max_nts': 10},
+    {'min_nts': 1, 'max_nts': 3},
+    {'min_nts': 5, 'max_nts': 20},
+    {'max_codons': 0},
+    {'max_codons': 1},
+    {'max_codons': 3},
+    {'max_codons': 10},
+    {'min_codons': 5, 'max_codons': 20},
+]
+
+
+@pytest.mark.parametrize('aa_seq', SHORT_AA_SEQUENCES)
+@pytest.mark.parametrize('context', CONTEXTS)
+@pytest.mark.parametrize('banned_sequences', BANNED_SEQUENCE_SETS)
+@pytest.mark.parametrize('distance_kwargs', DISTANCE_CONSTRAINTS)
+def test_mutation_space_matches_naive_combinatorial(
+    aa_seq,
+    context,
+    banned_sequences,
+    distance_kwargs,
+):
+    context_l, context_r = context
+
+    space = CodingSpace(
+        aa_seq,
+        context_l=context_l,
+        context_r=context_r,
+        forbidden_motifs=banned_sequences,
+    )
+
+    if space.n_valid_sequences == 0:
+        return
+
+    reference = space[0]
+    muts = MutationSpace(space, reference, **distance_kwargs)
+
+    expected = enumerate_naive_mutants(
+        aa_seq,
+        reference,
+        banned_sequences=banned_sequences,
+        context_l=context_l,
+        context_r=context_r,
+        **distance_kwargs,
+    )
+
+    assert [*muts] == expected
+    assert muts.n_valid_variants == len(expected)
+
+    expected_set = set(expected)
+    for cds in enumerate_naive(aa_seq):
+        assert (cds in muts) == (cds in expected_set)
+
+
+REAL_CONTEXTS = [
+    ('', ''),
+
+    # Cloning / stop
+    ('GCCACC', ''),
+    ('', 'TAA'),
+    ('GCCACC', 'TAA'),
+
+    # Restriction-sites
+    ('GAATTC', 'AAGCTT'),    # EcoRI / HindIII
+    ('GGATCC', 'CTCGAG'),    # BamHI / XhoI
+]
+
+
+REAL_BANNED_CASES = [
+    [],
+    [RestrictionSite.EcoRI, RestrictionSite.BamHI],
+    [RestrictionSite.EcoRI, RestrictionSite.BamHI, RestrictionSite.XhoI, RestrictionSite.HindIII],
+]
+
+# REAL_PROTEINS = {**NORMAL_PROTEINS, **DIFFICULT_PROTEINS, **ANTIBODIES, **LARGE_PROTEINS}
+REAL_PROTEINS = {**NORMAL_PROTEINS, **LARGE_PROTEINS}
+
+
+@pytest.mark.parametrize('name, aa_seq', REAL_PROTEINS.items())
+@pytest.mark.parametrize('context', REAL_CONTEXTS)
+@pytest.mark.parametrize('banned_sequences', REAL_BANNED_CASES)
+@pytest.mark.parametrize('distance_kwargs', DISTANCE_CONSTRAINTS)
+def test_mutation_space_samples_real_proteins(
+    name,
+    aa_seq,
+    context,
+    banned_sequences,
+    distance_kwargs,
+):
+    context_l, context_r = context
+
+    space = CodingSpace(
+        aa_seq,
+        context_l=context_l,
+        context_r=context_r,
+        forbidden_motifs=banned_sequences,
+    )
+
+    if space.n_valid_sequences == 0:
+        return
+
+    reference = space.sample()
+    muts = MutationSpace(space, reference, **distance_kwargs)
+
+    if muts.n_valid_variants == 0:
+        return
+
+    for _ in range(100):
+        cds = muts.sample()
+
+        assert cds in muts
+        assert cds in space
+
+        nt_diffs = get_nt_diffs(cds, reference)
+        codon_diffs = get_codon_diffs(cds, reference)
+
+        if muts.min_nts is not None:
+            assert nt_diffs >= muts.min_nts
+        if muts.max_nts is not None:
+            assert nt_diffs <= muts.max_nts
+        if muts.min_codons is not None:
+            assert codon_diffs >= muts.min_codons
+        if muts.max_codons is not None:
+            assert codon_diffs <= muts.max_codons
