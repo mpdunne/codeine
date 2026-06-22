@@ -571,18 +571,6 @@ class CodonGraphView:
 
         return sorted(set(normalised))
 
-    def _choices_for_node(self, node) -> List[str]:
-        """
-        Return choices available to this node in this view.
-        """
-        if isinstance(node, CodonNode):
-            if node.pos in self.pinned_codons:
-                return self.pinned_codons[node.pos]
-
-            return node.codons
-
-        return [node.sequence]
-
 
 class ViewCompiler:
     """
@@ -602,6 +590,12 @@ class ViewCompiler:
         self.choice_results_by_state: Dict[NodeState, Tuple[ChoiceResult, ...]] = {}
         self.codon_pos_by_state: Dict[NodeState, int] = {}
         self.fixed_choice_by_state: Dict[NodeState, str] = {}
+
+        self.choices_by_node = {
+            node: tuple(self._get_choices_for_node(node))
+            for node in self.graph.nodes
+            if node is not self.graph.final_node
+        }
 
     def compile(self) -> CompiledView:
         """
@@ -676,7 +670,7 @@ class ViewCompiler:
 
         self._record_state_kind(state, node)
 
-        for choice in self.view._choices_for_node(node):
+        for choice in self.choices_by_node[node]:
             result = self._choice_result(node, tracker_state, constraint_state, choice)
 
             if result is None:
@@ -706,6 +700,18 @@ class ViewCompiler:
             state: tuple(choice_results.values())
             for state, choice_results in self.choices_by_state.items()
         }
+
+    def _get_choices_for_node(self, node) -> List[str]:
+        """
+        Return choices available to this node in this view.
+        """
+        if isinstance(node, CodonNode):
+            if node.pos in self.view.pinned_codons:
+                return self.view.pinned_codons[node.pos]
+
+            return node.codons
+
+        return [node.sequence]
 
     def _choice_result(
         self,
@@ -761,7 +767,7 @@ class ViewCompiler:
         """
         children = []
 
-        for choice in self.view._choices_for_node(node):
+        for choice in self.choices_by_node[node]:
             child = node.transitions.get(choice)
 
             if child is None:
