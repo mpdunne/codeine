@@ -7,7 +7,7 @@ from codeine.space.mutation import MutationSpace
 from codeine.motifs.restriction import RestrictionSite
 from codeine.translation.tables import TranslationTable
 
-from test.data import NORMAL_PROTEINS, DIFFICULT_PROTEINS, ANTIBODIES, LARGE_PROTEINS
+from tests.data import NORMAL_PROTEINS, DIFFICULT_PROTEINS, ANTIBODIES, LARGE_PROTEINS
 
 
 def test_mutation_space_requires_cds_in_space():
