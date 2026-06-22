@@ -452,7 +452,7 @@ class MutationSpace:
 MutationDistanceState = Tuple[int, int]
 
 
-@dataclass(frozen=True)
+@dataclass()
 class MutationDistanceConstraint(PathConstraint):
     """
     Constrain graph walks by nucleotide and/or codon distance from a reference CDS.
@@ -465,13 +465,9 @@ class MutationDistanceConstraint(PathConstraint):
     max_codons: Optional[int] = None
 
     def __post_init__(self) -> None:
-        ref_codons = tuple(
-            self.reference_cds[i:i + 3]
-            for i in range(0, len(self.reference_cds), 3)
-        )
-
-        object.__setattr__(self, '_ref_codons', ref_codons)
-        object.__setattr__(self, '_diff_cache', {})
+        ref_codons = [self.reference_cds[i:i + 3] for i in range(0, len(self.reference_cds), 3)]
+        self._ref_codons = tuple(ref_codons)
+        self._diff_cache = {}
 
     @property
     def tracks_nts(self) -> bool:
