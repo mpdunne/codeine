@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Collection, FrozenSet, Generator, Optional, Set, Tuple
+from typing import Collection, FrozenSet, List, Generator, Optional, Set, Tuple, Union
 
 from codeine.utils.display import format_banned_sequences, format_forbidden_motif,\
     format_count, format_restrictions, format_positions
@@ -79,19 +79,19 @@ class MutationSpace:
             max_codons=max_codons,
         )
 
-    def __getitem__(self, index: int) -> str:
+    def __getitem__(self, index: Union[int, slice]) -> Union[str, List[str]]:
         """
-        Return the valid sequence at a given index.
+        Return one or more valid sequences.
 
         Parameters
         ----------
         index
-            Zero-based sequence index.
+            Zero-based sequence index or slice.
 
         Returns
         -------
-        str
-            The indexed valid DNA sequence.
+        str or List[str]
+            The indexed sequence, or a list of sequences for a slice.
         """
         return self.view[index]
 

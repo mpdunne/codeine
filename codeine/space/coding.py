@@ -112,19 +112,19 @@ class CodingSpace:
         with Path(path).open('wb') as f:
             pickle.dump(self, f)
 
-    def __getitem__(self, index: int) -> str:
+    def __getitem__(self, index: Union[int, slice]) -> Union[str, List[str]]:
         """
-        Return the valid sequence at a given index.
+        Return one or more valid sequences.
 
         Parameters
         ----------
         index
-            Zero-based sequence index.
+            Zero-based sequence index or slice.
 
         Returns
         -------
-        str
-            The indexed valid DNA sequence.
+        str or List[str]
+            The indexed sequence, or a list of sequences for a slice.
         """
         return self.view[index]
 
