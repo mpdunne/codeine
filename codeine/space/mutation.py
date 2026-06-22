@@ -359,6 +359,10 @@ class MutationSpace:
         """
         frozen_pins = {pos: self._codon_at_position(pos) for pos in self.frozen_positions}
         pins = {**self._base_pins, **frozen_pins}
+
+        if pins == self.view.pinned_codons:
+            return
+
         self.view.set_pinned_codons(pins)
 
     def set_free_positions(self, positions: Collection[int]) -> None:
@@ -460,6 +464,15 @@ class MutationDistanceConstraint(PathConstraint):
     min_codons: Optional[int] = None
     max_codons: Optional[int] = None
 
+    def __post_init__(self) -> None:
+        ref_codons = tuple(
+            self.reference_cds[i:i + 3]
+            for i in range(0, len(self.reference_cds), 3)
+        )
+
+        object.__setattr__(self, '_ref_codons', ref_codons)
+        object.__setattr__(self, '_diff_cache', {})
+
     @property
     def tracks_nts(self) -> bool:
         return self.min_nts is not None or self.max_nts is not None
@@ -484,16 +497,27 @@ class MutationDistanceConstraint(PathConstraint):
             return state
 
         nt_diffs, codon_diffs = state
-        ref_codon = self.reference_cds[3 * (node.pos - 1):3 * node.pos]
+        key = (node.pos, choice)
+
+        cached = self._diff_cache.get(key)
+        if cached is None:
+            ref_codon = self._ref_codons[node.pos - 1]
+            cached = (
+                sum(a != b for a, b in zip(ref_codon, choice)),
+                int(ref_codon != choice),
+            )
+            self._diff_cache[key] = cached
+
+        nt_diff, codon_diff = cached
 
         if self.tracks_nts:
-            nt_diffs += sum(a != b for a, b in zip(ref_codon, choice))
+            nt_diffs += nt_diff
 
             if self.max_nts is not None and nt_diffs > self.max_nts:
                 return None
 
         if self.tracks_codons:
-            codon_diffs += int(ref_codon != choice)
+            codon_diffs += codon_diff
 
             if self.max_codons is not None and codon_diffs > self.max_codons:
                 return None
