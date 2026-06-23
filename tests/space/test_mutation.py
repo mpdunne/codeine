@@ -906,13 +906,13 @@ def test_mutation_codon_distributions_are_stable_across_sequence(aa_seq, banned,
     for within_block in range(1, 5):
         block_counts = counts[within_block]
         codons = sorted({
-codon
+            codon
             for count in block_counts
             for codon in count
         })
 
         table = [
-[count.get(codon, 0) for codon in codons]
+            [count.get(codon, 0) for codon in codons]
             for count in block_counts
         ]
 
