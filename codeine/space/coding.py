@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Dict, Generator, List, Optional, Sequence, Union
 
 from codeine.motifs.restriction import RestrictionSite
-from codeine.motifs.constraints import expand_and_validate_sequence_constraints, ForbiddenMotif, ForbiddenMotifs
+from codeine.motifs.constraints import expand_and_validate_sequence_constraints, ForbiddenMotifs
 from codeine.utils.display import format_banned_sequences, format_forbidden_motif,\
     format_count, format_restrictions
 from codeine.graph.base import CodonGraph
@@ -44,15 +44,15 @@ class CodingSpace:
         aa_seq
             The amino acid sequence.
         codon_restrictions
-            Any codon restrictions in the format e.g. {4: 'TCC'} or {5: ['AGT', 'AGC']}
+            Any codon restrictions in the format e.g. {4: 'TCC'} or {5: ['AGT', 'AGC']}.
         translation_table
             The translation table to use. Leave blank to use standard table.
         codon_weights
             The codon weights to use. Leave blank to sample uniformly.
         context_l
-            The context sequence to the left of the coding sequence
+            The context sequence to the left of the coding sequence.
         context_r
-            The context sequence to the right of the coding sequence
+            The context sequence to the right of the coding sequence.
         seed
             Seed used to initialise the view's random number generator.
         rng
@@ -65,11 +65,6 @@ class CodingSpace:
 
         self.forbidden_motifs = forbidden_motifs
         self.max_homopolymer = max_homopolymer
-        self.forbidden_sequences = expand_and_validate_sequence_constraints(
-            forbidden_motifs=forbidden_motifs,
-            max_homopolymer=max_homopolymer,
-            rna=rna,
-        )
 
         graph = CodonGraph(
             aa_seq,
@@ -85,16 +80,18 @@ class CodingSpace:
             rng=rng,
         )
 
-        view.set_banned_sequences(self.forbidden_sequences)
         self.view = view
+        self._update_forbidden_sequences()
 
     @classmethod
     def from_view(cls, view) -> 'CodingSpace':
+        """
+        Build a CodingSpace wrapper around an existing graph view.
+        """
         obj = cls.__new__(cls)
         obj.view = view
         obj.forbidden_motifs = []
         obj.max_homopolymer = None
-        obj.forbidden_sequences = list(view.banned_sequences)
         return obj
 
     @classmethod
@@ -160,16 +157,16 @@ class CodingSpace:
             f'Translation table: {self.translation_table.table_id} ({self.translation_table.name})',
             f'Molecule type: {molecule}',
             '',
-            f'Amino acid sequence ({len(self.view.aa_seq)} aa):',
-            f'{self.view.aa_seq}',
+            f'Amino acid sequence ({len(self.aa_seq)} aa):',
+            f'{self.aa_seq}',
             '',
         ]
 
-        if self.view.graph.codon_restrictions:
+        if self.codon_restrictions:
             lines += [
                 'Codon restrictions:',
                 *format_restrictions(
-                    self.view.graph.codon_restrictions,
+                    self.codon_restrictions,
                     label='restricted positions',
                     max_lines=4,
                 ),
@@ -201,11 +198,11 @@ class CodingSpace:
                 '',
             ]
 
-        if self.view.pinned_codons:
+        if self.pinned_codons:
             lines += [
                 'Temporary pins:',
                 *format_restrictions(
-                    self.view.pinned_codons,
+                    self.pinned_codons,
                     label='pinned positions',
                     max_lines=4,
                 ),
@@ -228,42 +225,89 @@ class CodingSpace:
 
     def pin_codons(self, pinned_codons: Dict[int, str]):
         """
-        Pin (temporarily fix) a codon in the codon graph.
+        Pin temporary codons in this coding space.
 
         Parameters
         ----------
-        pinned_codons:
-            A dict specifying which codons to pin, by pos: codon
+        pinned_codons
+            A dict specifying which codons to pin, by position.
         """
         self.view.pin_codons(pinned_codons)
 
     def unpin_codons(self, positions: Sequence[int]):
         """
-        Unpin codon nodes by pos.
+        Remove temporary codon pins by position.
 
         Parameters
         ----------
-        positions:
-            A list of positions
+        positions
+            Positions to unpin.
         """
         self.view.unpin_codons(positions)
 
     def set_pinned_codons(self, pinned_codons: Dict[int, str]) -> None:
         """
-        Pin a specified group codons, unpinning any that are not specified.
+        Replace all temporary codon pins on this coding space.
 
         Parameters
         ----------
-        pinned_codons:
-            A dict specifying which codons to pin, by pos: codon
+        pinned_codons
+            A dict specifying which codons to pin, by position.
         """
         self.view.set_pinned_codons(pinned_codons)
 
     def clear_pins(self):
         """
-        Remove all codon pins from the generator.
+        Remove all temporary codon pins from this coding space.
         """
         self.view.clear_pins()
+
+    def set_forbidden_motifs(self, forbidden_motifs: ForbiddenMotifs) -> None:
+        """
+        Set the forbidden motifs for this coding space.
+
+        Parameters
+        ----------
+        forbidden_motifs
+            Motifs that should be forbidden in generated sequences.
+        """
+        self.forbidden_motifs = forbidden_motifs
+        self._update_forbidden_sequences()
+
+    def clear_forbidden_motifs(self) -> None:
+        """
+        Remove all forbidden motifs from this coding space.
+        """
+        self.set_forbidden_motifs(None)
+
+    def set_max_homopolymer(self, max_homopolymer: Optional[int]) -> None:
+        """
+        Set the maximum allowed homopolymer length.
+
+        Parameters
+        ----------
+        max_homopolymer
+            The longest allowed repeated run of one nucleotide, or None for no limit.
+        """
+        self.max_homopolymer = max_homopolymer
+        self._update_forbidden_sequences()
+
+    def clear_max_homopolymer(self) -> None:
+        """
+        Remove the maximum homopolymer constraint from this coding space.
+        """
+        self.set_max_homopolymer(None)
+
+    def _update_forbidden_sequences(self) -> None:
+        """
+        Rebuild concrete forbidden sequences and apply them to the view.
+        """
+        forbidden_sequences = expand_and_validate_sequence_constraints(
+            forbidden_motifs=self.forbidden_motifs,
+            max_homopolymer=self.max_homopolymer,
+            rna=self.translation_table.rna,
+        )
+        self.view.set_banned_sequences(forbidden_sequences)
 
     def contains(self, seq: str) -> bool:
         """
@@ -272,7 +316,7 @@ class CodingSpace:
         Parameters
         ----------
         seq
-            The sequence to check
+            The sequence to check.
 
         Returns
         -------
@@ -284,34 +328,64 @@ class CodingSpace:
     def n_valid_sequences(self) -> int:
         """
         The number of valid sequences in this space.
-
-        Returns
-        -------
-        The number of valid sequences in this space.
         """
         return self.view.n_valid_sequences
+
+    @property
+    def aa_seq(self) -> str:
+        """
+        The amino acid sequence for this coding space.
+        """
+        return self.view.aa_seq
 
     @property
     def translation_table(self) -> TranslationTable:
         """
         The translation table being used in this space.
-
-        Returns
-        -------
-        The TranslationTable being used.
         """
-        return self.view.graph.tt
+        return self.view.translation_table
 
     @property
     def codon_weights(self) -> CodonWeights:
         """
         The codon weights being used in this space.
-
-        Returns
-        -------
-        The CodonWeights being used.
         """
-        return self.view.graph.cw
+        return self.view.codon_weights
+
+    @property
+    def codon_restrictions(self):
+        """
+        The fixed codon restrictions from the underlying graph.
+        """
+        return self.view.codon_restrictions
+
+    @property
+    def context_l(self) -> str:
+        """
+        The left context sequence from the underlying graph.
+        """
+        return self.view.context_l
+
+    @property
+    def context_r(self) -> str:
+        """
+        The right context sequence from the underlying graph.
+        """
+        return self.view.context_r
+
+    @property
+    def pinned_codons(self):
+        """
+        Temporary codon pins currently applied to this coding space.
+        """
+        return self.view.pinned_codons
+
+    @property
+    def forbidden_sequences(self):
+        """
+        Concrete forbidden nucleotide sequences currently applied to this coding space.
+        """
+        return tuple(self.view.banned_sequences)
 
     def enumerate(self) -> Generator[str, None, None]:
         """
