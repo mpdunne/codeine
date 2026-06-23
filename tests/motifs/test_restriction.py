@@ -16,3 +16,7 @@ def test_non_palindromic_site_has_forward_and_reverse():
 
 def test_reverse_complement():
     assert reverse_complement('GGTCTC') == 'GAGACC'
+
+
+def test_reverse_complement_lower_case():
+    assert reverse_complement('GGTCTCggtctc') == 'gagaccGAGACC'

@@ -9,7 +9,7 @@ Retrieved: 2026-06-09
 from enum import Enum
 from typing import Tuple
 
-_COMPLEMENT = str.maketrans('ACGT', 'TGCA')
+_COMPLEMENT = str.maketrans('ACGTacgt', 'TGCAtgca')
 
 
 def reverse_complement(seq: str) -> str:
