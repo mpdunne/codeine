@@ -2,14 +2,19 @@ import pickle
 import pytest
 import random
 
+from collections import Counter
 from itertools import product
 from unittest.mock import MagicMock
+from scipy.stats import chisquare
 
 from codeine.graph.constraints import PathConstraint
 from codeine.translation.tables import TranslationTable
+from codeine.translation.weights import CodonWeights
 from codeine.graph.graph import CodonGraph
 from codeine.graph.nodes import CodonNode
 from codeine.graph.tracking import BannedSequenceTracker
+
+from tests.data import NORMAL_PROTEINS
 
 
 def test_view_can_pin_codons():
@@ -1114,3 +1119,91 @@ def test_path_constraint_is_copied_with_view():
 
     assert copied.n_valid_sequences == 0
     assert [*copied.enumerate()] == []
+
+
+def helper_chi_square_codon_test(observed, expected_probs, n_samples):
+    codons = list(expected_probs)
+
+    obs = [observed.get(codon, 0) for codon in codons]
+    exp = [expected_probs[codon] * n_samples for codon in codons]
+
+    return chisquare(obs, exp)
+
+
+def helper_codon_counts_by_position(seqs):
+    seq_len = len(seqs[0])
+    counts = {pos: Counter() for pos in range(1, seq_len + 1)}
+
+    for seq in seqs:
+        for pos in counts:
+            start = (pos - 1) * 3
+            counts[pos][seq[start:start + 3]] += 1
+
+    return counts
+
+
+@pytest.mark.parametrize('aa_seq', (
+    'M',
+    'MIKEY',
+    'SASSAFRAS',
+    'MIKEY' * 100,
+    'MIKEY' * 500,
+))
+@pytest.mark.parametrize('codon_weights', (
+        CodonWeights.uniform,
+        CodonWeights.ecoli,
+        CodonWeights.mouse,
+))
+def test_codon_distributions_roughly_match_weights(aa_seq, codon_weights):
+    cw = codon_weights()
+    view = CodonGraph(aa_seq, context_l='aaa', context_r='ttt', weights=cw).view()
+
+    n = 1000
+
+    seqs = [view.sample() for _ in range(n)]
+    codon_counts = helper_codon_counts_by_position(seqs)
+
+    for i, aa in enumerate(aa_seq):
+        pos = i + 1
+        codons = codon_counts[pos]
+        expected_probs = view.graph.cw.by_aa(aa)
+        observed = {codon: value / n for codon, value in Counter(codons).items()}
+
+        if len(expected_probs) == 1:
+            assert len(observed) == 1
+        else:
+            result = helper_chi_square_codon_test(observed, expected_probs, len(seqs))
+            assert result.pvalue < 0.001
+
+
+@pytest.mark.parametrize('name,aa_seq', (NORMAL_PROTEINS.items()))
+def test_codon_distributions_roughly_match_weights_banned_sequences(name, aa_seq):
+    cw = CodonWeights.ecoli()
+    view = CodonGraph(aa_seq, context_l='aaa', context_r='ttt', weights=cw).view()
+    seq = view[0]
+
+    # We will ban some parts that appear in the real sequence.
+    # These shouldn't appear elsewhere. We should expect the codon weights
+    # to look fine everywhere outside of these regions.
+    banned_motifs = [seq[30:60], seq[210:240]]
+    ignore_nt_ixs = [*range(30, 60), *range(150, 180)]
+    view.set_banned_sequences(banned_motifs)
+
+    n = 1000
+
+    seqs = [view.sample() for _ in range(n)]
+    codon_counts = helper_codon_counts_by_position(seqs)
+
+    for i, aa in enumerate(aa_seq):
+        if i * 3 in ignore_nt_ixs:
+            print(i)
+        pos = i + 1
+        codons = codon_counts[pos]
+        expected_probs = view.graph.cw.by_aa(aa)
+        observed = {codon: value / n for codon, value in Counter(codons).items()}
+
+        if len(expected_probs) == 1:
+            assert len(observed) == 1
+        else:
+            result = helper_chi_square_codon_test(observed, expected_probs, len(seqs))
+            assert result.pvalue < 0.001
