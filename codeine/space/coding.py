@@ -58,11 +58,6 @@ class CodingSpace:
         rng
             Random number generator used by the view for sampling.
         """
-        if translation_table is None:
-            rna = codon_weights.rna if codon_weights is not None else False
-        else:
-            rna = translation_table.rna
-
         self.forbidden_motifs = forbidden_motifs
         self.max_homopolymer = max_homopolymer
 
