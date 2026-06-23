@@ -4,7 +4,7 @@ import random
 
 from Bio.Seq import Seq
 
-from codeine.graph.view import CodonGraphView
+from codeine.translation.weights import CodonWeights
 from codeine.space.coding import CodingSpace
 from codeine.motifs.restriction import RestrictionSite
 
@@ -240,7 +240,7 @@ def test_space_contains():
 
 def test_forbidden_motifs_are_stored():
     space = CodingSpace('MIKEY', forbidden_motifs=[RestrictionSite.EcoRI, 'AAAA'])
-    assert space.forbidden_sequences == ['AAAA', 'GAATTC']
+    assert space.forbidden_sequences == ('AAAA', 'GAATTC')
 
 
 def test_max_homopolymer_is_stored():
@@ -433,3 +433,89 @@ def test_coding_space_save_load_preserves_pins(tmp_path):
     assert loaded.view.pinned_codons == space.view.pinned_codons
     assert loaded.n_valid_sequences == space.n_valid_sequences
     assert [*loaded.enumerate()] == [*space.enumerate()]
+
+
+def test_coding_space_exposes_graph_properties():
+    cw = CodonWeights.ecoli()
+    space = CodingSpace(
+        'MIKEY',
+        codon_restrictions={2: 'ATC'},
+        codon_weights=cw,
+        context_l='AAA',
+        context_r='CCC',
+    )
+
+    assert space.aa_seq == 'MIKEY'
+    assert space.translation_table is space.view.translation_table
+    assert space.codon_weights is space.view.codon_weights
+    assert space.codon_weights is cw
+    assert space.codon_restrictions == space.view.codon_restrictions
+    assert space.context_l == 'AAA'
+    assert space.context_r == 'CCC'
+
+
+def test_coding_space_exposes_pins():
+    space = CodingSpace('MIKEY')
+
+    space.pin_codons({2: 'ATC'})
+    assert space.pinned_codons == {2: ['ATC']}
+
+    space.clear_pins()
+    assert space.pinned_codons == {}
+
+
+def test_coding_space_can_set_forbidden_motifs():
+    space = CodingSpace('MIKEY')
+
+    space.set_forbidden_motifs(['AAA'])
+
+    assert space.forbidden_motifs == ['AAA']
+    assert set(space.forbidden_sequences) == {'AAA'}
+    assert set(space.view.banned_sequences) == {'AAA'}
+
+    space.clear_forbidden_motifs()
+
+    assert space.forbidden_motifs is None
+    assert set(space.forbidden_sequences) == set()
+    assert set(space.view.banned_sequences) == set()
+
+
+def test_coding_space_can_set_max_homopolymer():
+    space = CodingSpace('MIKEY')
+    space.set_max_homopolymer(2)
+
+    assert space.max_homopolymer == 2
+    assert set(space.forbidden_sequences) == {'AAA', 'CCC', 'GGG', 'TTT'}
+    assert set(space.view.banned_sequences) == {'AAA', 'CCC', 'GGG', 'TTT'}
+
+    space.clear_max_homopolymer()
+
+    assert space.max_homopolymer is None
+    assert set(space.forbidden_sequences) == set()
+    assert set(space.view.banned_sequences) == set()
+
+
+def test_coding_space_forbidden_motifs_and_max_homopolymer_combine():
+    space = CodingSpace('MIKEY')
+
+    space.set_forbidden_motifs(['GAG'])
+    space.set_max_homopolymer(2)
+
+    assert set(space.forbidden_sequences) == {'AAA', 'CCC', 'GGG', 'TTT', 'GAG'}
+    assert set(space.view.banned_sequences) == {'AAA', 'CCC', 'GGG', 'TTT', 'GAG'}
+
+    space.clear_forbidden_motifs()
+    assert set(space.forbidden_sequences) == {'AAA', 'CCC', 'GGG', 'TTT'}
+    assert set(space.view.banned_sequences) == {'AAA', 'CCC', 'GGG', 'TTT'}
+
+    space.clear_max_homopolymer()
+    assert set(space.forbidden_sequences) == set()
+    assert set(space.view.banned_sequences) == set()
+
+
+def test_forbidden_sequences_is_read_only():
+    space = CodingSpace('MIKEY')
+
+    with pytest.raises(AttributeError):
+        space.forbidden_sequences = ['AAA']
+

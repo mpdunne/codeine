@@ -9,6 +9,8 @@ from codeine.space.coding import CodingSpace
 from codeine.space.mutation import MutationSpace
 from codeine.motifs.restriction import RestrictionSite
 from codeine.translation.tables import TranslationTable
+from codeine.translation.weights import CodonWeights
+
 
 from tests.data import NORMAL_PROTEINS, DIFFICULT_PROTEINS, ANTIBODIES, LARGE_PROTEINS
 
@@ -206,6 +208,45 @@ def test_mutation_space_unfreeze_all_clears_pins():
     muts.unfreeze_all()
     assert space.view.pinned_codons == {}
     assert muts.view.pinned_codons == {}
+
+
+def test_mutation_space_exposes_graph_properties():
+    cw = CodonWeights.ecoli()
+    space = CodingSpace(
+        'MIKEY',
+        codon_restrictions={2: 'ATC'},
+        codon_weights=cw,
+        context_l='AAA',
+        context_r='CCC',
+    )
+    muts = space.mutants('ATGATCAAAGAGTAT')
+
+    assert muts.aa_seq == space.aa_seq
+    assert muts.translation_table is space.translation_table
+    assert muts.codon_weights is space.codon_weights
+    assert muts.codon_restrictions == space.codon_restrictions
+    assert muts.context_l == space.context_l
+    assert muts.context_r == space.context_r
+
+
+def test_mutation_space_exposes_banned_sequences():
+    space = CodingSpace('MIKEY')
+    space.set_forbidden_motifs(['CCC'])
+
+    muts = space.mutants('ATGATCAAAGAGTAT')
+
+    assert muts.banned_sequences == ['CCC']
+
+
+def test_mutation_space_exposes_pins_including_frozen_positions():
+    space = CodingSpace('MIKEY')
+    muts = space.mutants('ATGATCAAAGAGTAT', free_positions=[1, 3, 4, 5])
+
+    assert muts.pinned_codons == {2: ['ATC']}
+
+    muts.unfreeze_positions([2])
+
+    assert muts.pinned_codons == {}
 
 
 def test_mutation_space_samples_correctly():
