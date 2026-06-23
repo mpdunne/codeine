@@ -2,6 +2,9 @@ import itertools
 import pytest
 import random
 
+from collections import Counter
+from scipy.stats import chi2_contingency
+
 from codeine.space.coding import CodingSpace
 from codeine.space.mutation import MutationSpace
 from codeine.motifs.restriction import RestrictionSite
@@ -644,7 +647,7 @@ def enumerate_naive_mutants(
     return seqs
 
 
-SHORT_AA_SEQUENCES = ['K', 'KK', 'MIKEY', 'SASSY']
+SHORT_AA_SEQUENCES = ['K', 'KK', 'MIKEY', 'SALLY', 'SASSY']
 
 CONTEXTS = [
     ('', ''),
@@ -790,3 +793,130 @@ def test_mutation_space_samples_real_proteins(
             assert codon_diffs >= muts.min_codons
         if muts.max_codons is not None:
             assert codon_diffs <= muts.max_codons
+
+
+def helper_mutation_counts_by_block(seqs, ref, block_size):
+    counts = Counter()
+
+    for seq in seqs:
+        for codon_i in range(len(ref) // 3):
+            start = codon_i * 3
+            if seq[start:start + 3] != ref[start:start + 3]:
+                block = codon_i // block_size
+                counts[block] += 1
+
+    return counts
+
+
+@pytest.mark.parametrize('aa_seq', (
+    'MIKEY' * 10,
+    'MIKEY' * 100,
+))
+@pytest.mark.parametrize('banned', (
+    (),
+    ('GAATTC', 'GGATCC'),
+))
+@pytest.mark.parametrize('distance_constraints', (
+    dict(min_nts=2, max_nts=20),
+    dict(min_nts=10, max_nts=20),
+    dict(min_codons=2, max_codons=20),
+    dict(min_codons=8, max_codons=15),
+    dict(min_nts=10, max_nts=20, min_codons=8, max_codons=15),
+))
+def test_mutation_sampling_is_even_across_sequence(aa_seq, banned, distance_constraints):
+    space = CodingSpace(aa_seq, context_l='aaa', context_r='ttt', forbidden_motifs=banned)
+
+    ref = space[0]
+
+    muts = space.mutants(ref)
+    muts.set_distance_constraints(**distance_constraints)
+
+    n = 1000
+    seqs = [muts.sample() for _ in range(n)]
+
+    counts = helper_mutation_counts_by_block(seqs, ref, block_size=5)
+
+    n_blocks = len(aa_seq) // 5
+    total = sum(counts.values())
+    expected = total / n_blocks
+
+    first_half = sum(counts[i] for i in range(n_blocks // 2))
+    second_half = sum(counts[i] for i in range(n_blocks // 2, n_blocks))
+
+    assert abs(first_half - second_half) <= 0.05 * total
+
+    for i in range(n_blocks):
+        assert abs(counts[i] - expected) <= 0.5 * expected
+
+
+def helper_codon_counts_by_block_position(seqs, block_size=5):
+    counts = {within_block: [] for within_block in range(block_size)}
+
+    n_codons = len(seqs[0]) // 3
+    n_blocks = n_codons // block_size
+
+    for within_block in range(block_size):
+        counts[within_block] = [Counter() for _ in range(n_blocks)]
+
+    for seq in seqs:
+        for codon_i in range(n_codons):
+            block = codon_i // block_size
+            within_block = codon_i % block_size
+            start = codon_i * 3
+            counts[within_block][block][seq[start:start + 3]] += 1
+
+    return counts
+
+
+
+@pytest.mark.parametrize('aa_seq', (
+    'MIKEY' * 10,
+    'MIKEY' * 100,
+))
+@pytest.mark.parametrize('banned', (
+    (),
+    ('GAATTC', 'GGATCC'),
+))
+@pytest.mark.parametrize('distance_constraints', (
+    dict(min_nts=2, max_nts=20),
+    dict(min_nts=10, max_nts=20),
+    dict(min_codons=2, max_codons=20),
+    dict(min_codons=8, max_codons=15),
+    dict(min_nts=10, max_nts=20, min_codons=8, max_codons=15),
+))
+def test_mutation_codon_distributions_are_stable_across_sequence(aa_seq, banned, distance_constraints):
+
+    banned = ('GAATTC', 'GGATCC', 'CTCGAG', 'AAGCTT')
+    space = CodingSpace(aa_seq, context_l='aaa', context_r='ttt', forbidden_motifs=banned)
+
+    ref = space[0]
+
+    muts = space.mutants(ref)
+    muts.set_distance_constraints(**distance_constraints)
+
+    n = 1000
+    seqs = [muts.sample() for _ in range(n)]
+
+    counts = helper_codon_counts_by_block_position(seqs)
+
+    pvalues = []
+
+    # skip M, only one codon
+    for within_block in range(1, 5):
+        block_counts = counts[within_block]
+        codons = sorted({
+            codon
+            for count in block_counts
+            for codon in count
+        })
+
+        table = [
+            [count.get(codon, 0) for codon in codons]
+            for count in block_counts
+        ]
+
+        _, pvalue, _, _ = chi2_contingency(table)
+        pvalues.append(pvalue)
+
+    assert sum(p >= 0.001 for p in pvalues) / len(pvalues) >= 0.99
+    assert min(pvalues, default=1.0) >= 1e-8

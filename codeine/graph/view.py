@@ -1,3 +1,4 @@
+import math
 import random
 
 from dataclasses import dataclass
@@ -645,9 +646,9 @@ class ViewCompiler:
         Compile the final graph state.
         """
         if self.path_constraint.accepts_final(constraint_state):
-            self.totals_by_state[state] = (1, 1.0)
+            self.totals_by_state[state] = (1, 0.0)
         else:
-            self.totals_by_state[state] = (0, 0.0)
+            self.totals_by_state[state] = (0, -math.inf)
 
         self.choices_by_state[state] = {}
 
@@ -673,16 +674,18 @@ class ViewCompiler:
 
             raw_results.append(result)
 
-        results = self._normalise_choice_results(raw_results)
+        results = raw_results
 
         choice_results = {}
         descendant_count = 0
-        descendant_weight_mass = 0.0
+        descendant_weight_masses = []
 
         for result in results:
             choice_results[result.choice] = result
             descendant_count += result.descendant_count
-            descendant_weight_mass += result.descendant_weight_mass
+            descendant_weight_masses.append(result.descendant_weight_mass)
+
+        descendant_weight_mass = self._sum_weight_masses(descendant_weight_masses)
 
         self.choices_by_state[state] = choice_results
         self.totals_by_state[state] = (descendant_count, descendant_weight_mass)
@@ -743,10 +746,15 @@ class ViewCompiler:
         if child_count == 0:
             return None
 
+        descendant_weight_mass = self._choice_weight_mass(node, choice, child_weight_mass)
+
+        if descendant_weight_mass == -math.inf:
+            return None
+
         return ChoiceResult(
             choice=choice,
             descendant_count=child_count,
-            descendant_weight_mass=self._choice_weight_mass(node, choice, child_weight_mass),
+            descendant_weight_mass=descendant_weight_mass,
             next_state=None if child is self.graph.final_node else child_state,
             is_coding=isinstance(node, CodonNode),
         )
@@ -821,10 +829,10 @@ class ViewCompiler:
 
         max_weight = max(weights)
 
-        if max_weight <= 0:
+        if max_weight == -math.inf:
             return [1.0] * len(weights)
 
-        return [weight / max_weight for weight in weights]
+        return [math.exp(weight - max_weight) for weight in weights]
 
     def _make_samplers(self) -> dict:
         """
@@ -866,9 +874,29 @@ class ViewCompiler:
         Return the weighted mass for a choice.
         """
         if isinstance(node, CodonNode):
-            return self.graph.cw[choice] * child_weight_mass
+            weight = self.graph.cw[choice]
+
+            if weight <= 0:
+                return -math.inf
+
+            return math.log(weight) + child_weight_mass
 
         return child_weight_mass
+
+    def _sum_weight_masses(self, weights: List[float]) -> float:
+        """
+        Sum weight masses defensively.
+        """
+        weights = [weight for weight in weights if weight != -math.inf]
+
+        if not weights:
+            return -math.inf
+
+        max_weight = max(weights)
+
+        return max_weight + math.log(
+            sum(math.exp(weight - max_weight) for weight in weights)
+        )
 
     def _initial_state(self) -> NodeState:
         """

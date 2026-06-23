@@ -2,14 +2,19 @@ import pickle
 import pytest
 import random
 
+from collections import Counter
 from itertools import product
 from unittest.mock import MagicMock
+from scipy.stats import chisquare, chi2_contingency
 
 from codeine.graph.constraints import PathConstraint
 from codeine.translation.tables import TranslationTable
+from codeine.translation.weights import CodonWeights
 from codeine.graph.graph import CodonGraph
 from codeine.graph.nodes import CodonNode
 from codeine.graph.tracking import BannedSequenceTracker
+
+from tests.data import NORMAL_PROTEINS
 
 
 def test_view_can_pin_codons():
@@ -655,54 +660,6 @@ def helper_ban_sequences_and_check_sample(
         )
 
 
-#TODO: improve it.
-_ = '''def helper_check_sampling_matches_expected_distributions(
-        aa_seq,
-        banned_sequences,
-        context_l='',
-        context_r='',
-        n_samples=50_000,
-):
-    tt = TranslationTable()
-
-    unconstrained_view = CodonGraph(
-        aa_seq,
-        context_l=context_l,
-        context_r=context_r,
-        translation_table=tt,
-    ).view(seed=8675309)
-
-    banned_view = CodonGraph(
-        aa_seq,
-        context_l=context_l,
-        context_r=context_r,
-        translation_table=tt,
-    ).view(seed=8675309)
-
-    banned_view.set_banned_sequences(banned_sequences)
-
-    banned_sequences = [seq.upper() for seq in banned_sequences]
-
-    fancy_counts = Counter(
-        banned_view.sample()
-        for _ in range(n_samples)
-    )
-
-    rejection_counts = Counter()
-    while sum(rejection_counts.values()) < n_samples:
-        seq = unconstrained_view.sample()
-        if all(banned not in seq.upper() for banned in banned_sequences):
-            rejection_counts[seq] += 1
-
-    assert set(fancy_counts) == set(rejection_counts) == set(banned_view)
-
-    for seq in banned_view:
-        fancy_p = fancy_counts[seq] / n_samples
-        rejection_p = rejection_counts[seq] / n_samples
-
-        assert abs(fancy_p - rejection_p) < 0.02
-'''
-
 def test_view_sampler_keys_include_tracker_state():
     view = CodonGraph('MIKEY').view()
 
@@ -732,15 +689,6 @@ def test_view_sampling_works_without_banned_sequences(aa_seq, context_l, context
 @pytest.mark.parametrize('context_r', CONTEXTS_R)
 def test_view_enumerate_works_without_banned_sequences(aa_seq, context_l, context_r):
     helper_ban_sequences_and_check_enumerate(aa_seq, [], context_l, context_r)
-
-
-# TODO investigate this.
-_ = '''
-@pytest.mark.parametrize('aa_seq', SHORT_AA_SEQUENCES)
-@pytest.mark.parametrize('context_l', CONTEXTS_L)
-@pytest.mark.parametrize('context_r', CONTEXTS_R)
-def test_banned_sampling_matches_rejection_sampling(aa_seq, context_l, context_r):
-    helper_check_sampling_matches_expected_distributions(aa_seq, [], context_l=context_l, context_r=context_r)'''
 
 
 def test_banned_sequence_entirely_in_left_context_gives_empty_space():
@@ -1114,3 +1062,125 @@ def test_path_constraint_is_copied_with_view():
 
     assert copied.n_valid_sequences == 0
     assert [*copied.enumerate()] == []
+
+
+def helper_chi_square_codon_test(observed_counts, expected_counts):
+    """
+    Check that a set of sampled items looks like it's drawn from a given distirbution.
+    """
+    codons = sorted({*expected_counts, *observed_counts})
+
+    obs = [observed_counts.get(codon, 0) for codon in codons]
+    exp = [expected_counts.get(codon, 0) for codon in codons]
+
+    return chisquare(obs, exp)
+
+
+def helper_codon_counts_by_position(seqs):
+    n_codons = len(seqs[0]) // 3
+    counts = {pos: Counter() for pos in range(1, n_codons + 1)}
+
+    for seq in seqs:
+        for pos in counts:
+            start = (pos - 1) * 3
+            counts[pos][seq[start:start + 3]] += 1
+
+    return counts
+
+
+@pytest.mark.parametrize('aa_seq', (
+    'M',
+    'MIKEY',
+    'SASSAFRAS',
+    'MIKEY' * 100,
+    'MIKEY' * 500,
+))
+@pytest.mark.parametrize('codon_weights', (
+        CodonWeights.uniform,
+        CodonWeights.ecoli,
+        CodonWeights.mouse,
+))
+def test_codon_distributions_roughly_match_weights(aa_seq, codon_weights):
+    cw = codon_weights()
+    view = CodonGraph(aa_seq, context_l='aaa', context_r='ttt', weights=cw).view(seed=8675309)
+
+    n = 1000
+
+    seqs = [view.sample() for _ in range(n)]
+    observed_counts = helper_codon_counts_by_position(seqs)
+
+    pvalues = []
+
+    for i, aa in enumerate(aa_seq):
+        pos = i + 1
+        expected = {codon: weight * n for codon, weight in view.graph.cw.by_aa(aa).items()}
+        observed = observed_counts[pos]
+
+        if len(expected) == 1:
+            assert len(observed) == 1
+        else:
+            result = helper_chi_square_codon_test(observed, expected)
+            pvalues.append(result.pvalue)
+
+    if len(pvalues) > 0:
+
+        # Most should pass
+        assert sum(p >= 0.001 for p in pvalues) / len(pvalues) >= 0.99
+
+        # No truly terrible results please.
+        assert min(pvalues, default=1.0) >= 1e-6
+
+
+def helper_chi_square_two_sample_test(counts_a, counts_b):
+    """
+    Check that two sets of samples look like they're drawn from
+    the same base distribution.
+    """
+    codons = sorted({*counts_a.keys(), *counts_b.keys()})
+
+    table = [
+        [counts_a.get(codon, 0) for codon in codons],
+        [counts_b.get(codon, 0) for codon in codons],
+    ]
+
+    return chi2_contingency(table)
+
+
+@pytest.mark.parametrize('name,aa_seq', NORMAL_PROTEINS.items())
+@pytest.mark.parametrize('banned', (
+        ('GAATTC', 'GGATCC'),
+        ('CTCGAG', 'AAGCTT'),
+        ('GAATTC', 'GGATCC', 'CTCGAG', 'AAGCTT')
+))
+def test_codon_distributions_roughly_match_weights_banned_sequences(name, aa_seq, banned):
+    cw = CodonWeights.ecoli()
+    view = CodonGraph(aa_seq, context_l='aaa', context_r='ttt', weights=cw).view(seed=8675309)
+
+    n = 10000
+
+    rejection_sampled_seqs = []
+    while len(rejection_sampled_seqs) < n:
+        seq = view.sample()
+        if not any(b in seq for b in banned):
+            rejection_sampled_seqs.append(seq)
+
+    view.set_banned_sequences(banned)
+    smart_seqs = [view.sample() for _ in range(n)]
+
+    rejection_counts = helper_codon_counts_by_position(rejection_sampled_seqs)
+    smart_counts = helper_codon_counts_by_position(smart_seqs)
+
+    pvalues = []
+
+    for pos in range(1, len(aa_seq) + 1):
+        aa = aa_seq[pos - 1]
+
+        if len(view.graph.cw.by_aa(aa)) == 1:
+            assert len(rejection_counts[pos]) == len(smart_counts[pos]) == 1
+        else:
+            result = helper_chi_square_two_sample_test(smart_counts[pos], rejection_counts[pos])
+            _, pvalue, _, _ = result
+            pvalues.append(pvalue)
+
+    assert sum(p >= 0.001 for p in pvalues) / len(pvalues) >= 0.99
+    assert min(pvalues, default=1.0) >= 1e-6
