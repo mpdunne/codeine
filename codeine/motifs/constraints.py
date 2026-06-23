@@ -49,6 +49,11 @@ def expand_and_validate_forbidden_motifs(
         sequences = [seq.upper() for seq in sequences]
         sequences = [seq.replace('T', 'U') if rna else seq.replace('U', 'T') for seq in sequences]
 
+        allowed = set('ACGU' if rna else 'ACGT')
+        for seq in sequences:
+            if not set(seq) <= allowed:
+                raise ValueError('Forbidden motifs must be nucleotide sequences.')
+
         all_sequences += sequences
 
     return sorted(set(all_sequences))
@@ -91,7 +96,7 @@ def expand_and_validate_sequence_constraints(
         rna: bool = False,
 ):
     """
-    Convert a max homopolymer constraint into a set of banned sequences.
+    Convert forbidden sequences and/or max homopolymer constraints into sets of banned sequences.
 
     Parameters
     ----------

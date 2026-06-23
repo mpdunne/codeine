@@ -44,7 +44,7 @@ def test_expand_forbidden_motifs_mixed():
     assert validated == ['AAAA', 'GAATTC']
 
 
-def test_orbidden_motif_empty_raises():
+def test_forbidden_motif_empty_raises():
     with pytest.raises(ValueError, match='Forbidden motifs cannot be empty'):
         expand_and_validate_forbidden_motifs('', rna=False)
 
@@ -54,12 +54,24 @@ def test_forbidden_motif_invalid_type_raises():
         expand_and_validate_forbidden_motifs([420], rna=False)
 
 
+def test_forbidden_motif_invalid_nucleotide_raises():
+    with pytest.raises(ValueError, match='Forbidden motifs must be nucleotide sequences'):
+        expand_and_validate_forbidden_motifs('MANCHEGO', rna=False)
+
+    with pytest.raises(ValueError, match='Forbidden motifs must be nucleotide sequences'):
+        expand_and_validate_forbidden_motifs('MANCHEGO', rna=True)
+
+
 def test_validate_max_homopolymer_none():
     assert expand_and_validate_max_homopolymer(None) == []
 
 
 def test_validate_max_homopolymer_int():
     assert expand_and_validate_max_homopolymer(4) == ['AAAAA', 'CCCCC', 'GGGGG', 'TTTTT']
+
+
+def test_max_homopolymer_rna():
+    assert expand_and_validate_max_homopolymer(2, rna=True) == ['AAA', 'CCC', 'GGG', 'UUU']
 
 
 def test_validate_max_homopolymer_rejects_non_int():
