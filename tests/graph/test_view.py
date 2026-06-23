@@ -10,7 +10,7 @@ from scipy.stats import chisquare, chi2_contingency
 from codeine.graph.constraints import PathConstraint
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
-from codeine.graph.graph import CodonGraph
+from codeine.graph.base import CodonGraph
 from codeine.graph.nodes import CodonNode
 from codeine.graph.tracking import BannedSequenceTracker
 

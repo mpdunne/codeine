@@ -13,7 +13,7 @@ from codeine.motifs.restriction import RestrictionSite
 from codeine.motifs.constraints import expand_and_validate_sequence_constraints, ForbiddenMotif, ForbiddenMotifs
 from codeine.utils.display import format_banned_sequences, format_forbidden_motif,\
     format_count, format_restrictions
-from codeine.graph.graph import CodonGraph
+from codeine.graph.base import CodonGraph
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
 from codeine.utils.sampling import Seedable

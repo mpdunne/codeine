@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Dict, FrozenSet, List, Sequence, Tuple
 
-from codeine.graph.graph import CodonGraph
+from codeine.graph.base import CodonGraph
 from codeine.graph.nodes import Node, CodonNode
 
 # A step is a decision in the codon graph, i.e. (graph pos, choice)

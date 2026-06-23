@@ -868,7 +868,6 @@ def helper_codon_counts_by_block_position(seqs, block_size=5):
     return counts
 
 
-
 @pytest.mark.parametrize('aa_seq', (
     'MIKEY' * 10,
     'MIKEY' * 100,
