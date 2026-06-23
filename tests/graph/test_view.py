@@ -17,6 +17,31 @@ from codeine.graph.tracking import BannedSequenceTracker
 from tests.data import NORMAL_PROTEINS
 
 
+def test_view_exposes_translation_table():
+    graph = CodonGraph('MIKEY')
+    view = graph.view()
+    assert view.translation_table is graph.tt
+
+
+def test_view_exposes_codon_weights():
+    graph = CodonGraph('MIKEY')
+    view = graph.view()
+    assert view.codon_weights is graph.cw
+
+
+def test_view_exposes_codon_restrictions():
+    graph = CodonGraph('MIKEY', codon_restrictions={2: 'ATC'})
+    view = graph.view()
+    assert view.codon_restrictions == graph.codon_restrictions
+
+
+def test_view_exposes_contexts():
+    graph = CodonGraph('MIKEY', context_l='AAA', context_r='CCC')
+    view = graph.view()
+    assert view.context_l == 'AAA'
+    assert view.context_r == 'CCC'
+
+
 def test_view_can_pin_codons():
     view = CodonGraph('MIKEY').view()
     view.pin_codons({3: 'AAA'})

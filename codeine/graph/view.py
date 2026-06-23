@@ -111,6 +111,41 @@ class CodonGraphView:
         return self.graph.aa_seq
 
     @property
+    def translation_table(self):
+        """
+        The translation table used by the codon graph.
+        """
+        return self.graph.tt
+
+    @property
+    def codon_weights(self):
+        """
+        The codon weights used by the codon graph.
+        """
+        return self.graph.cw
+
+    @property
+    def codon_restrictions(self):
+        """
+        Fixed codon restrictions.
+        """
+        return self.graph.codon_restrictions
+
+    @property
+    def context_l(self):
+        """
+        The left context sequence.
+        """
+        return self.graph.context_l
+
+    @property
+    def context_r(self):
+        """
+        The right context sequence.
+        """
+        return self.graph.context_r
+
+    @property
     def n_valid_sequences(self) -> int:
         """
         Number of valid coding sequences in this view.
