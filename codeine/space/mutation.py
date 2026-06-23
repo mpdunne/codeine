@@ -7,6 +7,8 @@ from codeine.motifs.restriction import RestrictionSite
 from codeine.space.coding import CodingSpace
 from codeine.graph.constraints import ConstraintState, PathConstraint
 from codeine.graph.nodes import CodonNode
+from codeine.translation.tables import TranslationTable
+from codeine.translation.weights import CodonWeights
 
 
 class MutationSpace:
@@ -117,27 +119,27 @@ class MutationSpace:
         return seq in self.view
 
     def __repr__(self) -> str:
-        molecule = 'RNA' if self.view.graph.tt.rna else 'DNA'
+        molecule = 'RNA' if self.translation_table.rna else 'DNA'
 
         lines = [
             f'{type(self).__name__}',
             '',
-            f'Translation table: {self.view.graph.tt.table_id} ({self.view.graph.tt.name})',
+            f'Translation table: {self.translation_table.table_id} ({self.translation_table.name})',
             f'Molecule type: {molecule}',
             '',
-            f'Amino acid sequence ({len(self.view.aa_seq)} aa):',
-            f'{self.view.aa_seq}',
+            f'Amino acid sequence ({len(self.aa_seq)} aa):',
+            f'{self.aa_seq}',
             '',
             'Reference CDS:',
             self.cds,
             '',
         ]
 
-        if self.view.graph.codon_restrictions:
+        if self.codon_restrictions:
             lines += [
                 'Codon restrictions:',
                 *format_restrictions(
-                    self.view.graph.codon_restrictions,
+                    self.codon_restrictions,
                     label='restricted positions',
                     max_lines=4,
                 ),
@@ -156,7 +158,7 @@ class MutationSpace:
                     [
                         format_forbidden_motif(
                             motif,
-                            rna=self.view.graph.tt.rna,
+                            rna=self.translation_table.rna,
                         )
                         for motif in motifs
                     ],
@@ -202,6 +204,64 @@ class MutationSpace:
             )
 
         return '\n'.join(lines)
+
+    @property
+    def aa_seq(self) -> str:
+        """
+        The amino acid sequence for this mutation space.
+        """
+        return self.view.aa_seq
+
+    @property
+    def translation_table(self) -> TranslationTable:
+        """
+        The translation table from the underlying graph.
+        """
+        return self.view.translation_table
+
+    @property
+    def codon_weights(self) -> CodonWeights:
+        """
+        The codon weights from the underlying graph.
+        """
+        return self.view.codon_weights
+
+    @property
+    def codon_restrictions(self):
+        """
+        The fixed codon restrictions from the underlying graph.
+        """
+        return self.view.codon_restrictions
+
+    @property
+    def context_l(self) -> str:
+        """
+        The left context sequence from the underlying graph.
+        """
+        return self.view.context_l
+
+    @property
+    def context_r(self) -> str:
+        """
+        The right context sequence from the underlying graph.
+        """
+        return self.view.context_r
+
+    @property
+    def pinned_codons(self):
+        """
+        Pins currently applied to the mutation view.
+
+        This includes inherited pins and pins used internally to freeze positions.
+        """
+        return self.view.pinned_codons
+
+    @property
+    def banned_sequences(self):
+        """
+        Banned nucleotide sequences inherited by this mutation space.
+        """
+        return self.view.banned_sequences
 
     @property
     def free_positions(self) -> FrozenSet[int]:
@@ -263,6 +323,9 @@ class MutationSpace:
         self.set_distance_constraints()
 
     def _update_path_constraint(self) -> None:
+        """
+        Apply the current distance constraints to the underlying view.
+        """
         if not self.has_distance_constraints:
             self.view.clear_path_constraint()
             return
@@ -355,7 +418,7 @@ class MutationSpace:
 
     def _update_pins(self) -> None:
         """
-        Update the pins on the underlying space.
+        Update the pins on the underlying view from inherited and frozen pins.
         """
         frozen_pins = {pos: self._codon_at_position(pos) for pos in self.frozen_positions}
         pins = {**self._base_pins, **frozen_pins}
