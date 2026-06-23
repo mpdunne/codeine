@@ -885,7 +885,6 @@ def helper_codon_counts_by_block_position(seqs, block_size=5):
     dict(min_nts=10, max_nts=20, min_codons=8, max_codons=15),
 ))
 def test_mutation_codon_distributions_are_stable_across_sequence(aa_seq, banned, distance_constraints):
-    aa_seq = 'MIKEY' * 50
 
     banned = ('GAATTC', 'GGATCC', 'CTCGAG', 'AAGCTT')
     space = CodingSpace(aa_seq, context_l='aaa', context_r='ttt', forbidden_motifs=banned)
