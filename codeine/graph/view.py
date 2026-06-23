@@ -13,6 +13,7 @@ from codeine.utils.sampling import Sampler, Seedable
 
 
 NodeState = Tuple[Node, TrackerState, ConstraintState]
+TransitionResult = Tuple[Node, TrackerState, ConstraintState]
 
 
 @dataclass(frozen=True)
@@ -622,6 +623,7 @@ class ViewCompiler:
         self.choice_results_by_state: Dict[NodeState, Tuple[ChoiceResult, ...]] = {}
         self.codon_pos_by_state: Dict[NodeState, int] = {}
         self.fixed_choice_by_state: Dict[NodeState, str] = {}
+        self.transition_cache: Dict[Tuple[Node, TrackerState, ConstraintState, str], Optional[TransitionResult]] = {}
 
         self.choices_by_node = {
             node: tuple(self._get_choices_for_node(node))
@@ -756,26 +758,18 @@ class ViewCompiler:
         """
         Compile the result of taking one outgoing choice from a graph node.
         """
-        child = node.transitions.get(choice)
-
-        if child is None:
-            return None
-
-        advance = self._advance_tracker(tracker_state, node, choice)
-
-        if advance.banned:
-            return None
-
-        next_constraint_state = self.path_constraint.advance(
-            constraint_state,
+        transition = self._transition_result(
             node,
+            tracker_state,
+            constraint_state,
             choice,
         )
 
-        if next_constraint_state is None:
+        if transition is None:
             return None
 
-        child_state = self._state(child, advance.state, next_constraint_state)
+        child, next_tracker_state, next_constraint_state = transition
+        child_state = self._state(child, next_tracker_state, next_constraint_state)
         child_count, child_weight_mass = self.totals_by_state[child_state]
 
         if child_count == 0:
@@ -806,29 +800,26 @@ class ViewCompiler:
         children = []
 
         for choice in self.choices_by_node[node]:
-            child = node.transitions.get(choice)
-
-            if child is None:
-                continue
-
-            advance = self._advance_tracker(tracker_state, node, choice)
-
-            if advance.banned:
-                continue
-
-            next_constraint_state = self.path_constraint.advance(
-                constraint_state,
+            transition = self._transition_result(
                 node,
+                tracker_state,
+                constraint_state,
                 choice,
             )
 
-            if next_constraint_state is None:
+            if transition is None:
                 continue
 
-            child_state = self._state(child, advance.state, next_constraint_state)
+            child, next_tracker_state, next_constraint_state = transition
+            child_state = self._state(child, next_tracker_state, next_constraint_state)
 
             if child_state not in self.totals_by_state:
-                children.append((child, advance.state, next_constraint_state, False))
+                children.append((
+                    child,
+                    next_tracker_state,
+                    next_constraint_state,
+                    False,
+                ))
 
         return children
 
@@ -960,6 +951,45 @@ class ViewCompiler:
             state: (pos - 1) * 3
             for state, pos in self.codon_pos_by_state.items()
         }
+
+    def _transition_result(
+        self,
+        node: Node,
+        tracker_state: TrackerState,
+        constraint_state: ConstraintState,
+        choice: str,
+    ) -> Optional[TransitionResult]:
+        """
+        Return the child state reached by taking one graph choice.
+        """
+        key = (node, tracker_state, constraint_state, choice)
+
+        if key in self.transition_cache:
+            return self.transition_cache[key]
+
+        child = node.transitions.get(choice)
+
+        if child is None:
+            result = None
+        else:
+            advance = self._advance_tracker(tracker_state, node, choice)
+
+            if advance.banned:
+                result = None
+            else:
+                next_constraint_state = self.path_constraint.advance(
+                    constraint_state,
+                    node,
+                    choice,
+                )
+
+                if next_constraint_state is None:
+                    result = None
+                else:
+                    result = (child, advance.state, next_constraint_state)
+
+        self.transition_cache[key] = result
+        return result
 
     def _advance_tracker(self, tracker_state: TrackerState, node: Node, choice: str) -> AdvanceResult:
         """
