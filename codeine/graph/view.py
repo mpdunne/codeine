@@ -768,7 +768,7 @@ class ViewCompiler:
 
         next_constraint_state = self.path_constraint.advance(
             constraint_state,
-            node,
+            node.pos,
             choice,
         )
 
@@ -818,7 +818,7 @@ class ViewCompiler:
 
             next_constraint_state = self.path_constraint.advance(
                 constraint_state,
-                node,
+                node.pos,
                 choice,
             )
 

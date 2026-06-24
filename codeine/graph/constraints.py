@@ -1,8 +1,6 @@
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
 
-from codeine.graph.nodes import CodonNode, Node
-
 
 ConstraintState = Any
 
@@ -26,7 +24,7 @@ class PathConstraint:
     def advance(
         self,
         state: Any,
-        node: Node,
+        pos: int,
         choice: str,
     ) -> Optional[Any]:
         """
@@ -72,6 +70,9 @@ class MutationDistanceConstraint(PathConstraint):
         # Cache distance calculations for repeated (position, codon) choices.
         self._diff_cache: MutationDiffCache = {}
 
+        self.first_pos = 1
+        self.last_pos = len(self._ref_codons)
+
     @property
     def tracks_nts(self) -> bool:
         """
@@ -98,7 +99,7 @@ class MutationDistanceConstraint(PathConstraint):
     def advance(
         self,
         state: MutationDistanceState,
-        node: Node,
+        pos: int,
         choice: str,
     ) -> Optional[MutationDistanceState]:
         """
@@ -108,15 +109,15 @@ class MutationDistanceConstraint(PathConstraint):
         Non-codon nodes do not affect distance. Codon nodes add the distance
         between the chosen codon and the reference codon at the same position.
         """
-        if not isinstance(node, CodonNode):
-            return state
-
         nt_diffs, codon_diffs = state
-        key = (node.pos, choice)
+        key = (pos, choice)
+
+        if pos < self.first_pos or pos > self.last_pos:
+            return state
 
         cached_diff = self._diff_cache.get(key)
         if cached_diff is None:
-            ref_codon = self._ref_codons[node.pos - 1]
+            ref_codon = self._ref_codons[pos - 1]
             cached_diff = (
                 sum(a != b for a, b in zip(ref_codon, choice)),
                 int(ref_codon != choice),
