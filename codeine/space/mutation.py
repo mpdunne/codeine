@@ -1,7 +1,7 @@
-from typing import Collection, Dict, FrozenSet, List, Generator, Optional, Set, Tuple, Union
+from typing import Collection, Dict, FrozenSet, List, Generator, Optional, Set, Union
 
+from codeine.constraints.mutations import MutationDistanceConstraint
 from codeine.graph.base import CodonRestriction
-from codeine.graph.constraints import MutationDistanceConstraint
 from codeine.motifs.restriction import RestrictionSite
 from codeine.space.coding import CodingSpace
 from codeine.translation.tables import TranslationTable

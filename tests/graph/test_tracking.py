@@ -3,7 +3,7 @@ import pytest
 from codeine.graph.base import CodonGraph
 from codeine.graph.nodes import ContextNode, CodonNode
 from codeine.translation.tables import TranslationTable
-from codeine.graph.tracking import BannedSequenceTracker, AdvanceResult, _find_matching_subpaths
+from codeine.constraints.banned import BannedSequenceTracker, AdvanceResult, _find_matching_subpaths
 
 
 def helper_find_first_path_for(tracker, sequence):

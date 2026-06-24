@@ -4,10 +4,10 @@ import random
 from dataclasses import dataclass
 from typing import Dict, Generator, List, Optional, Sequence, Tuple, Union
 
-from codeine.graph.constraints import ConstraintState, PathConstraint
+from codeine.constraints.base import ConstraintState, PathConstraint
+from codeine.constraints.banned import AdvanceResult, BannedSequenceTracker, TrackerState
 from codeine.graph.base import CodonGraph, CodonRestriction
 from codeine.graph.nodes import CodonNode, Node
-from codeine.graph.tracking import AdvanceResult, BannedSequenceTracker, TrackerState
 from codeine.utils.display import format_forbidden_motifs, format_count, format_restrictions
 from codeine.utils.sampling import Sampler, Seedable
 

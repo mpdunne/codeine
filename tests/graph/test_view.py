@@ -7,12 +7,12 @@ from itertools import product
 from unittest.mock import MagicMock
 from scipy.stats import chisquare, chi2_contingency
 
-from codeine.graph.constraints import PathConstraint
+from codeine.constraints.base import PathConstraint
+from codeine.constraints.banned import BannedSequenceTracker
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
 from codeine.graph.base import CodonGraph
 from codeine.graph.nodes import CodonNode
-from codeine.graph.tracking import BannedSequenceTracker
 
 from tests.data import NORMAL_PROTEINS
 

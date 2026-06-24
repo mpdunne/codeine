@@ -1,4 +1,5 @@
-from codeine.graph.constraints import MutationDistanceConstraint, PathConstraint
+from codeine.constraints.base import PathConstraint
+from codeine.constraints.mutations import MutationDistanceConstraint
 
 
 def test_base_path_constraint_does_nothing():
