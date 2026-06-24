@@ -95,7 +95,7 @@ class CodonGraph:
 
     def validate_codon_restrictions(self, codon_restrictions: Dict[int, CodonRestriction]) -> Dict[int, List[str]]:
         """
-        Check the inputted codon restrictions make sense!
+        Check the inputted restrictions make sense!
         """
         codon_restrictions = codon_restrictions or {}
         normalised = {}
