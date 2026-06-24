@@ -4,7 +4,7 @@ from typing import List, Optional, Sequence, Union
 from codeine.motifs.restriction import RestrictionSite
 
 ForbiddenMotif = Union[str, RestrictionSite]
-ForbiddenMotifs = Optional[Union[ForbiddenMotif, Sequence[ForbiddenMotif]]]
+ForbiddenMotifs = Union[ForbiddenMotif, Sequence[ForbiddenMotif]]
 
 
 def expand_and_validate_forbidden_motifs(
@@ -27,9 +27,6 @@ def expand_and_validate_forbidden_motifs(
     """
     all_sequences = []
 
-    if forbidden_motifs is None:
-        return []
-
     if isinstance(forbidden_motifs, (str, RestrictionSite)):
         forbidden_motifs = [forbidden_motifs]
 
@@ -49,13 +46,18 @@ def expand_and_validate_forbidden_motifs(
         sequences = [seq.upper() for seq in sequences]
         sequences = [seq.replace('T', 'U') if rna else seq.replace('U', 'T') for seq in sequences]
 
+        allowed = set('ACGU' if rna else 'ACGT')
+        for seq in sequences:
+            if not set(seq) <= allowed:
+                raise ValueError('Forbidden motifs must be nucleotide sequences.')
+
         all_sequences += sequences
 
     return sorted(set(all_sequences))
 
 
 def expand_and_validate_max_homopolymer(
-        max_homopolymer: Optional[int],
+        max_homopolymer: int,
         rna: bool = False
 ) -> List[str]:
     """
@@ -72,8 +74,6 @@ def expand_and_validate_max_homopolymer(
     -------
     A list of forbidden nucleotide sequences.
     """
-    if max_homopolymer is None:
-        return []
 
     if not isinstance(max_homopolymer, int):
         raise TypeError('max_homopolymer must be an integer.')
@@ -86,12 +86,12 @@ def expand_and_validate_max_homopolymer(
 
 
 def expand_and_validate_sequence_constraints(
-        forbidden_motifs=None,
-        max_homopolymer=None,
+        forbidden_motifs: Optional[ForbiddenMotifs] = None,
+        max_homopolymer: Optional[int] = None,
         rna: bool = False,
 ):
     """
-    Convert a max homopolymer constraint into a set of banned sequences.
+    Convert forbidden sequences and/or max homopolymer constraints into sets of banned sequences.
 
     Parameters
     ----------
@@ -106,6 +106,12 @@ def expand_and_validate_sequence_constraints(
     -------
     A list of forbidden nucleotide sequences.
     """
-    forbidden_sequences = expand_and_validate_forbidden_motifs(forbidden_motifs, rna=rna)
-    forbidden_homopolymers = expand_and_validate_max_homopolymer(max_homopolymer, rna=rna)
-    return sorted(set(forbidden_sequences + forbidden_homopolymers))
+    forbidden_sequences = []
+
+    if forbidden_motifs is not None:
+        forbidden_sequences += expand_and_validate_forbidden_motifs(forbidden_motifs, rna=rna)
+
+    if max_homopolymer is not None:
+        forbidden_sequences += expand_and_validate_max_homopolymer(max_homopolymer, rna=rna)
+
+    return sorted(set(forbidden_sequences))

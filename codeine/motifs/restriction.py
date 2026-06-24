@@ -9,7 +9,7 @@ Retrieved: 2026-06-09
 from enum import Enum
 from typing import Tuple
 
-_COMPLEMENT = str.maketrans('ACGT', 'TGCA')
+_COMPLEMENT = str.maketrans('ACGTacgt', 'TGCAtgca')
 
 
 def reverse_complement(seq: str) -> str:
@@ -50,6 +50,15 @@ class RestrictionSite(Enum):
     BsmBI = 'CGTCTC'
     BbsI = 'GAAGAC'
     SapI = 'GCTCTTC'
+
+    def __repr__(self):
+        return f'RestrictionSite.{self.name}'
+
+    def __str__(self):
+        if self.forward == self.reverse:
+            return f'{self.name} ({self.forward})'
+
+        return f'{self.name} ({self.forward} / {self.reverse})'
 
     @property
     def forward(self) -> str:

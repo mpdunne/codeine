@@ -1,5 +1,6 @@
-import pytest
 import pickle
+
+import pytest
 
 from codeine.graph.base import CodonGraph
 from codeine.graph.nodes import ContextNode, CodonNode, EndNode
@@ -63,7 +64,7 @@ def test_graph_has_initial_and_final_nodes():
     assert isinstance(graph.final_node, EndNode)
 
 
-def test_context_nodes_store_flanks():
+def test_context_nodes_store_contexts():
     graph = CodonGraph('MIKEY', context_l='AAA', context_r='TTT')
     assert graph.left_context_node.sequence == 'AAA'
     assert graph.right_context_node.sequence == 'TTT'

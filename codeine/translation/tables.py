@@ -104,6 +104,6 @@ class TranslationTable:
         seq = seq.replace('T', 'U') if self.rna else seq.replace('U', 'T')
         regex = r'^[ACGU]*$' if self.rna else r'^[ACGT]*$'
         if not re.match(regex, seq):
-            raise ValueError('Sequence to normalise must be a nucleotide sequence')
+            raise ValueError('Sequence to normalise must be a nucleotide sequence.')
         else:
             return seq

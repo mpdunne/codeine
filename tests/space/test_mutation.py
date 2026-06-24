@@ -33,6 +33,91 @@ def test_mutation_space_requires_cds_in_space():
         _ = MutationSpace(space=space, cds=seq.upper())
 
 
+def test_mutation_space_raises_if_positions_are_invalid():
+    space = CodingSpace('MIKEY')
+
+    with pytest.raises(ValueError):
+        _ = space.mutants('ATGATTAAAGAATATATG', [0])
+
+    with pytest.raises(ValueError):
+        _ = space.mutants('ATGATTAAAGAATATATG', [-1])
+
+    with pytest.raises(ValueError):
+        _ = space.mutants('ATGATTAAAGAATATATG', [1, 6])
+
+
+def test_mutation_space_rejects_invalid_distance_constraints():
+    space = CodingSpace('MIKEY')
+    cds = 'ATGATTAAAGAATAT'
+
+    with pytest.raises(TypeError, match='min_nts must be an integer'):
+        MutationSpace(space, cds, min_nts=1.5)
+
+    with pytest.raises(TypeError, match='max_nts must be an integer'):
+        MutationSpace(space, cds, max_nts='2')
+
+    with pytest.raises(ValueError, match='min_nts must be non-negative'):
+        MutationSpace(space, cds, min_nts=-1)
+
+    with pytest.raises(ValueError, match='max_codons must be non-negative'):
+        MutationSpace(space, cds, max_codons=-1)
+
+
+def test_mutation_space_rejects_inverted_distance_constraints():
+    space = CodingSpace('MIKEY')
+    cds = 'ATGATTAAAGAATAT'
+
+    with pytest.raises(ValueError, match='min_nts cannot be greater than max_nts'):
+        MutationSpace(space, cds, min_nts=3, max_nts=2)
+
+    with pytest.raises(ValueError, match='min_codons cannot be greater than max_codons'):
+        MutationSpace(space, cds, min_codons=2, max_codons=1)
+
+
+@pytest.mark.parametrize('aa_seq,positions',
+                         (
+                                 ('MIKEY', [2, 3]),
+                                 ('MILDRED', [2, 3, 4]),
+                                 ('STEVEN', [1, 2]),
+                                 ('WILLIAM', [2, 5, 7]),
+                         ))
+def test_mutation_space_mutates_only_specified_positions(aa_seq, positions):
+    space = CodingSpace(aa_seq)
+    ref_cds = space.sample()
+
+    mut = space.mutants(ref_cds, positions)
+    sampled_seqs = [mut.sample() for _ in range(1000)]
+    assert all(space.contains(s) for s in sampled_seqs)
+    assert all(mut.contains(s) for s in sampled_seqs)
+
+    fixed_positions = [pos for pos in range(1, len(aa_seq) + 1) if pos not in positions]
+
+    values_at_fixed_positions = [tuple(seq[(pos - 1) * 3: pos * 3] for pos in fixed_positions) for seq in sampled_seqs]
+    values_at_unfixed_positions = [tuple(seq[(pos - 1) * 3: pos * 3] for pos in positions) for seq in sampled_seqs]
+
+    assert len(set(values_at_fixed_positions)) == 1
+    assert len(set(values_at_unfixed_positions)) != 1
+
+
+def test_mutation_space_n_valid_sequences():
+    aa_seq = 'MIKEY'
+    ref_cds = 'ATGATTAAAGAATAT'
+
+    space = CodingSpace(aa_seq)
+    assert space.n_valid_sequences == 24
+
+    mut = space.mutants(ref_cds, [1])
+    assert mut.n_valid_variants == 1
+
+    mut = space.mutants(ref_cds, [2])
+    assert mut.n_valid_variants == 3
+
+    mut = space.mutants(ref_cds, [1, 2, 3])
+    assert mut.n_valid_variants == 6
+
+    assert space.n_valid_sequences == 24
+
+
 def test_mutation_space_inherits_existing_pins():
     space = CodingSpace('MIKEY')
     cds = space[0]
@@ -140,6 +225,12 @@ def test_mutation_space_can_unfreeze_positions():
     assert muts.free_positions == frozenset({1, 3})
 
 
+def test_mutation_space_freezes_non_free_positions():
+    space = CodingSpace('FF')
+    muts = space.mutants('TTTTTT', free_positions=[2])
+    assert list(muts) == ['TTTTTT', 'TTTTTC']
+
+
 def test_mutation_space_can_freeze_all():
     space = CodingSpace('MIKEY')
     cds = space[0]
@@ -227,15 +318,6 @@ def test_mutation_space_exposes_graph_properties():
     assert muts.codon_restrictions == space.codon_restrictions
     assert muts.context_l == space.context_l
     assert muts.context_r == space.context_r
-
-
-def test_mutation_space_exposes_banned_sequences():
-    space = CodingSpace('MIKEY')
-    space.set_forbidden_motifs(['CCC'])
-
-    muts = space.mutants('ATGATCAAAGAGTAT')
-
-    assert muts.banned_sequences == ['CCC']
 
 
 def test_mutation_space_exposes_pins_including_frozen_positions():
@@ -392,6 +474,23 @@ def test_set_distance_rejects_negative_distances(kwargs):
     cds = space.sample()
     muts = MutationSpace(space, cds)
     with pytest.raises(ValueError):
+        muts.set_distance_constraints(**kwargs)
+
+
+@pytest.mark.parametrize(
+    'kwargs',
+    [
+        {'min_nts': 1.5},
+        {'max_nts': 1.5},
+        {'min_codons': 1.5},
+        {'max_codons': 1.5},
+    ],
+)
+def test_set_distance_rejects_noninteger_distances(kwargs):
+    space = CodingSpace('MIKEY')
+    cds = space.sample()
+    muts = MutationSpace(space, cds)
+    with pytest.raises(TypeError):
         muts.set_distance_constraints(**kwargs)
 
 
@@ -612,7 +711,7 @@ def test_distance_constraints_affect_sampling_and_enumeration():
     assert muts.n_valid_variants == 5276
     assert len([*muts]) == 5276
     for _ in range(100):
-        assert get_codon_diffs(reference, muts.sample()) <= 5
+        assert get_codon_diffs(reference, muts.sample()) <= 3
 
 
 def test_clear_distance_constraints_restores_original_count():
@@ -926,8 +1025,7 @@ def helper_codon_counts_by_block_position(seqs, block_size=5):
 ))
 def test_mutation_codon_distributions_are_stable_across_sequence(aa_seq, banned, distance_constraints):
 
-    banned = ('GAATTC', 'GGATCC', 'CTCGAG', 'AAGCTT')
-    space = CodingSpace(aa_seq, context_l='aaa', context_r='ttt', forbidden_motifs=banned)
+    space = CodingSpace(aa_seq, context_l='aaa', context_r='ttt', forbidden_motifs=banned, seed=8765309)
 
     ref = space[0]
 
@@ -938,7 +1036,6 @@ def test_mutation_codon_distributions_are_stable_across_sequence(aa_seq, banned,
     seqs = [muts.sample() for _ in range(n)]
 
     counts = helper_codon_counts_by_block_position(seqs)
-
     pvalues = []
 
     # skip M, only one codon

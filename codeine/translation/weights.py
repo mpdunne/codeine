@@ -78,7 +78,7 @@ class CodonWeights:
             aa = aa.upper()
 
             normalised_codon_weights = {
-                (codon.upper().replace('T', 'U') if rna else codon.upper().replace('U', 'T')): weight
+                table.normalise_sequence(codon): weight
                 for codon, weight in codon_weights.items()
             }
 
@@ -158,7 +158,7 @@ class CodonWeights:
         return weights
 
     @classmethod
-    def uniform(cls, table: Optional[TranslationTable] = None, rna: bool = None) -> 'CodonWeights':
+    def uniform(cls, table: Optional[TranslationTable] = None, rna: Optional[bool] = None) -> 'CodonWeights':
         """
         Construct a CodonWeights object with uniform codon weights for a given translation table.
 

@@ -1,6 +1,7 @@
 import pickle
-import pytest
 import random
+
+import pytest
 
 from Bio.Seq import Seq
 
@@ -10,7 +11,7 @@ from codeine.motifs.restriction import RestrictionSite
 
 
 @pytest.mark.parametrize('aa_seq', ('MIKEY', 'MILDRED', 'STEVEN', 'WILLIAM'))
-def test_ss_sequences_translate_correctly(aa_seq):
+def test_coding_space_sequences_translate_correctly(aa_seq):
     space = CodingSpace(aa_seq=aa_seq)
     for _ in range(1000):
         cds = space.sample()
@@ -18,7 +19,7 @@ def test_ss_sequences_translate_correctly(aa_seq):
         assert translated == aa_seq
 
 
-def test_ss_fixed_codons_are_fixed():
+def test_coding_space_fixed_codons_are_fixed():
     space = CodingSpace('MIKEY', codon_restrictions={2: 'ATA'})
 
     for _ in range(1000):
@@ -29,20 +30,20 @@ def test_ss_fixed_codons_are_fixed():
         assert str(Seq(cds).translate()) == 'MIKEY'
 
 
-def test_ss_generates_different_sequences():
+def test_coding_space_generates_different_sequences():
     space = CodingSpace('MIKEY')
     generated = [space.sample() for _ in range(1000)]
     assert len(generated) > 1
 
 
-def test_ss_generates_all_sequences_for_small_case():
+def test_coding_space_generates_all_cdss_for_small_aa_seq():
     space = CodingSpace('MF')
     generated = {space.sample() for _ in range(1000)}
     expected = {'ATGTTT', 'ATGTTC'}
     assert generated == expected
 
 
-def test_ss_pinned_codons_are_fixed():
+def test_coding_space_pinned_codons_are_fixed():
     space = CodingSpace('MIKEY')
     space.pin_codons({3: 'AAA'})
     for _ in range(100):
@@ -51,7 +52,7 @@ def test_ss_pinned_codons_are_fixed():
         assert codons[2] == 'AAA'
 
 
-def test_ss_unpin_codons_restores_sampling():
+def test_coding_space_unpin_codons_restores_sampling():
     space = CodingSpace('MIKEY')
     space.pin_codons({3: 'AAA'})
     space.unpin_codons([3])
@@ -63,7 +64,7 @@ def test_ss_unpin_codons_restores_sampling():
     assert sampled == {'AAA', 'AAG'}
 
 
-def test_ss_clear_pins_restores_sampling():
+def test_coding_space_clear_pins_restores_sampling():
     space = CodingSpace('MIKEY')
 
     space.pin_codons({3: 'AAA'})
@@ -78,13 +79,13 @@ def test_ss_clear_pins_restores_sampling():
     assert sampled == {'AAA', 'AAG'}
 
 
-def test_ss_rejects_invalid_pin():
+def test_coding_space_rejects_invalid_pin():
     space = CodingSpace('MIKEY')
     with pytest.raises(ValueError):
         space.pin_codons({3: 'GCT'})
 
 
-def test_ss_rejects_out_of_range_pin():
+def test_coding_space_rejects_out_of_range_pin():
     space = CodingSpace('MIKEY')
 
     with pytest.raises(ValueError):
@@ -94,7 +95,7 @@ def test_ss_rejects_out_of_range_pin():
         space.pin_codons({6: 'ATG'})
 
 
-def test_ss_sample_excludes_context_by_default():
+def test_coding_space_sample_excludes_context_by_default():
     space = CodingSpace(
         aa_seq='MF',
         context_l='AAAA',
@@ -108,7 +109,7 @@ def test_ss_sample_excludes_context_by_default():
     assert not cds.endswith('CCCC')
 
 
-def test_mutation_space_raises_if_seq_is_invalid():
+def test_coding_space_mutants_raises_if_seq_is_invalid():
     space = CodingSpace('MIKEY')
     
     with pytest.raises(ValueError):
@@ -124,45 +125,15 @@ def test_mutation_space_raises_if_seq_is_invalid():
         _ = space.mutants('ATGATTAAAGAATATATG', [1, 2])
 
 
-def test_mutation_space_raises_if_positions_are_invalid():
+def test_coding_space_mutants_returns_mutation_space():
     space = CodingSpace('MIKEY')
+    muts = space.mutants('ATGATTAAAGAATAT', free_positions=[2])
 
-    with pytest.raises(ValueError):
-        _ = space.mutants('ATGATTAAAGAATATATG', [0])
-
-    with pytest.raises(ValueError):
-        _ = space.mutants('ATGATTAAAGAATATATG', [-1])
-
-    with pytest.raises(ValueError):
-        _ = space.mutants('ATGATTAAAGAATATATG', [1, 6])
+    assert muts.cds == 'ATGATTAAAGAATAT'
+    assert muts.free_positions == {2}
 
 
-@pytest.mark.parametrize('aa_seq,positions',
-                         (
-                                 ('MIKEY', [2, 3]),
-                                 ('MILDRED', [2, 3, 4]),
-                                 ('STEVEN', [1, 2]),
-                                 ('WILLIAM', [2, 5, 7]),
-                         ))
-def test_mutation_space_mutates_only_specified_positions(aa_seq, positions):
-    space = CodingSpace(aa_seq)
-    ref_cds = space.sample()
-
-    mut = space.mutants(ref_cds, positions)
-    sampled_seqs = [mut.sample() for _ in range(1000)]
-    assert all(space.contains(s) for s in sampled_seqs)
-    assert all(mut.contains(s) for s in sampled_seqs)
-
-    fixed_positions = [pos for pos in range(1, len(aa_seq) + 1) if pos not in positions]
-
-    values_at_fixed_positions = [tuple(seq[(pos - 1) * 3: pos * 3] for pos in fixed_positions) for seq in sampled_seqs]
-    values_at_unfixed_positions = [tuple(seq[(pos - 1) * 3: pos * 3] for pos in positions) for seq in sampled_seqs]
-
-    assert len(set(values_at_fixed_positions)) == 1
-    assert len(set(values_at_unfixed_positions)) != 1
-
-
-def test_base_space_remains_unchanged_after_making_mutation_space():
+def test_coding_space_mutants_does_not_change_base_space():
     aa_seq = 'MIKEY'
     ref_cds = 'ATGATTAAAGAATAT'
 
@@ -182,23 +153,22 @@ def test_base_space_remains_unchanged_after_making_mutation_space():
     assert not all(s[3:6] == ref_cds[3:6] for s in sampled_seqs)
 
 
-def test_mutation_space_n_valid_sequences():
-    aa_seq = 'MIKEY'
-    ref_cds = 'ATGATTAAAGAATAT'
+def test_coding_space_mutants_passes_constraints():
+    space = CodingSpace('MIKEY')
+    muts = space.mutants(
+        'ATGATTAAAGAATAT',
+        free_positions=[2, 3],
+        min_nts=1,
+        max_nts=3,
+        min_codons=1,
+        max_codons=2,
+    )
 
-    space = CodingSpace(aa_seq)
-    assert space.n_valid_sequences == 24
-
-    mut = space.mutants(ref_cds, [1])
-    assert mut.n_valid_variants == 1
-
-    mut = space.mutants(ref_cds, [2])
-    assert mut.n_valid_variants == 3
-
-    mut = space.mutants(ref_cds, [1, 2, 3])
-    assert mut.n_valid_variants == 6
-
-    assert space.n_valid_sequences == 24
+    assert set(muts.free_positions) == set([2, 3])
+    assert muts.min_nts == 1
+    assert muts.max_nts == 3
+    assert muts.min_codons == 1
+    assert muts.max_codons == 2
 
 
 def test_sequence_space_getitem():
@@ -212,25 +182,19 @@ def test_view_iter():
     assert len(seqs) == len(set(seqs)) == 24
 
 
-def test_sequence_space_enumerate():
+def test_coding_space_enumerate():
     space = CodingSpace('F')
     assert list(space.enumerate()) == ['TTT', 'TTC']
 
 
-def test_sequence_space_contains():
+def test_coding_space_contains():
     space = CodingSpace('F')
     assert space.contains('TTT')
     assert space.contains('TTC')
     assert not space.contains('ATG')
 
 
-def test_sequence_space_mutants_pins_non_mutated_positions():
-    space = CodingSpace('FF')
-    muts = space.mutants('TTTTTT', free_positions=[2])
-    assert list(muts) == ['TTTTTT', 'TTTTTC']
-
-
-def test_space_contains():
+def test_coding_space_sampled_in_space():
     space = CodingSpace('MIKEY')
     for _ in range(100):
         seq = space.sample()
@@ -240,7 +204,7 @@ def test_space_contains():
 
 def test_forbidden_motifs_are_stored():
     space = CodingSpace('MIKEY', forbidden_motifs=[RestrictionSite.EcoRI, 'AAAA'])
-    assert space.forbidden_sequences == ('AAAA', 'GAATTC')
+    assert space.view.banned_sequences == ['AAAA', 'GAATTC']
 
 
 def test_max_homopolymer_is_stored():
@@ -250,15 +214,15 @@ def test_max_homopolymer_is_stored():
 
 def test_max_homopolymer_is_expanded_correctly():
     space = CodingSpace('MIKEY', max_homopolymer=None)
-    assert not space.forbidden_sequences
+    assert not space.view.banned_sequences
 
     space = CodingSpace('MIKEY', max_homopolymer=4)
-    assert all(nt * 5 in space.forbidden_sequences for nt in 'ACGT')
+    assert all(nt * 5 in space.view.banned_sequences for nt in 'ACGT')
 
 
 def test_mixed_restrictions():
     space = CodingSpace('MIKEY', max_homopolymer=4, forbidden_motifs=[RestrictionSite.BsaI, 'GGTTCC'])
-    assert set(space.forbidden_sequences) == {'GAGACC', 'GGTCTC', 'GGTTCC', 'AAAAA', 'CCCCC', 'GGGGG', 'TTTTT'}
+    assert set(space.view.banned_sequences) == {'GAGACC', 'GGTCTC', 'GGTTCC', 'AAAAA', 'CCCCC', 'GGGGG', 'TTTTT'}
 
 
 def test_forbidden_motifs_repr():
@@ -284,7 +248,7 @@ def test_coding_space_seed_and_rng_cannot_both_be_provided():
         CodingSpace('MIKEY', seed=420, rng=random.Random(69))
 
 
-def test_space_seed_consistent():
+def test_coding_space_seed_consistent():
     samples_by_rep = []
 
     for _ in range(10):
@@ -295,18 +259,19 @@ def test_space_seed_consistent():
     assert all(samples == samples_by_rep[0] for samples in samples_by_rep)
 
 
-def test_space_rng_consistent():
+def test_coding_space_rng_consistent():
     samples_by_rep = []
 
     for _ in range(10):
-        space = CodingSpace('MIKEY', seed=8675309)
+        rng = random.Random(8675309)
+        space = CodingSpace('MIKEY', rng=rng)
         samples = [space.sample() for _ in range(100)]
         samples_by_rep.append(samples)
 
     assert all(samples == samples_by_rep[0] for samples in samples_by_rep)
 
 
-def test_space_no_seed_not_consistent():
+def test_coding_space_no_seed_not_consistent():
     samples_by_rep = []
 
     for _ in range(10):
@@ -351,7 +316,6 @@ def test_coding_space_pickle_preserves_constraints():
 
     assert loaded.forbidden_motifs == space.forbidden_motifs
     assert loaded.max_homopolymer == space.max_homopolymer
-    assert loaded.forbidden_sequences == space.forbidden_sequences
     assert loaded.n_valid_sequences == space.n_valid_sequences
 
 
@@ -470,13 +434,11 @@ def test_coding_space_can_set_forbidden_motifs():
     space.set_forbidden_motifs(['AAA'])
 
     assert space.forbidden_motifs == ['AAA']
-    assert set(space.forbidden_sequences) == {'AAA'}
     assert set(space.view.banned_sequences) == {'AAA'}
 
     space.clear_forbidden_motifs()
 
     assert space.forbidden_motifs is None
-    assert set(space.forbidden_sequences) == set()
     assert set(space.view.banned_sequences) == set()
 
 
@@ -485,13 +447,11 @@ def test_coding_space_can_set_max_homopolymer():
     space.set_max_homopolymer(2)
 
     assert space.max_homopolymer == 2
-    assert set(space.forbidden_sequences) == {'AAA', 'CCC', 'GGG', 'TTT'}
     assert set(space.view.banned_sequences) == {'AAA', 'CCC', 'GGG', 'TTT'}
 
     space.clear_max_homopolymer()
 
     assert space.max_homopolymer is None
-    assert set(space.forbidden_sequences) == set()
     assert set(space.view.banned_sequences) == set()
 
 
@@ -501,21 +461,10 @@ def test_coding_space_forbidden_motifs_and_max_homopolymer_combine():
     space.set_forbidden_motifs(['GAG'])
     space.set_max_homopolymer(2)
 
-    assert set(space.forbidden_sequences) == {'AAA', 'CCC', 'GGG', 'TTT', 'GAG'}
     assert set(space.view.banned_sequences) == {'AAA', 'CCC', 'GGG', 'TTT', 'GAG'}
 
     space.clear_forbidden_motifs()
-    assert set(space.forbidden_sequences) == {'AAA', 'CCC', 'GGG', 'TTT'}
     assert set(space.view.banned_sequences) == {'AAA', 'CCC', 'GGG', 'TTT'}
 
     space.clear_max_homopolymer()
-    assert set(space.forbidden_sequences) == set()
     assert set(space.view.banned_sequences) == set()
-
-
-def test_forbidden_sequences_is_read_only():
-    space = CodingSpace('MIKEY')
-
-    with pytest.raises(AttributeError):
-        space.forbidden_sequences = ['AAA']
-
