@@ -1,7 +1,7 @@
 import pytest
 
 from codeine.motifs.restriction import RestrictionSite
-from codeine.motifs.constraints import expand_and_validate_forbidden_motifs, \
+from codeine.motifs.validate import expand_and_validate_forbidden_motifs, \
     expand_and_validate_max_homopolymer, expand_and_validate_sequence_constraints
 
 

@@ -12,6 +12,8 @@ class PathConstraint:
     Base class for tracking constraints applied while walking a codon graph.
     Designed to track sequence properties that can be calculated by accumulating
     calculations along a path length.
+
+    The idea is to update a state based on the previous state, current node, and choice.
     """
 
     @property
