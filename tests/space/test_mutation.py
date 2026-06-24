@@ -33,6 +33,63 @@ def test_mutation_space_requires_cds_in_space():
         _ = MutationSpace(space=space, cds=seq.upper())
 
 
+def test_mutation_space_raises_if_positions_are_invalid():
+    space = CodingSpace('MIKEY')
+
+    with pytest.raises(ValueError):
+        _ = space.mutants('ATGATTAAAGAATATATG', [0])
+
+    with pytest.raises(ValueError):
+        _ = space.mutants('ATGATTAAAGAATATATG', [-1])
+
+    with pytest.raises(ValueError):
+        _ = space.mutants('ATGATTAAAGAATATATG', [1, 6])
+
+
+@pytest.mark.parametrize('aa_seq,positions',
+                         (
+                                 ('MIKEY', [2, 3]),
+                                 ('MILDRED', [2, 3, 4]),
+                                 ('STEVEN', [1, 2]),
+                                 ('WILLIAM', [2, 5, 7]),
+                         ))
+def test_mutation_space_mutates_only_specified_positions(aa_seq, positions):
+    space = CodingSpace(aa_seq)
+    ref_cds = space.sample()
+
+    mut = space.mutants(ref_cds, positions)
+    sampled_seqs = [mut.sample() for _ in range(1000)]
+    assert all(space.contains(s) for s in sampled_seqs)
+    assert all(mut.contains(s) for s in sampled_seqs)
+
+    fixed_positions = [pos for pos in range(1, len(aa_seq) + 1) if pos not in positions]
+
+    values_at_fixed_positions = [tuple(seq[(pos - 1) * 3: pos * 3] for pos in fixed_positions) for seq in sampled_seqs]
+    values_at_unfixed_positions = [tuple(seq[(pos - 1) * 3: pos * 3] for pos in positions) for seq in sampled_seqs]
+
+    assert len(set(values_at_fixed_positions)) == 1
+    assert len(set(values_at_unfixed_positions)) != 1
+
+
+def test_mutation_space_n_valid_sequences():
+    aa_seq = 'MIKEY'
+    ref_cds = 'ATGATTAAAGAATAT'
+
+    space = CodingSpace(aa_seq)
+    assert space.n_valid_sequences == 24
+
+    mut = space.mutants(ref_cds, [1])
+    assert mut.n_valid_variants == 1
+
+    mut = space.mutants(ref_cds, [2])
+    assert mut.n_valid_variants == 3
+
+    mut = space.mutants(ref_cds, [1, 2, 3])
+    assert mut.n_valid_variants == 6
+
+    assert space.n_valid_sequences == 24
+
+
 def test_mutation_space_inherits_existing_pins():
     space = CodingSpace('MIKEY')
     cds = space[0]
@@ -138,6 +195,12 @@ def test_mutation_space_can_unfreeze_positions():
     muts.unfreeze_positions([1])
 
     assert muts.free_positions == frozenset({1, 3})
+
+
+def test_mutation_space_freezes_non_free_positions():
+    space = CodingSpace('FF')
+    muts = space.mutants('TTTTTT', free_positions=[2])
+    assert list(muts) == ['TTTTTT', 'TTTTTC']
 
 
 def test_mutation_space_can_freeze_all():

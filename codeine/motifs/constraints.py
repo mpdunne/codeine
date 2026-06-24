@@ -4,7 +4,7 @@ from typing import List, Optional, Sequence, Union
 from codeine.motifs.restriction import RestrictionSite
 
 ForbiddenMotif = Union[str, RestrictionSite]
-ForbiddenMotifs = Optional[Union[ForbiddenMotif, Sequence[ForbiddenMotif]]]
+ForbiddenMotifs = Union[ForbiddenMotif, Sequence[ForbiddenMotif]]
 
 
 def expand_and_validate_forbidden_motifs(
@@ -26,9 +26,6 @@ def expand_and_validate_forbidden_motifs(
     A list of forbidden nucleotide sequences.
     """
     all_sequences = []
-
-    if forbidden_motifs is None:
-        return []
 
     if isinstance(forbidden_motifs, (str, RestrictionSite)):
         forbidden_motifs = [forbidden_motifs]
@@ -60,7 +57,7 @@ def expand_and_validate_forbidden_motifs(
 
 
 def expand_and_validate_max_homopolymer(
-        max_homopolymer: Optional[int],
+        max_homopolymer: int,
         rna: bool = False
 ) -> List[str]:
     """
@@ -77,8 +74,6 @@ def expand_and_validate_max_homopolymer(
     -------
     A list of forbidden nucleotide sequences.
     """
-    if max_homopolymer is None:
-        return []
 
     if not isinstance(max_homopolymer, int):
         raise TypeError('max_homopolymer must be an integer.')
@@ -91,8 +86,8 @@ def expand_and_validate_max_homopolymer(
 
 
 def expand_and_validate_sequence_constraints(
-        forbidden_motifs=None,
-        max_homopolymer=None,
+        forbidden_motifs: Optional[ForbiddenMotifs] = None,
+        max_homopolymer: Optional[int] = None,
         rna: bool = False,
 ):
     """
@@ -111,6 +106,12 @@ def expand_and_validate_sequence_constraints(
     -------
     A list of forbidden nucleotide sequences.
     """
-    forbidden_sequences = expand_and_validate_forbidden_motifs(forbidden_motifs, rna=rna)
-    forbidden_homopolymers = expand_and_validate_max_homopolymer(max_homopolymer, rna=rna)
-    return sorted(set(forbidden_sequences + forbidden_homopolymers))
+    forbidden_sequences = []
+
+    if forbidden_motifs is not None:
+        forbidden_sequences += expand_and_validate_forbidden_motifs(forbidden_motifs, rna=rna)
+
+    if max_homopolymer is not None:
+        forbidden_sequences += expand_and_validate_max_homopolymer(max_homopolymer, rna=rna)
+
+    return sorted(set(forbidden_sequences))

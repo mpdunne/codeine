@@ -1,21 +1,19 @@
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from codeine.space.mutation import MutationSpace
-
 import pickle
 import random
 
 from pathlib import Path
-from typing import Dict, Generator, List, Optional, Sequence, Union
+from typing import Dict, Generator, List, Optional, Sequence, Tuple, Union, TYPE_CHECKING
 
-from codeine.motifs.restriction import RestrictionSite
+if TYPE_CHECKING:
+    from codeine.space.mutation import MutationSpace
+
+from codeine.graph.base import CodonGraph, CodonRestriction
 from codeine.motifs.constraints import expand_and_validate_sequence_constraints, ForbiddenMotifs
-from codeine.utils.display import format_banned_sequences, format_forbidden_motif,\
-    format_count, format_restrictions
-from codeine.graph.base import CodonGraph
+from codeine.motifs.restriction import RestrictionSite
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
+from codeine.utils.display import format_banned_sequences, format_forbidden_motif,\
+    format_count, format_restrictions
 from codeine.utils.sampling import Seedable
 
 
@@ -26,11 +24,11 @@ class CodingSpace:
     def __init__(
         self,
         aa_seq: str,
-        codon_restrictions: Optional[Dict[int, str]] = None,
-        forbidden_motifs: ForbiddenMotifs = None,
+        codon_restrictions: Optional[Dict[int, CodonRestriction]] = None,
+        forbidden_motifs: Optional[ForbiddenMotifs] = None,
         max_homopolymer: Optional[int] = None,
-        translation_table: TranslationTable = None,
-        codon_weights: CodonWeights = None,
+        translation_table: Optional[TranslationTable] = None,
+        codon_weights: Optional[CodonWeights] = None,
         context_l: str = '',
         context_r: str = '',
         seed: Optional[Seedable] = None,
@@ -199,7 +197,7 @@ class CodingSpace:
 
     def sample(self) -> str:
         """
-        Sample a DNA sequence from this coding space.
+        Sample a sequence from this coding space.
 
         Returns
         -------
@@ -207,7 +205,64 @@ class CodingSpace:
         """
         return self.view.sample()
 
-    def pin_codons(self, pinned_codons: Dict[int, str]):
+    def enumerate(self) -> Generator[str, None, None]:
+        """
+        Generate all sequences in this space. If there are many (and often there are
+        astronomically many), one would not expect to reach the 'end'. However for smaller
+        sequence spaces, such as mutation spaces, it's quite possible to get there.
+
+        Yields
+        ------
+        str
+            A valid coding sequence.
+        """
+        yield from self.view.enumerate()
+
+    def contains(self, seq: str) -> bool:
+        """
+        Check whether a coding sequence is contained in this coding space.
+
+        Parameters
+        ----------
+        seq
+            The sequence to check.
+
+        Returns
+        -------
+        True if and only if the sequence is contained in this coding space.
+        """
+        return self.view.contains(seq)
+
+    def mutants(
+        self,
+        seq: str,
+        free_positions: Optional[Sequence[int]] = None,
+    ) -> 'MutationSpace':
+        """
+        Return a space of mutants relative to a given coding sequence, i.e. a space derived
+        from this one but which fixes the sequence on all but the specified positions.
+
+        Parameters
+        ----------
+        seq
+            The sequence to mutate.
+        free_positions
+            The positions that are allowed to vary.
+        """
+        cds = seq.upper()
+
+        if not self.contains(cds):
+            raise ValueError('CDS is not contained in this coding space.')
+
+        from codeine.space.mutation import MutationSpace
+
+        return MutationSpace(
+            space=self,
+            cds=cds,
+            free_positions=free_positions,
+        )
+
+    def pin_codons(self, pinned_codons: Dict[int, str]) -> None:
         """
         Pin temporary codons in this coding space.
 
@@ -218,7 +273,7 @@ class CodingSpace:
         """
         self.view.pin_codons(pinned_codons)
 
-    def unpin_codons(self, positions: Sequence[int]):
+    def unpin_codons(self, positions: Sequence[int]) -> None:
         """
         Remove temporary codon pins by position.
 
@@ -240,7 +295,7 @@ class CodingSpace:
         """
         self.view.set_pinned_codons(pinned_codons)
 
-    def clear_pins(self):
+    def clear_pins(self) -> None:
         """
         Remove all temporary codon pins from this coding space.
         """
@@ -282,32 +337,6 @@ class CodingSpace:
         """
         self.set_max_homopolymer(None)
 
-    def _update_forbidden_sequences(self) -> None:
-        """
-        Rebuild concrete forbidden sequences and apply them to the view.
-        """
-        forbidden_sequences = expand_and_validate_sequence_constraints(
-            forbidden_motifs=self.forbidden_motifs,
-            max_homopolymer=self.max_homopolymer,
-            rna=self.translation_table.rna,
-        )
-        self.view.set_banned_sequences(forbidden_sequences)
-
-    def contains(self, seq: str) -> bool:
-        """
-        Check whether a DNA sequence is contained in this coding space.
-
-        Parameters
-        ----------
-        seq
-            The sequence to check.
-
-        Returns
-        -------
-        True if and only if the sequence is contained in this coding space.
-        """
-        return self.view.contains(seq)
-
     @property
     def n_valid_sequences(self) -> int:
         """
@@ -337,7 +366,7 @@ class CodingSpace:
         return self.view.codon_weights
 
     @property
-    def codon_restrictions(self):
+    def codon_restrictions(self) -> Dict[int, CodonRestriction]:
         """
         The fixed codon restrictions from the underlying graph.
         """
@@ -358,57 +387,26 @@ class CodingSpace:
         return self.view.context_r
 
     @property
-    def pinned_codons(self):
+    def pinned_codons(self) -> Dict[int, List[str]]:
         """
         Temporary codon pins currently applied to this coding space.
         """
         return self.view.pinned_codons
 
     @property
-    def forbidden_sequences(self):
+    def forbidden_sequences(self) -> Tuple[str, ...]:
         """
         Concrete forbidden nucleotide sequences currently applied to this coding space.
         """
         return tuple(self.view.banned_sequences)
 
-    def enumerate(self) -> Generator[str, None, None]:
+    def _update_forbidden_sequences(self) -> None:
         """
-        Generate all sequences in this space. If there are many (and often there are
-        astronomically many), one would not expect to reach the 'end'. However for smaller
-        sequence spaces, such as mutation spaces, it's quite possible to get there.
-
-        Yields
-        ------
-        str
-            A valid DNA sequence.
+        Rebuild concrete forbidden sequences and apply them to the view.
         """
-        yield from self.view.enumerate()
-
-    def mutants(
-        self,
-        seq: str,
-        free_positions: Sequence[int] = None,
-    ) -> 'MutationSpace':
-        """
-        Return a space of mutants relative to a given coding sequence, i.e. a space derived
-        from this one but which fixes the sequence on all but the specified positions.
-
-        Parameters
-        ----------
-        seq
-            The sequence to mutate.
-        free_positions
-            The positions that are allowed to vary.
-        """
-        cds = seq.upper()
-
-        if not self.contains(cds):
-            raise ValueError('CDS is not contained in this coding space.')
-
-        from codeine.space.mutation import MutationSpace
-
-        return MutationSpace(
-            space=self,
-            cds=cds,
-            free_positions=free_positions,
+        forbidden_sequences = expand_and_validate_sequence_constraints(
+            forbidden_motifs=self.forbidden_motifs,
+            max_homopolymer=self.max_homopolymer,
+            rna=self.translation_table.rna,
         )
+        self.view.set_banned_sequences(forbidden_sequences)
