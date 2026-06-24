@@ -79,17 +79,6 @@ class CodingSpace:
         self._update_forbidden_sequences()
 
     @classmethod
-    def from_view(cls, view) -> 'CodingSpace':
-        """
-        Build a CodingSpace wrapper around an existing graph view.
-        """
-        obj = cls.__new__(cls)
-        obj.view = view
-        obj.forbidden_motifs = []
-        obj.max_homopolymer = None
-        return obj
-
-    @classmethod
     def load(cls, path) -> 'CodingSpace':
         """
         Load a coding space from disc.
