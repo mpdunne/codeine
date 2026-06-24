@@ -1,5 +1,5 @@
-from typing import Any, Optional, Tuple
 from dataclasses import dataclass
+from typing import Any, Dict, Optional, Tuple
 
 from codeine.graph.nodes import CodonNode, Node
 
@@ -9,11 +9,9 @@ ConstraintState = Any
 
 class PathConstraint:
     """
-    Optional constraint applied while walking a codon graph.
-
-    This is deliberately generic: the graph view does not need to know what the
-    constraint means. It only asks whether a graph choice is allowed and whether
-    the final state is acceptable.
+    Base class for tracking constraints applied while walking a codon graph.
+    Designed to track sequence properties that can be calculated by accumulating
+    calculations along a path length.
     """
 
     @property
@@ -25,10 +23,10 @@ class PathConstraint:
 
     def advance(
         self,
-        state: ConstraintState,
+        state: Any,
         node: Node,
         choice: str,
-    ) -> Optional[ConstraintState]:
+    ) -> Optional[Any]:
         """
         Advance the constraint state after taking one graph choice.
 
@@ -36,21 +34,25 @@ class PathConstraint:
         """
         return state
 
-    def accepts_final(self, state: ConstraintState) -> bool:
+    def is_satisfied(self, state: ConstraintState) -> bool:
         """
-        Return whether a completed graph walk is accepted.
+        Return whether this constraint is satisfied by the current state.
         """
         return True
 
 
 # nt_diffs, codon_diffs
-MutationDistanceState = Tuple[int, int]
+MutationDistanceState = Tuple[Optional[int], Optional[int]]
+MutationDiffCache = Dict[Tuple[int, str], Tuple[int, int]]
 
 
-@dataclass()
+@dataclass
 class MutationDistanceConstraint(PathConstraint):
     """
-    Constrain graph walks by nucleotide and/or codon distance from a reference CDS.
+    Constrain graph walks by distance from a reference CDS.
+
+    Nucleotide distance counts individual nucleotide changes. Codon distance
+    counts codons that differ, regardless of how many nucleotides changed.
     """
 
     reference_cds: str
@@ -60,21 +62,25 @@ class MutationDistanceConstraint(PathConstraint):
     max_codons: Optional[int] = None
 
     def __post_init__(self) -> None:
+
+        # Store the reference codons once, on init.
         ref_codons = [self.reference_cds[i:i + 3] for i in range(0, len(self.reference_cds), 3)]
         self._ref_codons = tuple(ref_codons)
-        self._diff_cache = {}
+
+        # Cache distance calculations for repeated (position, codon) choices.
+        self._diff_cache: MutationDiffCache = {}
 
     @property
     def tracks_nts(self) -> bool:
         """
-        Whether nucleotide differences should be tracked.
+        Whether nucleotide differences are constrained.
         """
         return self.min_nts is not None or self.max_nts is not None
 
     @property
     def tracks_codons(self) -> bool:
         """
-        Whether codon differences should be tracked.
+        Whether codon differences are constrained.
         """
         return self.min_codons is not None or self.max_codons is not None
 
@@ -82,9 +88,6 @@ class MutationDistanceConstraint(PathConstraint):
     def initial_state(self) -> MutationDistanceState:
         """
         Initial mutation-distance state.
-
-        Counts start at zero for each distance type being tracked.
-        Distance types that are not constrained are stored as None.
         """
         nt_diffs = 0 if self.tracks_nts else None
         codon_diffs = 0 if self.tracks_codons else None
@@ -92,23 +95,16 @@ class MutationDistanceConstraint(PathConstraint):
 
     def advance(
         self,
-        state: ConstraintState,
-        node,
+        state: MutationDistanceState,
+        node: Node,
         choice: str,
     ) -> Optional[MutationDistanceState]:
         """
-        Advance mutation-distance tracking by one graph step.
+        Advance mutation-distance tracking by one graph choice. The state updates on each
+        advance by adding the number of nt/codon differences given each next choice.
 
-        When a codon node is traversed, nucleotide and codon differences
-        relative to the reference CDS are accumulated.
-
-        Returns
-        -------
-        MutationDistanceState
-            Updated mutation-distance state.
-
-        None
-            If a maximum-distance constraint has been exceeded.
+        Non-codon nodes do not affect distance. Codon nodes add the distance
+        between the chosen codon and the reference codon at the same position.
         """
         if not isinstance(node, CodonNode):
             return state
@@ -116,16 +112,16 @@ class MutationDistanceConstraint(PathConstraint):
         nt_diffs, codon_diffs = state
         key = (node.pos, choice)
 
-        cached = self._diff_cache.get(key)
-        if cached is None:
+        cached_diff = self._diff_cache.get(key)
+        if cached_diff is None:
             ref_codon = self._ref_codons[node.pos - 1]
-            cached = (
+            cached_diff = (
                 sum(a != b for a, b in zip(ref_codon, choice)),
                 int(ref_codon != choice),
             )
-            self._diff_cache[key] = cached
+            self._diff_cache[key] = cached_diff
 
-        nt_diff, codon_diff = cached
+        nt_diff, codon_diff = cached_diff
 
         if self.tracks_nts:
             nt_diffs += nt_diff
@@ -141,10 +137,9 @@ class MutationDistanceConstraint(PathConstraint):
 
         return nt_diffs, codon_diffs
 
-    def accepts_final(self, state: ConstraintState) -> bool:
+    def is_satisfied(self, state: MutationDistanceState) -> bool:
         """
-        Check whether a completed sequence satisfies the minimum
-        mutation-distance constraints.
+        Check whether a given state satisfies minimum distances.
         """
         nt_diffs, codon_diffs = state
 

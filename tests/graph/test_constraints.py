@@ -12,7 +12,7 @@ def test_base_path_constraint_does_nothing():
 
     node = CodonNode(aa='M', pos=1, codons=['ATG']),
     assert constraint.advance(state, node, 'ATA') == state
-    assert constraint.accepts_final(state)
+    assert constraint.is_satisfied(state)
 
 
 def test_mutation_distance_initial_state_tracks_only_requested_distances():
@@ -74,20 +74,20 @@ def test_mutation_distance_rejects_when_max_codons_exceeded():
 def test_mutation_distance_accepts_final_enforces_min_nts():
     constraint = MutationDistanceConstraint('ATG', min_nts=1)
 
-    assert not constraint.accepts_final((0, None))
-    assert constraint.accepts_final((1, None))
+    assert not constraint.is_satisfied((0, None))
+    assert constraint.is_satisfied((1, None))
 
 
 def test_mutation_distance_accepts_final_enforces_min_codons():
     constraint = MutationDistanceConstraint('ATG', min_codons=1)
 
-    assert not constraint.accepts_final((None, 0))
-    assert constraint.accepts_final((None, 1))
+    assert not constraint.is_satisfied((None, 0))
+    assert constraint.is_satisfied((None, 1))
 
 
 def test_mutation_distance_accepts_final_enforces_both_minimums():
     constraint = MutationDistanceConstraint('ATG', min_nts=2, min_codons=1)
 
-    assert not constraint.accepts_final((1, 1))
-    assert not constraint.accepts_final((2, 0))
-    assert constraint.accepts_final((2, 1))
+    assert not constraint.is_satisfied((1, 1))
+    assert not constraint.is_satisfied((2, 0))
+    assert constraint.is_satisfied((2, 1))

@@ -680,7 +680,7 @@ class ViewCompiler:
         """
         Compile the final graph state.
         """
-        if self.path_constraint.accepts_final(constraint_state):
+        if self.path_constraint.is_satisfied(constraint_state):
             self.totals_by_state[state] = (1, 0.0)
         else:
             self.totals_by_state[state] = (0, -math.inf)
