@@ -8,7 +8,7 @@ from codeine.graph.constraints import ConstraintState, PathConstraint
 from codeine.graph.base import CodonGraph, CodonRestriction
 from codeine.graph.nodes import CodonNode, Node
 from codeine.graph.tracking import AdvanceResult, BannedSequenceTracker, TrackerState
-from codeine.utils.display import format_banned_sequences, format_count, format_restrictions
+from codeine.utils.display import format_forbidden_motifs, format_count, format_restrictions
 from codeine.utils.sampling import Sampler, Seedable
 
 
@@ -224,7 +224,7 @@ class CodonGraphView:
         if self.banned_sequences:
             lines += [
                 'Banned sequences:',
-                *format_banned_sequences(
+                *format_forbidden_motifs(
                     self.banned_sequences,
                 ),
                 '',

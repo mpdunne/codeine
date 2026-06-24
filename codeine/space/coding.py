@@ -12,7 +12,7 @@ from codeine.motifs.constraints import expand_and_validate_sequence_constraints,
 from codeine.motifs.restriction import RestrictionSite
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
-from codeine.utils.display import format_banned_sequences, format_forbidden_motif,\
+from codeine.utils.display import format_forbidden_motifs, format_forbidden_motif,\
     format_count, format_restrictions
 from codeine.utils.sampling import Seedable
 
@@ -163,7 +163,7 @@ class CodingSpace:
 
             lines += [
                 'Forbidden motifs:',
-                *format_banned_sequences(
+                *format_forbidden_motifs(
                     [
                         format_forbidden_motif(motif, rna=self.translation_table.rna)
                         for motif in motifs
@@ -234,9 +234,13 @@ class CodingSpace:
         return self.view.contains(seq)
 
     def mutants(
-        self,
-        seq: str,
-        free_positions: Optional[Sequence[int]] = None,
+            self,
+            seq: str,
+            free_positions: Optional[Sequence[int]] = None,
+            min_nts: Optional[int] = None,
+            max_nts: Optional[int] = None,
+            min_codons: Optional[int] = None,
+            max_codons: Optional[int] = None,
     ) -> 'MutationSpace':
         """
         Return a space of mutants relative to a given coding sequence, i.e. a space derived
@@ -248,6 +252,14 @@ class CodingSpace:
             The sequence to mutate.
         free_positions
             The positions that are allowed to vary.
+        min_nts
+            The min nucleotide (Hamming) distance relative to the reference sequence.
+        max_nts
+            The max nucleotide (Hamming) distance relative to the reference sequence.
+        min_codons
+            The min number of changed codons relative to the reference sequence.
+        max_codons
+            The max number of changed codons relative to the reference sequence.
         """
         cds = seq.upper()
 
@@ -260,6 +272,10 @@ class CodingSpace:
             space=self,
             cds=cds,
             free_positions=free_positions,
+            min_nts=min_nts,
+            max_nts=max_nts,
+            min_codons=min_codons,
+            max_codons=max_codons,
         )
 
     def pin_codons(self, pinned_codons: Dict[int, str]) -> None:
@@ -392,13 +408,6 @@ class CodingSpace:
         Temporary codon pins currently applied to this coding space.
         """
         return self.view.pinned_codons
-
-    @property
-    def forbidden_sequences(self) -> Tuple[str, ...]:
-        """
-        Concrete forbidden nucleotide sequences currently applied to this coding space.
-        """
-        return tuple(self.view.banned_sequences)
 
     def _update_forbidden_sequences(self) -> None:
         """

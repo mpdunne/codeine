@@ -51,6 +51,15 @@ class RestrictionSite(Enum):
     BbsI = 'GAAGAC'
     SapI = 'GCTCTTC'
 
+    def __repr__(self):
+        return f'RestrictionSite.{self.name}'
+
+    def __str__(self):
+        if self.forward == self.reverse:
+            return f'{self.name} ({self.forward})'
+
+        return f'{self.name} ({self.forward} / {self.reverse})'
+
     @property
     def forward(self) -> str:
         """

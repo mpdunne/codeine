@@ -153,6 +153,24 @@ def test_coding_space_mutants_does_not_change_base_space():
     assert not all(s[3:6] == ref_cds[3:6] for s in sampled_seqs)
 
 
+def test_coding_space_mutants_passes_constraints():
+    space = CodingSpace('MIKEY')
+    muts = space.mutants(
+        'ATGATTAAAGAATAT',
+        free_positions=[2, 3],
+        min_nts=1,
+        max_nts=3,
+        min_codons=1,
+        max_codons=2,
+    )
+
+    assert set(muts.free_positions) == set([2, 3])
+    assert muts.min_nts == 1
+    assert muts.max_nts == 3
+    assert muts.min_codons == 1
+    assert muts.max_codons == 2
+
+
 def test_sequence_space_getitem():
     space = CodingSpace('MM')
     assert space[0] == 'ATGATG'
@@ -243,9 +261,9 @@ def test_coding_space_seed_consistent():
 
 def test_coding_space_rng_consistent():
     samples_by_rep = []
-    rng = random.Random(8675309)
 
     for _ in range(10):
+        rng = random.Random(8675309)
         space = CodingSpace('MIKEY', rng=rng)
         samples = [space.sample() for _ in range(100)]
         samples_by_rep.append(samples)

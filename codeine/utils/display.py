@@ -57,7 +57,7 @@ def format_restrictions(
     return lines
 
 
-def format_banned_sequences(
+def format_forbidden_motifs(
         sequences: Sequence[str],
         max_lines: int = 8,
 ) -> List[str]:

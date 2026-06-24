@@ -1,12 +1,13 @@
-from typing import Collection, FrozenSet, List, Generator, Optional, Set, Union
+from typing import Collection, Dict, FrozenSet, List, Generator, Optional, Set, Tuple, Union
 
-from codeine.utils.display import format_banned_sequences, format_forbidden_motif, \
-    format_count, format_restrictions, format_positions
+from codeine.graph.base import CodonRestriction
 from codeine.graph.constraints import MutationDistanceConstraint
 from codeine.motifs.restriction import RestrictionSite
 from codeine.space.coding import CodingSpace
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
+from codeine.utils.display import format_forbidden_motifs, format_forbidden_motif,\
+    format_count, format_restrictions, format_positions
 
 
 class MutationSpace:
@@ -152,7 +153,7 @@ class MutationSpace:
 
             lines += [
                 'Forbidden motifs:',
-                *format_banned_sequences(
+                *format_forbidden_motifs(
                     [
                         format_forbidden_motif(
                             motif,
@@ -203,86 +204,80 @@ class MutationSpace:
 
         return '\n'.join(lines)
 
-    @property
-    def aa_seq(self) -> str:
+    def sample(self) -> str:
         """
-        The amino acid sequence for this mutation space.
-        """
-        return self.view.aa_seq
+        Sample a variant from this mutation space.
 
-    @property
-    def translation_table(self) -> TranslationTable:
+        Returns
+        -------
+        A sampled string sequence from this mutation space.
         """
-        The translation table from the underlying graph.
-        """
-        return self.view.translation_table
+        return self.view.sample()
 
-    @property
-    def codon_weights(self) -> CodonWeights:
+    def enumerate(self) -> Generator[str, None, None]:
         """
-        The codon weights from the underlying graph.
-        """
-        return self.view.codon_weights
+        Generate all sequences in this mutation space.
 
-    @property
-    def codon_restrictions(self):
+        Yields
+        ------
+        str
+            A valid coding sequence.
         """
-        The fixed codon restrictions from the underlying graph.
-        """
-        return self.view.codon_restrictions
+        yield from self.view.enumerate()
 
-    @property
-    def context_l(self) -> str:
+    def contains(self, seq: str) -> bool:
         """
-        The left context sequence from the underlying graph.
-        """
-        return self.view.context_l
+        Check whether a coding sequence is contained in this mutation space.
 
-    @property
-    def context_r(self) -> str:
-        """
-        The right context sequence from the underlying graph.
-        """
-        return self.view.context_r
+        Parameters
+        ----------
+        seq
+            The sequence to check
 
-    @property
-    def pinned_codons(self):
+        Returns
+        -------
+        True if and only if the sequence is contained in this mutation space.
         """
-        Pins currently applied to the mutation view.
+        return self.view.contains(seq)
 
-        This includes inherited pins and pins used internally to freeze positions.
+    def set_free_positions(self, positions: Collection[int]) -> None:
         """
-        return self.view.pinned_codons
+        Replace the current set of free positions.
+        """
+        self._free_positions = self._validate_positions(positions)
+        self._update_pins()
 
-    @property
-    def banned_sequences(self):
+    def freeze_positions(self, positions: Collection[int]) -> None:
         """
-        Banned nucleotide sequences inherited by this mutation space.
+        Freeze the given codon positions.
         """
-        return self.view.banned_sequences
+        positions = self._validate_positions(positions)
 
-    @property
-    def free_positions(self) -> FrozenSet[int]:
-        """
-        Codon positions that are currently free to mutate.
-        """
-        return frozenset(self._free_positions)
+        self._free_positions -= positions
+        self._update_pins()
 
-    @property
-    def frozen_positions(self) -> FrozenSet[int]:
+    def unfreeze_positions(self, positions: Collection[int]) -> None:
         """
-        Codon positions that are currently fixed to the reference CDS.
+        Unfreeze the given codon positions.
         """
-        all_positions = set(range(1, len(self.view.aa_seq) + 1))
-        return frozenset(all_positions - self._free_positions)
+        positions = self._validate_positions(positions)
 
-    @property
-    def has_distance_constraints(self) -> bool:
+        self._free_positions |= positions
+        self._update_pins()
+
+    def freeze_all(self) -> None:
         """
-        Whether this mutation space has mutation distance constraints.
+        Freeze all codon positions.
         """
-        distance_constraints = [self.min_nts, self.max_nts, self.min_codons, self.max_codons]
-        return any(value is not None for value in distance_constraints)
+        self._free_positions.clear()
+        self._update_pins()
+
+    def unfreeze_all(self) -> None:
+        """
+        Unfreeze all codon positions.
+        """
+        self._free_positions = set(range(1, len(self.view.aa_seq) + 1))
+        self._update_pins()
 
     def set_distance_constraints(self,
                                  min_nts: Optional[int] = None,
@@ -320,6 +315,87 @@ class MutationSpace:
         """
         self.set_distance_constraints()
 
+    @property
+    def aa_seq(self) -> str:
+        """
+        The amino acid sequence for this mutation space.
+        """
+        return self.view.aa_seq
+
+    @property
+    def translation_table(self) -> TranslationTable:
+        """
+        The translation table from the underlying graph.
+        """
+        return self.view.translation_table
+
+    @property
+    def codon_weights(self) -> CodonWeights:
+        """
+        The codon weights from the underlying graph.
+        """
+        return self.view.codon_weights
+
+    @property
+    def codon_restrictions(self) -> Dict[int, CodonRestriction]:
+        """
+        The fixed codon restrictions from the underlying graph.
+        """
+        return self.view.codon_restrictions
+
+    @property
+    def context_l(self) -> str:
+        """
+        The left context sequence from the underlying graph.
+        """
+        return self.view.context_l
+
+    @property
+    def context_r(self) -> str:
+        """
+        The right context sequence from the underlying graph.
+        """
+        return self.view.context_r
+
+    @property
+    def pinned_codons(self) -> Dict[int, List[str]]:
+        """
+        Pins currently applied to the mutation view.
+
+        This includes inherited pins and pins used internally to freeze positions.
+        """
+        return self.view.pinned_codons
+
+    @property
+    def n_valid_variants(self) -> int:
+        """
+        Number of valid variants under the current mutation constraints.
+        """
+        return self.view.n_valid_sequences
+
+    @property
+    def free_positions(self) -> FrozenSet[int]:
+        """
+        Codon positions that are currently free to mutate.
+        """
+        return frozenset(self._free_positions)
+
+    @property
+    def frozen_positions(self) -> FrozenSet[int]:
+        """
+        Codon positions that are currently fixed to the reference CDS.
+        """
+        all_positions = set(range(1, len(self.view.aa_seq) + 1))
+        return frozenset(all_positions - self._free_positions)
+
+    @property
+    def has_distance_constraints(self) -> bool:
+        """
+        Whether this mutation space has mutation distance constraints.
+        """
+        distance_constraints = [self.min_nts, self.max_nts, self.min_codons, self.max_codons]
+        return any(value is not None for value in distance_constraints)
+
     def _update_path_constraint(self) -> None:
         """
         Apply the current distance constraints to the underlying view.
@@ -356,6 +432,9 @@ class MutationSpace:
         """
         if value is None:
             return
+
+        if not isinstance(value, int):
+            raise TypeError(f'{name} must be an integer.')
 
         if value < 0:
             raise ValueError(f'{name} must be non-negative.')
@@ -425,85 +504,3 @@ class MutationSpace:
             return
 
         self.view.set_pinned_codons(pins)
-
-    def set_free_positions(self, positions: Collection[int]) -> None:
-        """
-        Replace the current set of free positions.
-        """
-        self._free_positions = self._validate_positions(positions)
-        self._update_pins()
-
-    def freeze_positions(self, positions: Collection[int]) -> None:
-        """
-        Freeze the given codon positions.
-        """
-        positions = self._validate_positions(positions)
-
-        self._free_positions -= positions
-        self._update_pins()
-
-    def unfreeze_positions(self, positions: Collection[int]) -> None:
-        """
-        Unfreeze the given codon positions.
-        """
-        positions = self._validate_positions(positions)
-
-        self._free_positions |= positions
-        self._update_pins()
-
-    def freeze_all(self) -> None:
-        """
-        Freeze all codon positions.
-        """
-        self._free_positions.clear()
-        self._update_pins()
-
-    def unfreeze_all(self) -> None:
-        """
-        Unfreeze all codon positions.
-        """
-        self._free_positions = set(range(1, len(self.view.aa_seq) + 1))
-        self._update_pins()
-
-    @property
-    def n_valid_variants(self) -> int:
-        """
-        Number of valid variants under the current mutation constraints.
-        """
-        return self.view.n_valid_sequences
-
-    def contains(self, seq: str) -> bool:
-        """
-        Check whether a DNA sequence is contained in this mutation space.
-
-        Parameters
-        ----------
-        seq
-            The sequence to check
-
-        Returns
-        -------
-        True if and only if the sequence is contained in this mutation space.
-        """
-        return self.view.contains(seq)
-
-    def sample(self) -> str:
-        """
-        Sample a variant from this mutation space.
-
-        Returns
-        -------
-        A sampled string sequence from this mutation space.
-        """
-        return self.view.sample()
-
-    def enumerate(self) -> Generator[str, None, None]:
-        """
-        Generate all sequences in this mutation space.
-
-        Yields
-        ------
-        str
-            A valid DNA sequence.
-        """
-        yield from self.view.enumerate()
