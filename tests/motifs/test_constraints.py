@@ -5,10 +5,6 @@ from codeine.motifs.constraints import expand_and_validate_forbidden_motifs, \
     expand_and_validate_max_homopolymer, expand_and_validate_sequence_constraints
 
 
-def test_expand_forbidden_motifs_none():
-    assert expand_and_validate_forbidden_motifs(None, rna=False) == []
-
-
 def test_expand_forbidden_motifs_single_string_dna():
     motifs = 'gaattc'
     validated = expand_and_validate_forbidden_motifs(motifs, rna=False)
@@ -62,10 +58,6 @@ def test_forbidden_motif_invalid_nucleotide_raises():
         expand_and_validate_forbidden_motifs('MANCHEGO', rna=True)
 
 
-def test_validate_max_homopolymer_none():
-    assert expand_and_validate_max_homopolymer(None) == []
-
-
 def test_validate_max_homopolymer_int():
     assert expand_and_validate_max_homopolymer(4) == ['AAAAA', 'CCCCC', 'GGGGG', 'TTTTT']
 
@@ -89,3 +81,13 @@ def test_validate_mixed_restrictions():
     motifs = [RestrictionSite.BsaI, 'GGTTCC']
     result = expand_and_validate_sequence_constraints(max_homopolymer=max_homopolymer, forbidden_motifs=motifs)
     assert set(result) == {'GAGACC', 'GGTCTC', 'GGTTCC', 'AAAAA', 'CCCCC', 'GGGGG', 'TTTTT'}
+
+    max_homopolymer = None
+    motifs = [RestrictionSite.BsaI, 'GGTTCC']
+    result = expand_and_validate_sequence_constraints(max_homopolymer=max_homopolymer, forbidden_motifs=motifs)
+    assert set(result) == {'GAGACC', 'GGTCTC'}
+
+    max_homopolymer = 4
+    motifs = None
+    result = expand_and_validate_sequence_constraints(max_homopolymer=max_homopolymer, forbidden_motifs=motifs)
+    assert set(result) == {'AAAAA', 'CCCCC', 'GGGGG', 'TTTTT'}

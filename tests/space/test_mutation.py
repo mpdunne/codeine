@@ -1025,7 +1025,7 @@ def helper_codon_counts_by_block_position(seqs, block_size=5):
 ))
 def test_mutation_codon_distributions_are_stable_across_sequence(aa_seq, banned, distance_constraints):
 
-    space = CodingSpace(aa_seq, context_l='aaa', context_r='ttt', forbidden_motifs=banned)
+    space = CodingSpace(aa_seq, context_l='aaa', context_r='ttt', forbidden_motifs=banned, seed=8765309)
 
     ref = space[0]
 
@@ -1036,7 +1036,6 @@ def test_mutation_codon_distributions_are_stable_across_sequence(aa_seq, banned,
     seqs = [muts.sample() for _ in range(n)]
 
     counts = helper_codon_counts_by_block_position(seqs)
-
     pvalues = []
 
     # skip M, only one codon

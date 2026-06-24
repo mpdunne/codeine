@@ -194,7 +194,7 @@ def test_coding_space_contains():
     assert not space.contains('ATG')
 
 
-def test_coding_space_contains():
+def test_coding_space_sampled_in_space():
     space = CodingSpace('MIKEY')
     for _ in range(100):
         seq = space.sample()
@@ -204,7 +204,7 @@ def test_coding_space_contains():
 
 def test_forbidden_motifs_are_stored():
     space = CodingSpace('MIKEY', forbidden_motifs=[RestrictionSite.EcoRI, 'AAAA'])
-    assert space.view.banned_sequences == ('AAAA', 'GAATTC')
+    assert space.view.banned_sequences == ['AAAA', 'GAATTC']
 
 
 def test_max_homopolymer_is_stored():
