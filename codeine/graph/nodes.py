@@ -1,5 +1,4 @@
-import uuid
-from typing import List
+from typing import Sequence
 
 
 class Node:
@@ -41,14 +40,13 @@ class ContextNode(Node):
         self.sequence = sequence
 
         # Set an ID for this node.
-        self.id = f'context-{pos}-{uuid.uuid4().hex[:8]}'
+        self.id = f'context-{pos}'
 
     def __repr__(self) -> str:
         return (
             f'ContextNode('
             f'id={self.id}'
             f', pos={self.pos}'
-            #f', seq={self.sequence}'
             f')'
         )
 
@@ -58,7 +56,7 @@ class CodonNode(Node):
     Basic class representing a codon node on the codon graph.
     """
 
-    def __init__(self, pos: int, aa: str, codons: List[str]) -> None:
+    def __init__(self, pos: int, aa: str, codons: Sequence[str]) -> None:
         """
         Constructor for the CodonNode class.
 
@@ -78,10 +76,10 @@ class CodonNode(Node):
         self.aa = aa
 
         # Set an ID for this node.
-        self.id = f'{aa}{pos}-{uuid.uuid4().hex[:8]}'
+        self.id = f'{aa}{pos}'
 
         # Initialise the basic attributes.
-        self.codons = codons
+        self.codons = tuple(codons)
 
     def __repr__(self) -> str:
         codons = ','.join(self.codons)
@@ -107,11 +105,7 @@ class EndNode(Node):
         Constructor for the EndNode class.
         """
         super().__init__()
-        self.id = f'end-{uuid.uuid4().hex[:8]}'
+        self.id = 'end'
 
     def __repr__(self) -> str:
-        return (
-            f'EndNode('
-            f'id={self.id}, '
-            f')'
-        )
+        return (f'EndNode(id={self.id})')

@@ -8,7 +8,7 @@ if TYPE_CHECKING:
     from codeine.space.mutation import MutationSpace
 
 from codeine.graph.base import CodonGraph, CodonRestriction
-from codeine.motifs.constraints import expand_and_validate_sequence_constraints, ForbiddenMotifs
+from codeine.motifs.validate import expand_and_validate_sequence_constraints, ForbiddenMotifs
 from codeine.motifs.restriction import RestrictionSite
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights

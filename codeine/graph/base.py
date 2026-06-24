@@ -1,21 +1,18 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-from codeine.graph.nodes import Node, ContextNode, CodonNode, EndNode
-
-if TYPE_CHECKING:
-    from codeine.graph.view import CodonGraphView
-
 import random
 
 from collections import Counter
-from typing import Dict, List, Optional, Sequence, Union, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Sequence, Tuple, Union
 
-from codeine.utils.display import format_restrictions
+from codeine.graph.nodes import CodonNode, ContextNode, EndNode, Node
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
+from codeine.utils.display import format_restrictions
 from codeine.utils.sampling import Seedable
+
+if TYPE_CHECKING:
+    from codeine.graph.view import CodonGraphView
 
 CodonRestriction = Union[str, Sequence[str]]
 
@@ -29,15 +26,13 @@ class CodonGraph:
         self,
         aa_seq: str,
         codon_restrictions: Optional[Dict[int, CodonRestriction]] = None,
-        translation_table: TranslationTable = None,
-        weights: CodonWeights = None,
+        translation_table: Optional[TranslationTable] = None,
+        weights: Optional[CodonWeights] = None,
         context_l: str = '',
         context_r: str = '',
     ) -> None:
         if len(aa_seq) == 0:
             raise ValueError('Please provide non-empty sequence!')
-
-        self.aa_seq = aa_seq.upper()
 
         if translation_table is None:
             rna = weights.rna if weights is not None else False
@@ -51,11 +46,14 @@ class CodonGraph:
         self.tt = translation_table
         self.cw = weights
 
+        self.aa_seq = aa_seq.upper()
+        self.validate_aa_seq()
+
         self.codon_restrictions = {}
         self.codon_restrictions = self.validate_codon_restrictions(codon_restrictions)
 
-        self.context_l = context_l.upper()
-        self.context_r = context_r.upper()
+        self.context_l = self.tt.normalise_sequence(context_l)
+        self.context_r = self.tt.normalise_sequence(context_r)
 
         self.left_context_node = None
         self.right_context_node = None
@@ -89,11 +87,22 @@ class CodonGraph:
                     label='restricted positions',
                 ),
                 '',
-                ]
+            ]
 
         return '\n'.join(lines)
 
-    def validate_codon_restrictions(self, codon_restrictions: Dict[int, CodonRestriction]) -> Dict[int, List[str]]:
+    def validate_aa_seq(self) -> None:
+        """
+        Check that all amino acids in the sequence are supported.
+        """
+        for pos, aa in enumerate(self.aa_seq, start=1):
+            if aa not in self.tt.aa_to_codons:
+                raise ValueError(f'Invalid amino acid {aa} at position {pos}.')
+
+    def validate_codon_restrictions(
+            self,
+            codon_restrictions: Optional[Dict[int, CodonRestriction]],
+    ) -> Dict[int, List[str]]:
         """
         Check the inputted restrictions make sense!
         """
@@ -160,27 +169,6 @@ class CodonGraph:
 
         if actual_codons != expected_codons:
             raise ValueError('Codon weights and translation table do not match.')
-
-    def normalise_sequence(self, sequence: str) -> str:
-        """
-        Normalise a nucleotide sequence to match this graph's molecule type.
-
-        Parameters
-        ----------
-        sequence
-            A DNA or RNA sequence.
-
-        Returns
-        -------
-        str
-            The sequence in the same alphabet as the translation table.
-        """
-        sequence = sequence.upper()
-
-        if self.tt.rna:
-            return sequence.replace('T', 'U')
-
-        return sequence.replace('U', 'T')
 
     def codon_node_by_pos(self, pos: int) -> CodonNode:
         """

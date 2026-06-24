@@ -13,6 +13,35 @@ def test_empty_sequence_raises():
         CodonGraph('')
 
 
+def test_invalid_amino_acid_raises():
+    with pytest.raises(ValueError):
+        CodonGraph('MIXEY')
+
+
+def test_lowercase_sequence_is_accepted():
+    graph = CodonGraph('mikey', codon_restrictions={3: 'aaa'})
+    assert graph.aa_seq == 'MIKEY'
+    assert graph.codon_restrictions[3] == ['AAA']
+
+
+def test_contexts_are_normalised_to_graph_molecule_type():
+    graph = CodonGraph('MIKEY', context_l='aaa', context_r='uuu')
+    assert graph.left_context_node.sequence == 'AAA'
+    assert graph.right_context_node.sequence == 'TTT'
+
+    tt = translation_table = TranslationTable(rna=True)
+    graph = CodonGraph('MIKEY', context_l='aaa', context_r='ttt', translation_table=tt)
+    assert graph.left_context_node.sequence == 'AAA'
+    assert graph.right_context_node.sequence == 'UUU'
+
+
+def test_rna_codon_restrictions_are_normalised():
+    tt = TranslationTable(rna=True)
+    graph = CodonGraph('MIKEY', codon_restrictions={1: 'ATG'}, translation_table=tt)
+    assert graph.codon_restrictions[1] == ['AUG']
+    assert graph.codon_node_by_pos(1).codons == ('AUG',)
+
+
 def test_invalid_codon_restriction_positions_raises():
     with pytest.raises(ValueError):
         CodonGraph('MIKEY', codon_restrictions={-1: 'ATG'})
@@ -43,19 +72,20 @@ def test_codon_restrictions_are_uppercased():
 def test_single_codon_restriction_is_applied():
     graph = CodonGraph('MIKEY', codon_restrictions={3: 'AAA'})
     node = graph.codon_node_by_pos(3)
-    assert node.codons == ['AAA']
+    assert node.codons == ('AAA',)
 
 
 def test_multiple_codon_restriction_is_applied():
     graph = CodonGraph('MIKEY', codon_restrictions={3: ['AAA', 'AAG']})
     node = graph.codon_node_by_pos(3)
-    assert node.codons == ['AAA', 'AAG']
+    assert node.codons == ('AAA', 'AAG')
 
 
-def test_lowercase_sequence_is_accepted():
-    graph = CodonGraph('mikey', codon_restrictions={3: 'aaa'})
-    assert graph.aa_seq == 'MIKEY'
-    assert graph.codon_restrictions[3] == ['AAA']
+def test_validate_codon_restrictions_respects_existing_restrictions():
+    graph = CodonGraph('MIKEY', codon_restrictions={3: ['AAA']})
+
+    with pytest.raises(ValueError):
+        graph.validate_codon_restrictions({3: ['AAG']})
 
 
 def test_graph_has_initial_and_final_nodes():
