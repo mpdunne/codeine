@@ -30,14 +30,14 @@ def test_contexts_are_normalised_to_graph_molecule_type():
     assert graph.right_context_node.sequence == 'TTT'
 
     tt = translation_table = TranslationTable(rna=True)
-    graph = CodonGraph('MIKEY', context_l='aaa', context_r='ttt', tt)
+    graph = CodonGraph('MIKEY', context_l='aaa', context_r='ttt', translation_table=tt)
     assert graph.left_context_node.sequence == 'AAA'
     assert graph.right_context_node.sequence == 'UUU'
 
 
 def test_rna_codon_restrictions_are_normalised():
     tt = TranslationTable(rna=True)
-    graph = CodonGraph('MIKEY', codon_restrictions={1: 'ATG'}, translation_table=tt,)
+    graph = CodonGraph('MIKEY', codon_restrictions={1: 'ATG'}, translation_table=tt)
     assert graph.codon_restrictions[1] == ['AUG']
     assert graph.codon_node_by_pos(1).codons == ('AUG',)
 
