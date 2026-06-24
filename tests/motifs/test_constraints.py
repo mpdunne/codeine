@@ -85,7 +85,7 @@ def test_validate_mixed_restrictions():
     max_homopolymer = None
     motifs = [RestrictionSite.BsaI, 'GGTTCC']
     result = expand_and_validate_sequence_constraints(max_homopolymer=max_homopolymer, forbidden_motifs=motifs)
-    assert set(result) == {'GAGACC', 'GGTCTC'}
+    assert set(result) == {'GAGACC', 'GGTCTC', 'GGTTCC'}
 
     max_homopolymer = 4
     motifs = None
