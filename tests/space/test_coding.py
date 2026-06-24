@@ -204,7 +204,7 @@ def test_coding_space_contains():
 
 def test_forbidden_motifs_are_stored():
     space = CodingSpace('MIKEY', forbidden_motifs=[RestrictionSite.EcoRI, 'AAAA'])
-    assert space.forbidden_sequences == ('AAAA', 'GAATTC')
+    assert space.view.banned_sequences == ('AAAA', 'GAATTC')
 
 
 def test_max_homopolymer_is_stored():
@@ -214,15 +214,15 @@ def test_max_homopolymer_is_stored():
 
 def test_max_homopolymer_is_expanded_correctly():
     space = CodingSpace('MIKEY', max_homopolymer=None)
-    assert not space.forbidden_sequences
+    assert not space.view.banned_sequences
 
     space = CodingSpace('MIKEY', max_homopolymer=4)
-    assert all(nt * 5 in space.forbidden_sequences for nt in 'ACGT')
+    assert all(nt * 5 in space.view.banned_sequences for nt in 'ACGT')
 
 
 def test_mixed_restrictions():
     space = CodingSpace('MIKEY', max_homopolymer=4, forbidden_motifs=[RestrictionSite.BsaI, 'GGTTCC'])
-    assert set(space.forbidden_sequences) == {'GAGACC', 'GGTCTC', 'GGTTCC', 'AAAAA', 'CCCCC', 'GGGGG', 'TTTTT'}
+    assert set(space.view.banned_sequences) == {'GAGACC', 'GGTCTC', 'GGTTCC', 'AAAAA', 'CCCCC', 'GGGGG', 'TTTTT'}
 
 
 def test_forbidden_motifs_repr():
@@ -316,7 +316,6 @@ def test_coding_space_pickle_preserves_constraints():
 
     assert loaded.forbidden_motifs == space.forbidden_motifs
     assert loaded.max_homopolymer == space.max_homopolymer
-    assert loaded.forbidden_sequences == space.forbidden_sequences
     assert loaded.n_valid_sequences == space.n_valid_sequences
 
 
@@ -435,13 +434,11 @@ def test_coding_space_can_set_forbidden_motifs():
     space.set_forbidden_motifs(['AAA'])
 
     assert space.forbidden_motifs == ['AAA']
-    assert set(space.forbidden_sequences) == {'AAA'}
     assert set(space.view.banned_sequences) == {'AAA'}
 
     space.clear_forbidden_motifs()
 
     assert space.forbidden_motifs is None
-    assert set(space.forbidden_sequences) == set()
     assert set(space.view.banned_sequences) == set()
 
 
@@ -450,13 +447,11 @@ def test_coding_space_can_set_max_homopolymer():
     space.set_max_homopolymer(2)
 
     assert space.max_homopolymer == 2
-    assert set(space.forbidden_sequences) == {'AAA', 'CCC', 'GGG', 'TTT'}
     assert set(space.view.banned_sequences) == {'AAA', 'CCC', 'GGG', 'TTT'}
 
     space.clear_max_homopolymer()
 
     assert space.max_homopolymer is None
-    assert set(space.forbidden_sequences) == set()
     assert set(space.view.banned_sequences) == set()
 
 
@@ -466,26 +461,10 @@ def test_coding_space_forbidden_motifs_and_max_homopolymer_combine():
     space.set_forbidden_motifs(['GAG'])
     space.set_max_homopolymer(2)
 
-    assert set(space.forbidden_sequences) == {'AAA', 'CCC', 'GGG', 'TTT', 'GAG'}
     assert set(space.view.banned_sequences) == {'AAA', 'CCC', 'GGG', 'TTT', 'GAG'}
 
     space.clear_forbidden_motifs()
-    assert set(space.forbidden_sequences) == {'AAA', 'CCC', 'GGG', 'TTT'}
     assert set(space.view.banned_sequences) == {'AAA', 'CCC', 'GGG', 'TTT'}
 
     space.clear_max_homopolymer()
-    assert set(space.forbidden_sequences) == set()
     assert set(space.view.banned_sequences) == set()
-
-
-def test_forbidden_sequences_is_read_only():
-    space = CodingSpace('MIKEY')
-
-    space.set_forbidden_motifs('GGG')
-    assert isinstance(space.forbidden_sequences, tuple)
-    assert space.forbidden_sequences == ('GGG',)
-
-    with pytest.raises(AttributeError):
-        space.forbidden_sequences = ('AAA',)
-
-
