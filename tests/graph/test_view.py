@@ -8,7 +8,6 @@ from unittest.mock import MagicMock
 from scipy.stats import chisquare, chi2_contingency
 
 from codeine.constraints.base import PathConstraint
-from codeine.constraints.banned import BannedSequenceTracker
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
 from codeine.graph.base import CodonGraph
@@ -685,15 +684,6 @@ def helper_ban_sequences_and_check_sample(
         )
 
 
-def test_view_sampler_keys_include_tracker_state():
-    view = CodonGraph('MIKEY').view()
-
-    for key in view.samplers:
-        node, state = key
-        assert isinstance(node, CodonNode)
-        assert state == frozenset()
-
-
 def test_sample_respects_pins():
     view = CodonGraph('MIKEY').view(seed=8675309)
     view.pin_codons({2: 'ATT'})
@@ -774,19 +764,6 @@ def test_banned_sequence_spanning_both_contexts_is_respected():
 
 def helper_arbitrary_coding_sequence(aa_seq, translation_table):
     return ''.join(translation_table.aa_to_codons[aa][0] for aa in aa_seq)
-
-
-def test_tracker_finds_ban_inside_left_context():
-    graph = CodonGraph('REGINALD', context_l='aaggaaggaagg')
-    banned_seqs = (
-        'ATG',
-        'TAAAAG',
-        'AAGGAA',
-        'ATTAAGG',
-        'GAATAC',
-    )
-    tracker = BannedSequenceTracker(graph, banned_seqs)
-    assert tracker.paths
 
 
 @pytest.mark.parametrize('aa_seq', SHORT_AA_SEQUENCES)
@@ -1048,7 +1025,7 @@ def test_regression_banned_sequences_long_aa_sequence_many_banned_sequences(aa_s
 
 
 class RejectAllConstraint(PathConstraint):
-    def advance(self, state, node, choice):
+    def advance(self, state, pos, choice):
         return None
 
 
