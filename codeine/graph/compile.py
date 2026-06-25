@@ -152,26 +152,41 @@ class ViewCompiler:
         Compile one non-final graph state after all valid children have been compiled.
         """
         state = self._state(node, tracker_state, constraint_state)
-        raw_results = []
+        choice_results = {}
+        descendant_count = 0
+        descendant_weight_masses = []
+        is_coding = isinstance(node, CodonNode)
 
         self._record_state_kind(state, node)
 
         for choice in self.choices_by_node[node]:
-            result = self._choice_result(node, tracker_state, constraint_state, choice)
+            child_state = self.child_state_by_state_choice.get((state, choice))
 
-            if result is None:
+            if child_state is None:
                 continue
 
-            raw_results.append(result)
+            child, _, _ = child_state
+            child_count, child_weight_mass = self.totals_by_state[child_state]
 
-        choice_results = {}
-        descendant_count = 0
-        descendant_weight_masses = []
+            if child_count == 0:
+                continue
 
-        for result in raw_results:
-            choice_results[result.choice] = result
-            descendant_count += result.descendant_count
-            descendant_weight_masses.append(result.descendant_weight_mass)
+            descendant_weight_mass = self._choice_weight_mass(node, choice, child_weight_mass)
+
+            if descendant_weight_mass == -math.inf:
+                continue
+
+            result = ChoiceResult(
+                choice=choice,
+                descendant_count=child_count,
+                descendant_weight_mass=descendant_weight_mass,
+                next_state=None if child is self.graph.final_node else child_state,
+                is_coding=is_coding,
+            )
+
+            choice_results[choice] = result
+            descendant_count += child_count
+            descendant_weight_masses.append(descendant_weight_mass)
 
         descendant_weight_mass = self._sum_weight_masses(descendant_weight_masses)
 
@@ -198,41 +213,6 @@ class ViewCompiler:
             return node.codons
 
         return [node.sequence]
-
-    def _choice_result(
-        self,
-        node,
-        tracker_state: TrackerState,
-        constraint_state: ConstraintState,
-        choice: str,
-    ) -> Optional[ChoiceResult]:
-        """
-        Compile the result of taking one outgoing choice from a graph node.
-        """
-        state = self._state(node, tracker_state, constraint_state)
-        child_state = self.child_state_by_state_choice.get((state, choice))
-
-        if child_state is None:
-            return None
-
-        child, _, _ = child_state
-        child_count, child_weight_mass = self.totals_by_state[child_state]
-
-        if child_count == 0:
-            return None
-
-        descendant_weight_mass = self._choice_weight_mass(node, choice, child_weight_mass)
-
-        if descendant_weight_mass == -math.inf:
-            return None
-
-        return ChoiceResult(
-            choice=choice,
-            descendant_count=child_count,
-            descendant_weight_mass=descendant_weight_mass,
-            next_state=None if child is self.graph.final_node else child_state,
-            is_coding=isinstance(node, CodonNode),
-        )
 
     def _uncompiled_children(
         self,
