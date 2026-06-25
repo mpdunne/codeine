@@ -42,8 +42,6 @@ class CompiledView:
 
     choices_by_state: Dict[TraversalState, Dict[str, ChoiceResult]]
     choice_results_by_state: Dict[TraversalState, Tuple[ChoiceResult, ...]]
-    codon_pos_by_state: Dict[TraversalState, int]
-    fixed_choice_by_state: Dict[TraversalState, str]
 
     samplers: dict
 
@@ -64,8 +62,6 @@ class ViewCompiler:
         self.totals_by_state: Dict[TraversalState, Tuple[int, float]] = {}
         self.choices_by_state: Dict[TraversalState, Dict[str, ChoiceResult]] = {}
         self.choice_results_by_state: Dict[TraversalState, Tuple[ChoiceResult, ...]] = {}
-        self.codon_pos_by_state: Dict[TraversalState, int] = {}
-        self.fixed_choice_by_state: Dict[TraversalState, str] = {}
         self.child_state_by_state_choice: Dict[Tuple[TraversalState, str], TraversalState] = {}
 
         self.log_weight_by_codon = {
@@ -99,8 +95,6 @@ class ViewCompiler:
             n_valid_sequences=self.totals_by_state[initial_state][0],
             choices_by_state=self.choices_by_state,
             choice_results_by_state=self.choice_results_by_state,
-            codon_pos_by_state=self.codon_pos_by_state,
-            fixed_choice_by_state=self.fixed_choice_by_state,
             samplers=samplers,
         )
 
@@ -175,8 +169,6 @@ class ViewCompiler:
         descendant_count = 0
         descendant_log_masses = []
         is_coding = isinstance(node, CodonNode)
-
-        self._record_state_kind(state, node)
 
         for choice in self.choices_by_node[node]:
             child_state = self.child_state_by_state_choice.get((state, choice))
@@ -279,16 +271,6 @@ class ViewCompiler:
                 samplers[state] = Sampler(runtime_items, runtime_weights, rng=self.view._rng)
 
         return samplers
-
-    def _record_state_kind(self, state: TraversalState, node) -> None:
-        """
-        Record whether a graph state consumes a codon from the user sequence
-        or follows a fixed context sequence.
-        """
-        if isinstance(node, CodonNode):
-            self.codon_pos_by_state[state] = node.pos
-        else:
-            self.fixed_choice_by_state[state] = node.sequence
 
     def _get_choices_for_node(self, node: Node) -> List[str]:
         """

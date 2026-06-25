@@ -6,6 +6,7 @@ from typing import Dict, Generator, List, Optional, Sequence, Union
 from codeine.constraints.base import PathConstraint
 from codeine.constraints.banned import BannedSequenceTracker
 from codeine.graph.base import CodonGraph, CodonRestriction
+from codeine.graph.node import CodonNode
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
 from codeine.utils.display import format_forbidden_motifs, format_count, format_restrictions
@@ -59,8 +60,6 @@ class CodonGraphView:
         self.initial_state = None
         self.choices_by_state = {}
         self.choice_results_by_state = {}
-        self.codon_pos_by_state = {}
-        self.fixed_choice_by_state = {}
 
         self.samplers = {}
 
@@ -176,18 +175,16 @@ class CodonGraphView:
 
         state = self.initial_state
         choices_by_state = self.choices_by_state
-        pos_by_state = self.codon_pos_by_state
-        fixed_choice_by_state = self.fixed_choice_by_state
 
         while state is not None:
 
-            pos = pos_by_state.get(state)
+            node = state[0]
 
-            if pos is None:
-                choice = fixed_choice_by_state[state]
-            else:
-                start = (pos - 1) * 3
+            if isinstance(node, CodonNode):
+                start = (node.pos - 1) * 3
                 choice = seq[start:start + 3]
+            else:
+                choice = node.sequence
 
             result = choices_by_state[state].get(choice)
 
@@ -349,8 +346,6 @@ class CodonGraphView:
         view.initial_state = self.initial_state
         view.choices_by_state = self.choices_by_state
         view.choice_results_by_state = self.choice_results_by_state
-        view.codon_pos_by_state = self.codon_pos_by_state
-        view.fixed_choice_by_state = self.fixed_choice_by_state
 
         view.samplers = self.samplers
 
@@ -372,8 +367,6 @@ class CodonGraphView:
         self.initial_state = compiled.initial_state
         self.choices_by_state = compiled.choices_by_state
         self.choice_results_by_state = compiled.choice_results_by_state
-        self.codon_pos_by_state = compiled.codon_pos_by_state
-        self.fixed_choice_by_state = compiled.fixed_choice_by_state
 
         self.samplers = compiled.samplers
 
@@ -557,7 +550,6 @@ class CodonGraphView:
         #       coding sequence constructed so far,
         # )
         choice_results_by_state = self.choice_results_by_state
-        codon_pos_by_state = self.codon_pos_by_state
 
         stack = [(self.initial_state, '')]
 
@@ -573,7 +565,9 @@ class CodonGraphView:
             if not results:
                 continue
 
-            if state not in codon_pos_by_state:
+            node = state[0]
+
+            if not isinstance(node, CodonNode):
                 stack.append((results[0].next_state, prefix))
                 continue
 
@@ -607,7 +601,6 @@ class CodonGraphView:
         #       0-based index of the first sequence reachable from that state.
         # )
         choice_results_by_state = self.choice_results_by_state
-        codon_pos_by_state = self.codon_pos_by_state
 
         stack = [(self.initial_state, '', 0)]
 
