@@ -12,6 +12,7 @@ from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
 from codeine.graph.base import CodonGraph
 from codeine.graph.nodes import CodonNode
+from codeine.graph.view import CodonGraphView
 
 from tests.data import NORMAL_PROTEINS
 
@@ -526,6 +527,54 @@ def test_public_methods_compile_if_required():
     assert not view._requires_compile
 
 
+def test_changing_copied_view_pins_leaves_original_untouched():
+    view = CodonGraph('MIKEY').view()
+    copied = view.copy()
+
+    copied.pin_codons({1: 'ATG'})
+    assert view.pinned_codons == {}
+    assert copied.pinned_codons == {1: ['ATG']}
+
+    view.pin_codons({2: 'ATT'})
+    assert view.pinned_codons == {2: ['ATT']}
+    assert copied.pinned_codons == {1: ['ATG']}
+
+
+def test_changing_copied_view_bans_leaves_original_untouched():
+    view = CodonGraph('MIKEY').view()
+    view.set_banned_sequences(['AAA'])
+    copied = view.copy()
+
+    copied.set_banned_sequences(['TTT'])
+    assert view.banned_sequences == ['AAA']
+    assert copied.banned_sequences == ['TTT']
+
+    view.clear_banned_sequences()
+    assert view.banned_sequences == []
+    assert copied.banned_sequences == ['TTT']
+
+
+def test_copied_view_recompiles_independently_after_change():
+    view = CodonGraph('M').view()
+    copied = view.copy()
+
+    assert view._requires_compile
+    assert copied._requires_compile
+
+    assert view.n_valid_sequences == copied.n_valid_sequences
+    assert not view._requires_compile
+    assert not copied._requires_compile
+
+    copied.set_banned_sequences(['ATG'])
+    assert not view._requires_compile
+    assert copied._requires_compile
+
+    assert copied.n_valid_sequences == 0
+    assert view.n_valid_sequences > 0
+    assert not view._requires_compile
+    assert not copied._requires_compile
+
+
 def test_copy_preserves_compile_state():
     view = CodonGraph('MIKEY').view()
     view.pin_codons({2: 'ATC'})
@@ -704,6 +753,52 @@ def test_view_sampling_works_without_banned_sequences(aa_seq, context_l, context
 @pytest.mark.parametrize('context_r', CONTEXTS_R)
 def test_view_enumerate_works_without_banned_sequences(aa_seq, context_l, context_r):
     helper_ban_sequences_and_check_enumerate(aa_seq, [], context_l, context_r)
+
+
+def test_banned_sequences_can_be_set_and_are_normalised():
+    graph = CodonGraph('MIKEY')
+    view = CodonGraphView(graph, banned_sequences=['aaa', 'AAA', 'ttt'])
+    assert view.banned_sequences == ['AAA', 'TTT']
+
+    view = CodonGraphView(graph)
+    view.set_banned_sequences(['ccc', 'CCC', 'ggg'])
+    assert view.banned_sequences == ['CCC', 'GGG']
+
+
+def test_clear_banned_sequences_removes_bans_and_marks_stale():
+    graph = CodonGraph('MIKEY')
+    view = CodonGraphView(graph, banned_sequences=['aaa', 'AAA', 'ttt'])
+    assert view.banned_sequences == ['AAA', 'TTT']
+    assert view._requires_compile
+
+    view.compile()
+    assert not view._requires_compile
+
+    view.clear_banned_sequences()
+    assert view.banned_sequences == []
+    assert view._requires_compile
+
+
+def test_empty_banned_sequence_raises():
+    graph = CodonGraph('MIKEY')
+    with pytest.raises(ValueError, match='Banned sequences cannot be empty'):
+        view = CodonGraphView(graph, banned_sequences=[''])
+
+    with pytest.raises(ValueError, match='Banned sequences cannot be empty'):
+        view = CodonGraphView(graph)
+        view.set_banned_sequences([''])
+
+
+def test_view_exposes_graph_properties():
+    graph = CodonGraph('MIKEY')
+    view = graph.view()
+
+    assert view.aa_seq == graph.aa_seq
+    assert view.translation_table is graph.tt
+    assert view.codon_weights is graph.cw
+    assert view.codon_restrictions is graph.codon_restrictions
+    assert view.context_l == graph.context_l
+    assert view.context_r == graph.context_r
 
 
 def test_banned_sequence_entirely_in_left_context_gives_empty_space():
