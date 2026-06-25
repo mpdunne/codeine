@@ -32,7 +32,7 @@ class ChoiceResult:
     is_coding: bool
 
 
-@dataclass
+@dataclass(frozen=True)
 class CompiledView:
     """
     Cached data for a compiled CodonGraphView, to speed up sampling and enumeration.
@@ -156,13 +156,11 @@ class ViewCompiler:
 
             raw_results.append(result)
 
-        results = raw_results
-
         choice_results = {}
         descendant_count = 0
         descendant_weight_masses = []
 
-        for result in results:
+        for result in raw_results:
             choice_results[result.choice] = result
             descendant_count += result.descendant_count
             descendant_weight_masses.append(result.descendant_weight_mass)
@@ -284,29 +282,6 @@ class ViewCompiler:
                 children.append((child, advance.state, next_constraint_state, False))
 
         return children
-
-    def _normalise_choice_results(self, results: List[ChoiceResult]) -> List[ChoiceResult]:
-        """
-        Rescale descendant weight masses within one state.
-
-        Only relative weights matter for sampling, so this prevents long paths
-        from underflowing toward zero.
-        """
-        max_mass = max((result.descendant_weight_mass for result in results), default=0.0)
-
-        if max_mass <= 0:
-            return results
-
-        return [
-            ChoiceResult(
-                choice=result.choice,
-                descendant_count=result.descendant_count,
-                descendant_weight_mass=result.descendant_weight_mass / max_mass,
-                next_state=result.next_state,
-                is_coding=result.is_coding,
-            )
-            for result in results
-        ]
 
     def _normalise_weights(self, weights: List[float]) -> List[float]:
         """
