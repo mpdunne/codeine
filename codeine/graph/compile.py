@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from codeine.graph.view import CodonGraphView
 
 
-NodeState = Tuple[Node, TrackerState, ConstraintState]
+TraversalState = Tuple[Node, TrackerState, ConstraintState]
 
 
 @dataclass(frozen=True)
@@ -28,7 +28,7 @@ class ChoiceResult:
     choice: str
     descendant_count: int
     descendant_log_mass: float
-    next_state: Optional[NodeState]
+    next_state: Optional[TraversalState]
     is_coding: bool
 
 
@@ -37,13 +37,13 @@ class CompiledView:
     """
     Cached data for a compiled CodonGraphView, to speed up sampling and enumeration.
     """
-    initial_state: NodeState
+    initial_state: TraversalState
     n_valid_sequences: int
-    choices_by_state: Dict[NodeState, Dict[str, ChoiceResult]]
-    choice_start_by_state: Dict[NodeState, int]
-    choice_results_by_state: Dict[NodeState, Tuple[ChoiceResult, ...]]
-    codon_pos_by_state: Dict[NodeState, int]
-    fixed_choice_by_state: Dict[NodeState, str]
+    choices_by_state: Dict[TraversalState, Dict[str, ChoiceResult]]
+    choice_start_by_state: Dict[TraversalState, int]
+    choice_results_by_state: Dict[TraversalState, Tuple[ChoiceResult, ...]]
+    codon_pos_by_state: Dict[TraversalState, int]
+    fixed_choice_by_state: Dict[TraversalState, str]
     samplers: dict
 
 
@@ -60,14 +60,14 @@ class ViewCompiler:
         self.has_path_constraint = self.path_constraint is not None
 
         self.advance_cache: Dict[Tuple[Node, TrackerState, str], AdvanceResult] = {}
-        self.totals_by_state: Dict[NodeState, Tuple[int, float]] = {}
-        self.choices_by_state: Dict[NodeState, Dict[str, ChoiceResult]] = {}
-        self.choice_start_by_state: Dict[NodeState, int] = {}
-        self.choice_results_by_state: Dict[NodeState, Tuple[ChoiceResult, ...]] = {}
-        self.codon_pos_by_state: Dict[NodeState, int] = {}
-        self.fixed_choice_by_state: Dict[NodeState, str] = {}
+        self.totals_by_state: Dict[TraversalState, Tuple[int, float]] = {}
+        self.choices_by_state: Dict[TraversalState, Dict[str, ChoiceResult]] = {}
+        self.choice_start_by_state: Dict[TraversalState, int] = {}
+        self.choice_results_by_state: Dict[TraversalState, Tuple[ChoiceResult, ...]] = {}
+        self.codon_pos_by_state: Dict[TraversalState, int] = {}
+        self.fixed_choice_by_state: Dict[TraversalState, str] = {}
 
-        self.child_state_by_state_choice: Dict[Tuple[NodeState, str], NodeState] = {}
+        self.child_state_by_state_choice: Dict[Tuple[TraversalState, str], TraversalState] = {}
 
         self.log_weight_by_codon = {
             codon: math.log(weight)
@@ -111,27 +111,28 @@ class ViewCompiler:
             samplers=samplers,
         )
 
-    def _initial_state(self) -> NodeState:
+    def _initial_state(self) -> TraversalState:
         """
-        Return the initial compiled graph state.
+        Return the starting traversal state.
+
+        A traversal state combines the current graph node, the banned-sequence
+        tracker state, and the path-constraint state. Different tracker or
+        constraint states at the same graph node can have different valid
+        futures, so they are treated as distinct states.
         """
         if self.has_path_constraint:
             constraint_state = self.path_constraint.initial_state
         else:
             constraint_state = ()
 
-        return self.graph.initial_node, self._initial_tracker_state(), constraint_state
+        if self.view.banned_sequences:
+            tracker_state = self.tracker.initial_state
+        else:
+            tracker_state = frozenset()
 
-    def _initial_tracker_state(self) -> TrackerState:
-        """
-        Return the initial banned-sequence tracker state.
-        """
-        if not self.view.banned_sequences:
-            return frozenset()
+        return self.graph.initial_node, tracker_state, constraint_state
 
-        return self.tracker.initial_state
-
-    def _compile_from(self, initial_state: NodeState) -> None:
+    def _compile_from(self, initial_state: TraversalState) -> None:
         """
         Walk the reachable graph states and compile each one after its children.
         """
@@ -156,14 +157,11 @@ class ViewCompiler:
 
             self._compile_state(node, tracker_state, constraint_state)
 
-    def _compile_final_state(self, state: NodeState, constraint_state: ConstraintState) -> None:
+    def _compile_final_state(self, state: TraversalState, constraint_state: ConstraintState) -> None:
         """
         Compile the final graph state.
         """
-        if (
-            not self.has_path_constraint
-            or self.path_constraint.is_satisfied(constraint_state)
-        ):
+        if not self.has_path_constraint or self.path_constraint.is_satisfied(constraint_state):
             self.totals_by_state[state] = (1, 0.0)
         else:
             self.totals_by_state[state] = (0, -math.inf)
@@ -223,7 +221,7 @@ class ViewCompiler:
 
     def _uncompiled_children(
         self,
-        state: NodeState,
+        state: TraversalState,
         node,
         tracker_state: TrackerState,
         constraint_state: ConstraintState,
@@ -289,7 +287,7 @@ class ViewCompiler:
 
         return samplers
 
-    def _record_state_kind(self, state: NodeState, node) -> None:
+    def _record_state_kind(self, state: TraversalState, node) -> None:
         """
         Record whether a graph state consumes a codon from the user sequence
         or follows a fixed context sequence.
