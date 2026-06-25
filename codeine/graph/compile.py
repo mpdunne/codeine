@@ -22,12 +22,12 @@ class ChoiceResult:
     "choice" is the graph edge label, i.e. a codon or a context sequence.
 
     Each ChoiceResult is specific to its location in the graph. The descendant
-    counts and weight mass are calculated iteratively by summing the values of
+    counts and log mass are calculated iteratively by summing the values of
     downstream nodes.
     """
     choice: str
     descendant_count: int
-    descendant_weight_mass: float
+    descendant_log_mass: float
     next_state: Optional[NodeState]
     is_coding: bool
 
@@ -162,7 +162,7 @@ class ViewCompiler:
         state = (node, tracker_state, constraint_state)
         choice_results = {}
         descendant_count = 0
-        descendant_weight_masses = []
+        descendant_log_masses = []
         is_coding = isinstance(node, CodonNode)
 
         self._record_state_kind(state, node)
@@ -174,32 +174,32 @@ class ViewCompiler:
                 continue
 
             child, _, _ = child_state
-            child_count, child_weight_mass = self.totals_by_state[child_state]
+            child_count, child_log_mass = self.totals_by_state[child_state]
 
             if child_count == 0:
                 continue
 
-            descendant_weight_mass = self._choice_weight_mass(node, choice, child_weight_mass)
+            descendant_log_mass = self._choice_log_mass(node, choice, child_log_mass)
 
-            if descendant_weight_mass == -math.inf:
+            if descendant_log_mass == -math.inf:
                 continue
 
             result = ChoiceResult(
                 choice=choice,
                 descendant_count=child_count,
-                descendant_weight_mass=descendant_weight_mass,
+                descendant_log_mass=descendant_log_mass,
                 next_state=None if child is self.graph.final_node else child_state,
                 is_coding=is_coding,
             )
 
             choice_results[choice] = result
             descendant_count += child_count
-            descendant_weight_masses.append(descendant_weight_mass)
+            descendant_log_masses.append(descendant_log_mass)
 
-        descendant_weight_mass = self._sum_weight_masses(descendant_weight_masses)
+        descendant_log_mass = self._sum_log_masses(descendant_log_masses)
 
         self.choices_by_state[state] = choice_results
-        self.totals_by_state[state] = (descendant_count, descendant_weight_mass)
+        self.totals_by_state[state] = (descendant_count, descendant_log_mass)
 
     def _get_choices_for_node(self, node) -> List[str]:
         """
@@ -256,20 +256,6 @@ class ViewCompiler:
 
         return children
 
-    def _normalise_weights(self, weights: List[float]) -> List[float]:
-        """
-        Rescale sampler weights defensively.
-        """
-        if not weights:
-            return weights
-
-        max_weight = max(weights)
-
-        if max_weight == -math.inf:
-            return [1.0] * len(weights)
-
-        return [math.exp(weight - max_weight) for weight in weights]
-
     def _make_samplers(self) -> dict:
         """
         Make samplers for each reachable graph state.
@@ -283,14 +269,14 @@ class ViewCompiler:
                 continue
 
             runtime_items = []
-            runtime_weights = []
+            runtime_log_masses = []
 
             for result in choice_results:
                 runtime_items.append((result.choice, result.is_coding, result.next_state))
-                runtime_weights.append(result.descendant_weight_mass)
+                runtime_log_masses.append(result.descendant_log_mass)
 
             if runtime_items:
-                runtime_weights = self._normalise_weights(runtime_weights)
+                runtime_weights = self._convert_log_masses_to_sampler_weights(runtime_log_masses)
                 samplers[state] = Sampler(runtime_items, runtime_weights, rng=self.view._rng)
 
         return samplers
@@ -304,35 +290,6 @@ class ViewCompiler:
             self.codon_pos_by_state[state] = node.pos
         else:
             self.fixed_choice_by_state[state] = node.sequence
-
-    def _choice_weight_mass(self, node, choice: str, child_weight_mass: float) -> float:
-        """
-        Return the weighted mass for a choice.
-        """
-        if isinstance(node, CodonNode):
-            codon_log_weight = self.log_weight_by_codon.get(choice)
-
-            if codon_log_weight is None:
-                return -math.inf
-
-            return codon_log_weight + child_weight_mass
-
-        return child_weight_mass
-
-    def _sum_weight_masses(self, weights: List[float]) -> float:
-        """
-        Sum weight masses defensively.
-        """
-        weights = [weight for weight in weights if weight != -math.inf]
-
-        if not weights:
-            return -math.inf
-
-        max_weight = max(weights)
-
-        return max_weight + math.log(
-            sum(math.exp(weight - max_weight) for weight in weights)
-        )
 
     def _initial_state(self) -> NodeState:
         """
@@ -354,7 +311,12 @@ class ViewCompiler:
 
         return self.tracker.initial_state
 
-    def _advance_tracker(self, tracker_state: TrackerState, node: Node, choice: str) -> AdvanceResult:
+    def _advance_tracker(
+        self,
+        tracker_state: TrackerState,
+        node: Node,
+        choice: str,
+    ) -> AdvanceResult:
         """
         Advance banned-sequence tracking after taking a graph step. Results are cached.
         """
@@ -371,3 +333,96 @@ class ViewCompiler:
 
         self.advance_cache[key] = result
         return result
+
+    def _choice_log_mass(
+        self,
+        node,
+        choice: str,
+        child_log_mass: float,
+    ) -> float:
+        """
+        Return the total log probability mass contributed by taking a given graph choice.
+
+        Each graph choice contributes the log of its codon weight plus the total
+        downstream log mass. Context nodes do not contribute any additional weight.
+
+        Parameters
+        ----------
+        node
+            The graph node from which the choice is taken.
+        choice
+            The outgoing graph choice.
+        child_log_mass
+            The total downstream mass from the child state, represented in log space.
+
+        Returns
+        -------
+        float
+            The total log mass reachable through this choice.
+        """
+        if isinstance(node, CodonNode):
+            codon_log_weight = self.log_weight_by_codon.get(choice)
+
+            if codon_log_weight is None:
+                return -math.inf
+
+            return codon_log_weight + child_log_mass
+
+        return child_log_mass
+
+    def _sum_log_masses(self, log_masses: List[float]) -> float:
+        """
+        Combine several subtree log masses into a single log mass.
+
+        The calculation is performed using the log-sum-exp trick to avoid numerical
+        underflow when the subtree probabilities are extremely small.
+
+        Parameters
+        ----------
+        log_masses
+            Log-space masses to sum.
+
+        Returns
+        -------
+        float
+            The log of the summed masses, or -inf if no finite masses exist.
+        """
+        log_masses = [m for m in log_masses if m != -math.inf]
+
+        if not log_masses:
+            return -math.inf
+
+        # Use the max value to keep exp(log_mass - max_log_mass) numerically stable.
+        max_log_mass = max(log_masses)
+
+        total_relative_mass = sum(math.exp(log_mass - max_log_mass) for log_mass in log_masses)
+
+        return max_log_mass + math.log(total_relative_mass)
+
+    def _convert_log_masses_to_sampler_weights(self, log_masses: List[float]) -> List[float]:
+        """
+        Convert subtree log masses into relative weights for sampling.
+
+        The returned weights are proportional to the true subtree probabilities but
+        are rescaled to avoid numerical underflow. Only the relative values matter
+        for weighted sampling.
+
+        Parameters
+        ----------
+        log_masses
+            Choice masses represented in log space.
+
+        Returns
+        -------
+        list of float
+            Relative non-log weights suitable for weighted sampling.
+        """
+        if not log_masses:
+            return log_masses
+
+        max_log_mass = max(log_masses)
+
+        if max_log_mass == -math.inf:
+            return [1.0] * len(log_masses)
+
+        return [math.exp(log_mass - max_log_mass) for log_mass in log_masses]
