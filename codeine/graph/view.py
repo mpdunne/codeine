@@ -1,5 +1,6 @@
 import random
 
+from itertools import islice
 from typing import Dict, Generator, List, Optional, Sequence, Tuple, Union
 
 from codeine.constraints.base import PathConstraint
@@ -264,10 +265,18 @@ class CodonGraphView:
         if start < 0 or stop < start or stop > n_sequences:
             raise IndexError('Enumeration range is out of bounds.')
 
+        if start == stop:
+            return
+
         if start == 0 and stop == n_sequences:
             yield from self._iter_all_sequences()
-        else:
-            yield from self._iter_sequence_range(start, stop)
+            return
+
+        if start == 0:
+            yield from islice(self._iter_all_sequences(), stop)
+            return
+
+        yield from self._iter_sequence_range(start, stop)
 
     def sequence_at(self, index: int) -> str:
         """
@@ -301,13 +310,20 @@ class CodonGraphView:
         if self._requires_compile:
             self.compile()
 
-        start, stop, step = index_slice.indices(self.n_valid_sequences)
+        n_sequences = self.n_valid_sequences
+        start, stop, step = index_slice.indices(n_sequences)
+
+        if start == stop:
+            return []
 
         if step != 1:
             return [self.sequence_at(index) for index in range(start, stop, step)]
 
-        if start == 0 and stop == self.n_valid_sequences:
+        if start == 0 and stop == n_sequences:
             return [*self._iter_all_sequences()]
+
+        if start == 0:
+            return [*islice(self._iter_all_sequences(), stop)]
 
         return [*self._iter_sequence_range(start, stop)]
 
@@ -544,29 +560,29 @@ class CodonGraphView:
         #       state,
         #       coding sequence constructed so far,
         # )
-        stack = [(self.initial_state, [])]
+        choice_results_by_state = self.choice_results_by_state
+        codon_pos_by_state = self.codon_pos_by_state
+
+        stack = [(self.initial_state, '')]
 
         while stack:
-            state, sequence_parts = stack.pop()
+            state, prefix = stack.pop()
 
             if state is None:
-                yield ''.join(sequence_parts)
+                yield prefix
                 continue
 
-            results = self.choice_results_by_state[state]
+            results = choice_results_by_state[state]
 
             if not results:
                 continue
 
-            if state not in self.codon_pos_by_state:
-                stack.append((results[0].next_state, sequence_parts))
+            if state not in codon_pos_by_state:
+                stack.append((results[0].next_state, prefix))
                 continue
 
             for result in reversed(results):
-                stack.append((
-                    result.next_state,
-                    [*sequence_parts, result.choice],
-                ))
+                stack.append((result.next_state, prefix + result.choice))
 
     def _iter_sequence_range(
         self,
@@ -594,40 +610,43 @@ class CodonGraphView:
         #       sequence constructed so far,
         #       0-based index of the first sequence reachable from that state.
         # )
-        stack = [(self.initial_state, [], 0)]
+        choice_results_by_state = self.choice_results_by_state
+        codon_pos_by_state = self.codon_pos_by_state
+
+        stack = [(self.initial_state, '', 0)]
 
         while stack:
-            state, sequence_parts, offset = stack.pop()
+            state, prefix, offset = stack.pop()
 
             if state is None:
                 if start <= offset < stop:
-                    yield ''.join(sequence_parts)
+                    yield prefix
                 continue
 
-            results = self.choice_results_by_state[state]
+            results = choice_results_by_state[state]
 
             if not results:
                 continue
 
-            if state not in self.codon_pos_by_state:
-                stack.append((results[0].next_state, sequence_parts, offset))
+            if state not in codon_pos_by_state:
+                stack.append((results[0].next_state, prefix, offset))
                 continue
 
-            child_ranges = []
             child_start = offset
+            push = []
 
             for result in results:
                 child_stop = child_start + result.descendant_count
 
                 if child_stop > start and child_start < stop:
-                    child_ranges.append((result, child_start))
+                    push.append((result, child_start))
 
                 child_start = child_stop
 
-            for result, child_start in reversed(child_ranges):
+            for result, child_start in reversed(push):
                 stack.append((
                     result.next_state,
-                    [*sequence_parts, result.choice],
+                    prefix + result.choice,
                     child_start,
                 ))
 
