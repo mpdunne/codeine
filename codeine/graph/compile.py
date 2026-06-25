@@ -40,7 +40,6 @@ class CompiledView:
     initial_state: TraversalState
     n_valid_sequences: int
     choices_by_state: Dict[TraversalState, Dict[str, ChoiceResult]]
-    choice_start_by_state: Dict[TraversalState, int]
     choice_results_by_state: Dict[TraversalState, Tuple[ChoiceResult, ...]]
     codon_pos_by_state: Dict[TraversalState, int]
     fixed_choice_by_state: Dict[TraversalState, str]
@@ -62,7 +61,6 @@ class ViewCompiler:
         self.advance_cache: Dict[Tuple[Node, TrackerState, str], AdvanceResult] = {}
         self.totals_by_state: Dict[TraversalState, Tuple[int, float]] = {}
         self.choices_by_state: Dict[TraversalState, Dict[str, ChoiceResult]] = {}
-        self.choice_start_by_state: Dict[TraversalState, int] = {}
         self.choice_results_by_state: Dict[TraversalState, Tuple[ChoiceResult, ...]] = {}
         self.codon_pos_by_state: Dict[TraversalState, int] = {}
         self.fixed_choice_by_state: Dict[TraversalState, str] = {}
@@ -93,11 +91,6 @@ class ViewCompiler:
             for state, choice_results in self.choices_by_state.items()
         }
 
-        self.choice_start_by_state = {
-            state: (pos - 1) * 3
-            for state, pos in self.codon_pos_by_state.items()
-        }
-
         samplers = self._make_samplers()
 
         return CompiledView(
@@ -105,7 +98,6 @@ class ViewCompiler:
             n_valid_sequences=self.totals_by_state[initial_state][0],
             choices_by_state=self.choices_by_state,
             choice_results_by_state=self.choice_results_by_state,
-            choice_start_by_state=self.choice_start_by_state,
             codon_pos_by_state=self.codon_pos_by_state,
             fixed_choice_by_state=self.fixed_choice_by_state,
             samplers=samplers,
@@ -332,12 +324,7 @@ class ViewCompiler:
         self.advance_cache[key] = result
         return result
 
-    def _choice_log_mass(
-        self,
-        node,
-        choice: str,
-        child_log_mass: float,
-    ) -> float:
+    def _choice_log_mass(self, node, choice: str, child_log_mass: float) -> float:
         """
         Return the total log probability mass contributed by taking a given graph choice.
 

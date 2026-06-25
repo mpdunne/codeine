@@ -58,7 +58,6 @@ class CodonGraphView:
 
         self.initial_state = None
         self.choices_by_state = {}
-        self.choice_start_by_state = {}
         self.choice_results_by_state = {}
         self.codon_pos_by_state = {}
         self.fixed_choice_by_state = {}
@@ -176,15 +175,17 @@ class CodonGraphView:
 
         state = self.initial_state
         choices_by_state = self.choices_by_state
-        choice_start_by_state = self.choice_start_by_state
+        pos_by_state = self.codon_pos_by_state
         fixed_choice_by_state = self.fixed_choice_by_state
 
         while state is not None:
-            start = choice_start_by_state.get(state)
 
-            if start is None:
+            pos = pos_by_state.get(state)
+
+            if pos is None:
                 choice = fixed_choice_by_state[state]
             else:
+                start = (pos - 1) * 3
                 choice = seq[start:start + 3]
 
             result = choices_by_state[state].get(choice)
@@ -346,7 +347,6 @@ class CodonGraphView:
 
         view.initial_state = self.initial_state
         view.choices_by_state = self.choices_by_state
-        view.choice_start_by_state = self.choice_start_by_state
         view.choice_results_by_state = self.choice_results_by_state
         view.codon_pos_by_state = self.codon_pos_by_state
         view.fixed_choice_by_state = self.fixed_choice_by_state
@@ -370,9 +370,9 @@ class CodonGraphView:
         self.initial_state = compiled.initial_state
         self.choices_by_state = compiled.choices_by_state
         self.choice_results_by_state = compiled.choice_results_by_state
-        self.choice_start_by_state = compiled.choice_start_by_state
         self.codon_pos_by_state = compiled.codon_pos_by_state
         self.fixed_choice_by_state = compiled.fixed_choice_by_state
+
         self.samplers = compiled.samplers
 
     def pin_codons(self, pinned_codons: Dict[int, CodonRestriction]) -> None:
