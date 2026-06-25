@@ -112,7 +112,7 @@ class ViewCompiler:
 
         while stack:
             node, tracker_state, constraint_state, expanded = stack.pop()
-            state = self._state(node, tracker_state, constraint_state)
+            state = (node, tracker_state, constraint_state)
 
             if state in self.totals_by_state:
                 continue
@@ -151,7 +151,7 @@ class ViewCompiler:
         """
         Compile one non-final graph state after all valid children have been compiled.
         """
-        state = self._state(node, tracker_state, constraint_state)
+        state = (node, tracker_state, constraint_state)
         choice_results = {}
         descendant_count = 0
         descendant_weight_masses = []
@@ -249,7 +249,7 @@ class ViewCompiler:
             else:
                 next_constraint_state = ()
 
-            child_state = self._state(child, advance.state, next_constraint_state)
+            child_state = (child, advance.state, next_constraint_state)
             self.child_state_by_state_choice[(state, choice)] = child_state
 
             if child_state not in self.totals_by_state:
@@ -344,11 +344,7 @@ class ViewCompiler:
         else:
             constraint_state = ()
 
-        return self._state(
-            self.graph.initial_node,
-            self._initial_tracker_state(),
-            constraint_state,
-        )
+        return self.graph.initial_node, self._initial_tracker_state(), constraint_state
 
     def _initial_tracker_state(self) -> TrackerState:
         """
@@ -385,14 +381,3 @@ class ViewCompiler:
 
         self.advance_cache[key] = result
         return result
-
-    def _state(
-            self,
-            node,
-            tracker_state: TrackerState = frozenset(),
-            constraint_state: ConstraintState = (),
-    ) -> NodeState:
-        """
-        Return the compiled state for a graph node plus tracker states.
-        """
-        return node, tracker_state, constraint_state
