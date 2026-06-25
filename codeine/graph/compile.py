@@ -39,10 +39,12 @@ class CompiledView:
     """
     initial_state: TraversalState
     n_valid_sequences: int
+
     choices_by_state: Dict[TraversalState, Dict[str, ChoiceResult]]
     choice_results_by_state: Dict[TraversalState, Tuple[ChoiceResult, ...]]
     codon_pos_by_state: Dict[TraversalState, int]
     fixed_choice_by_state: Dict[TraversalState, str]
+
     samplers: dict
 
 
@@ -64,7 +66,6 @@ class ViewCompiler:
         self.choice_results_by_state: Dict[TraversalState, Tuple[ChoiceResult, ...]] = {}
         self.codon_pos_by_state: Dict[TraversalState, int] = {}
         self.fixed_choice_by_state: Dict[TraversalState, str] = {}
-
         self.child_state_by_state_choice: Dict[Tuple[TraversalState, str], TraversalState] = {}
 
         self.log_weight_by_codon = {

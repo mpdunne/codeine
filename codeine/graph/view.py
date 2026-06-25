@@ -61,6 +61,7 @@ class CodonGraphView:
         self.choice_results_by_state = {}
         self.codon_pos_by_state = {}
         self.fixed_choice_by_state = {}
+
         self.samplers = {}
 
     def __getitem__(self, index: Union[int, slice]) -> Union[str, List[str]]:
@@ -350,6 +351,7 @@ class CodonGraphView:
         view.choice_results_by_state = self.choice_results_by_state
         view.codon_pos_by_state = self.codon_pos_by_state
         view.fixed_choice_by_state = self.fixed_choice_by_state
+
         view.samplers = self.samplers
 
         return view
