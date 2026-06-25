@@ -88,8 +88,16 @@ class ViewCompiler:
         initial_state = self._initial_state()
         self._compile_from(initial_state)
 
-        self._compile_choice_result_tuples()
-        self._compile_choice_starts()
+        self.choice_results_by_state = {
+            state: tuple(choice_results.values())
+            for state, choice_results in self.choices_by_state.items()
+        }
+
+        self.choice_start_by_state = {
+            state: (pos - 1) * 3
+            for state, pos in self.codon_pos_by_state.items()
+        }
+
         samplers = self._make_samplers()
 
         return CompiledView(
@@ -192,15 +200,6 @@ class ViewCompiler:
 
         self.choices_by_state[state] = choice_results
         self.totals_by_state[state] = (descendant_count, descendant_weight_mass)
-
-    def _compile_choice_result_tuples(self) -> None:
-        """
-        Store each state's choice results as tuples for fast indexed traversal.
-        """
-        self.choice_results_by_state = {
-            state: tuple(choice_results.values())
-            for state, choice_results in self.choices_by_state.items()
-        }
 
     def _get_choices_for_node(self, node) -> List[str]:
         """
@@ -354,15 +353,6 @@ class ViewCompiler:
             return frozenset()
 
         return self.tracker.initial_state
-
-    def _compile_choice_starts(self) -> None:
-        """
-        Store sequence slice starts for coding states.
-        """
-        self.choice_start_by_state = {
-            state: (pos - 1) * 3
-            for state, pos in self.codon_pos_by_state.items()
-        }
 
     def _advance_tracker(self, tracker_state: TrackerState, node: Node, choice: str) -> AdvanceResult:
         """
