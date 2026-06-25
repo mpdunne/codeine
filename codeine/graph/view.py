@@ -52,7 +52,7 @@ class CodonGraphView:
         self.banned_sequences: List[str] = self._validate_banned_sequences(banned_sequences)
         self.path_constraint: Optional[PathConstraint] = None
 
-        self._banned_tracker = BannedSequenceTracker(self.graph, self.banned_sequences)
+        self.banned_tracker = BannedSequenceTracker(self.graph, self.banned_sequences)
         self._advance_cache: Dict[Tuple[Node, TrackerState, str], AdvanceResult] = {}
 
         self._compiled = None
@@ -341,7 +341,7 @@ class CodonGraphView:
         view.pinned_codons = self.pinned_codons.copy()
         view.banned_sequences = self.banned_sequences.copy()
         view.path_constraint = self.path_constraint
-        view._banned_tracker = self._banned_tracker
+        view.banned_tracker = self.banned_tracker
         view._advance_cache = self._advance_cache.copy()
 
         view._compiled = self._compiled
@@ -436,7 +436,7 @@ class CodonGraphView:
         not on temporary pins, so it is rebuilt only when the banned list changes.
         """
         self.banned_sequences = self._validate_banned_sequences(banned_sequences)
-        self._banned_tracker = BannedSequenceTracker(self.graph, self.banned_sequences)
+        self.banned_tracker = BannedSequenceTracker(self.graph, self.banned_sequences)
         self._advance_cache.clear()
         self._requires_compile = True
 

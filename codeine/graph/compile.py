@@ -55,7 +55,7 @@ class ViewCompiler:
     def __init__(self, view: 'CodonGraphView') -> None:
         self.view = view
         self.graph = view.graph
-        self.tracker = view._banned_tracker
+        self.tracker = view.banned_tracker
         self.advance_cache = view._advance_cache
         self.path_constraint = view.path_constraint
         self.has_path_constraint = self.path_constraint is not None
