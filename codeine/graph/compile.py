@@ -3,7 +3,7 @@ import math
 from dataclasses import dataclass
 from typing import Dict, NamedTuple, Tuple, List, Optional, TYPE_CHECKING
 
-from codeine.constraints.banned import TrackerState, AdvanceResult
+from codeine.constraints.banned import BannedTrackerState, AdvanceResult
 from codeine.constraints.base import ConstraintState
 from codeine.graph.nodes import CodonNode, Node
 from codeine.utils.sampling import Sampler
@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 class TraversalState(NamedTuple):
     node: Node
-    tracker_state: TrackerState
+    banned_tracker_state: BannedTrackerState
     constraint_state: ConstraintState
 
 
@@ -57,11 +57,11 @@ class ViewCompiler:
     def __init__(self, view: 'CodonGraphView') -> None:
         self.view = view
         self.graph = view.graph
-        self.tracker = view.banned_tracker
+        self.banned_tracker = view.banned_tracker
         self.path_constraint = view.path_constraint
         self.has_path_constraint = self.path_constraint is not None
 
-        self.advance_cache: Dict[Tuple[Node, TrackerState, str], AdvanceResult] = {}
+        self.banned_advance_cache: Dict[Tuple[Node, BannedTrackerState, str], AdvanceResult] = {}
         self.totals_by_state: Dict[TraversalState, Tuple[int, float]] = {}
         self.choices_by_state: Dict[TraversalState, Dict[str, ChoiceResult]] = {}
         self.choice_results_by_state: Dict[TraversalState, Tuple[ChoiceResult, ...]] = {}
@@ -116,22 +116,22 @@ class ViewCompiler:
             constraint_state = ()
 
         if self.view.banned_sequences:
-            tracker_state = self.tracker.initial_state
+            banned_tracker_state = self.banned_tracker.initial_state
         else:
-            tracker_state = frozenset()
+            banned_tracker_state = frozenset()
 
-        return TraversalState(self.graph.initial_node, tracker_state, constraint_state)
+        return TraversalState(self.graph.initial_node, banned_tracker_state, constraint_state)
 
     def _compile_from(self, initial_state: TraversalState) -> None:
         """
         Walk the reachable graph states and compile each one after its children.
         """
-        initial_node, initial_tracker_state, initial_constraint_state = initial_state
-        stack = [(initial_node, initial_tracker_state, initial_constraint_state, False)]
+        initial_node, initial_banned_tracker_state, initial_constraint_state = initial_state
+        stack = [(initial_node, initial_banned_tracker_state, initial_constraint_state, False)]
 
         while stack:
-            node, tracker_state, constraint_state, expanded = stack.pop()
-            state = TraversalState(node, tracker_state, constraint_state)
+            node, banned_tracker_state, constraint_state, expanded = stack.pop()
+            state = TraversalState(node, banned_tracker_state, constraint_state)
 
             if state in self.totals_by_state:
                 continue
@@ -141,11 +141,11 @@ class ViewCompiler:
                 continue
 
             if not expanded:
-                stack.append((node, tracker_state, constraint_state, True))
-                stack.extend(self._uncompiled_children(state, node, tracker_state, constraint_state))
+                stack.append((node, banned_tracker_state, constraint_state, True))
+                stack.extend(self._uncompiled_children(state, node, banned_tracker_state, constraint_state))
                 continue
 
-            self._compile_state(node, tracker_state, constraint_state)
+            self._compile_state(node, banned_tracker_state, constraint_state)
 
     def _compile_final_state(self, state: TraversalState, constraint_state: ConstraintState) -> None:
         """
@@ -159,15 +159,15 @@ class ViewCompiler:
         self.choices_by_state[state] = {}
 
     def _compile_state(
-        self,
-        node,
-        tracker_state: TrackerState,
-        constraint_state: ConstraintState,
+            self,
+            node,
+            banned_tracker_state: BannedTrackerState,
+            constraint_state: ConstraintState,
     ) -> None:
         """
         Compile one non-final graph state after all valid children have been compiled.
         """
-        state = TraversalState(node, tracker_state, constraint_state)
+        state = TraversalState(node, banned_tracker_state, constraint_state)
         choice_results = {}
         descendant_count = 0
         descendant_log_masses = []
@@ -208,12 +208,12 @@ class ViewCompiler:
         self.totals_by_state[state] = (descendant_count, descendant_log_mass)
 
     def _uncompiled_children(
-        self,
-        state: TraversalState,
-        node,
-        tracker_state: TrackerState,
-        constraint_state: ConstraintState,
-    ) -> List[Tuple[object, TrackerState, ConstraintState, bool]]:
+            self,
+            state: TraversalState,
+            node,
+            banned_tracker_state: BannedTrackerState,
+            constraint_state: ConstraintState,
+    ) -> List[Tuple[object, BannedTrackerState, ConstraintState, bool]]:
         """
         Return uncompiled child states reachable from a graph state.
         """
@@ -225,7 +225,7 @@ class ViewCompiler:
             if child is None:
                 continue
 
-            advance = self._advance_tracker(tracker_state, node, choice)
+            advance = self._advance_banned_tracker(banned_tracker_state, node, choice)
 
             if advance.banned:
                 continue
@@ -287,27 +287,27 @@ class ViewCompiler:
 
         return [node.sequence]
 
-    def _advance_tracker(
-        self,
-        tracker_state: TrackerState,
-        node: Node,
-        choice: str,
+    def _advance_banned_tracker(
+            self,
+            banned_tracker_state: BannedTrackerState,
+            node: Node,
+            choice: str,
     ) -> AdvanceResult:
         """
         Advance banned-sequence tracking after taking a graph step. Results are cached.
         """
-        key = (node, tracker_state, choice)
+        key = (node, banned_tracker_state, choice)
 
-        if key in self.advance_cache:
-            return self.advance_cache[key]
+        if key in self.banned_advance_cache:
+            return self.banned_advance_cache[key]
 
-        if self.tracker.is_trivial:
-            result = AdvanceResult(banned=False, state=tracker_state)
+        if self.banned_tracker.is_trivial:
+            result = AdvanceResult(banned=False, state=banned_tracker_state)
         else:
             step = (node.pos, choice)
-            result = self.tracker.advance(step, tracker_state)
+            result = self.banned_tracker.advance(step, banned_tracker_state)
 
-        self.advance_cache[key] = result
+        self.banned_advance_cache[key] = result
         return result
 
     def _accumulate_log_mass(
