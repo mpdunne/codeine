@@ -67,7 +67,7 @@ class ViewCompiler:
         self.choice_results_by_state: Dict[TraversalState, Tuple[ChoiceResult, ...]] = {}
         self.child_state_by_state_choice: Dict[Tuple[TraversalState, str], TraversalState] = {}
 
-        self.log_weight_by_codon = {
+        self.log_codon_weights = {
             codon: math.log(weight)
             for codon, weight in self.graph.cw.weights.items()
             if weight > 0
@@ -332,7 +332,7 @@ class ViewCompiler:
             The total log mass reachable through this choice.
         """
         if isinstance(node, CodonNode):
-            codon_log_weight = self.log_weight_by_codon.get(choice)
+            codon_log_weight = self.log_codon_weights.get(choice)
 
             if codon_log_weight is None:
                 return -math.inf
