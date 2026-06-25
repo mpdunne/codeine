@@ -1,50 +1,17 @@
-import math
 import random
 
-from dataclasses import dataclass
+from itertools import islice
 from typing import Dict, Generator, List, Optional, Sequence, Tuple, Union
 
-from codeine.graph.constraints import ConstraintState, PathConstraint
+from codeine.constraints.base import PathConstraint
+from codeine.constraints.banned import AdvanceResult, BannedSequenceTracker, TrackerState
 from codeine.graph.base import CodonGraph, CodonRestriction
-from codeine.graph.nodes import CodonNode, Node
-from codeine.graph.tracking import AdvanceResult, BannedSequenceTracker, TrackerState
+from codeine.graph.nodes import Node
+from codeine.translation.tables import TranslationTable
+from codeine.translation.weights import CodonWeights
 from codeine.utils.display import format_forbidden_motifs, format_count, format_restrictions
-from codeine.utils.sampling import Sampler, Seedable
-
-
-NodeState = Tuple[Node, TrackerState, ConstraintState]
-
-
-@dataclass(frozen=True)
-class ChoiceResult:
-    """
-    Cached result of taking one graph choice from one compiled state. The
-    "choice" is the graph edge label, i.e. a codon or a context sequence.
-
-    Each ChoiceResult is specific to its location in the graph. The descendant
-    counts and weight mass are calculated iteratively by summing the values of
-    downstream nodes.
-    """
-    choice: str
-    descendant_count: int
-    descendant_weight_mass: float
-    next_state: Optional[NodeState]
-    is_coding: bool
-
-
-@dataclass
-class CompiledView:
-    """
-    Cached data for a compiled CodonGraphView, to speed up sampling and enumeration.
-    """
-    initial_state: NodeState
-    n_valid_sequences: int
-    choices_by_state: Dict[NodeState, Dict[str, ChoiceResult]]
-    choice_start_by_state: Dict[NodeState, int]
-    choice_results_by_state: Dict[NodeState, Tuple[ChoiceResult, ...]]
-    codon_pos_by_state: Dict[NodeState, int]
-    fixed_choice_by_state: Dict[NodeState, str]
-    samplers: dict
+from codeine.utils.sampling import Seedable
+from codeine.graph.compile import ViewCompiler
 
 
 class CodonGraphView:
@@ -83,7 +50,7 @@ class CodonGraphView:
         self.graph = graph
         self.pinned_codons: Dict[int, List[str]] = {}
         self.banned_sequences: List[str] = self._validate_banned_sequences(banned_sequences)
-        self.path_constraint: PathConstraint = PathConstraint()
+        self.path_constraint: Optional[PathConstraint] = None
 
         self._banned_tracker = BannedSequenceTracker(self.graph, self.banned_sequences)
         self._advance_cache: Dict[Tuple[Node, TrackerState, str], AdvanceResult] = {}
@@ -99,62 +66,6 @@ class CodonGraphView:
         self.fixed_choice_by_state = {}
         self.samplers = {}
 
-    @property
-    def aa_seq(self):
-        """
-        The amino acid sequence on the underlying graph.
-
-        Returns
-        -------
-        The aa seq.
-        """
-        return self.graph.aa_seq
-
-    @property
-    def translation_table(self):
-        """
-        The translation table used by the codon graph.
-        """
-        return self.graph.tt
-
-    @property
-    def codon_weights(self):
-        """
-        The codon weights used by the codon graph.
-        """
-        return self.graph.cw
-
-    @property
-    def codon_restrictions(self):
-        """
-        Fixed codon restrictions.
-        """
-        return self.graph.codon_restrictions
-
-    @property
-    def context_l(self):
-        """
-        The left context sequence.
-        """
-        return self.graph.context_l
-
-    @property
-    def context_r(self):
-        """
-        The right context sequence.
-        """
-        return self.graph.context_r
-
-    @property
-    def n_valid_sequences(self) -> int:
-        """
-        Number of valid coding sequences in this view.
-        """
-        if self._requires_compile:
-            self.compile()
-
-        return self._compiled.n_valid_sequences
-
     def __getitem__(self, index: Union[int, slice]) -> Union[str, List[str]]:
         """
         Return one valid sequence, or a list of valid sequences for a slice.
@@ -167,7 +78,7 @@ class CodonGraphView:
         Returns
         -------
         str or list of str
-            The indexed valid DNA sequence, or a list of valid DNA sequences.
+            The indexed valid coding sequence, or a list of valid coding sequences.
         """
         if isinstance(index, slice):
             return self.sequences_at(index)
@@ -180,7 +91,7 @@ class CodonGraphView:
 
         Yields
         ----------
-        All valid sequences in the graph, in order.
+        All valid sequences in the graph view, in order.
         """
         yield from self.enumerate()
 
@@ -240,92 +151,13 @@ class CodonGraphView:
                 '',
                 ]
 
-        lines.append(f'Num. valid coding sequences: {format_count(self._compiled.n_valid_sequences)}')
+        lines.append(f'Num. valid coding sequences: {format_count(self.n_valid_sequences)}')
 
         return '\n'.join(lines)
 
-    def pin_codons(self, pinned_codons: Dict[int, CodonRestriction]) -> None:
-        """
-        Pin (temporarily fix) a codon in this codon graph view
-
-        Parameters
-        ----------
-        pinned_codons
-            A dict specifying which codons to pin, by pos: codon.
-        """
-        pinned_codons = self.graph.validate_codon_restrictions(pinned_codons)
-        self.pinned_codons.update(pinned_codons)
-        self._requires_compile = True
-
-    def unpin_codons(self, positions: Sequence[int]) -> None:
-        """
-        Unpin codon nodes by pos.
-
-        Parameters
-        ----------
-        positions
-            A list of positions to unpin.
-        """
-        for pos in positions:
-            if pos < 1 or pos > len(self.graph.codon_nodes):
-                raise ValueError(f'Pinned codon position {pos} is out of range.')
-
-            self.pinned_codons.pop(pos, None)
-
-        self._requires_compile = True
-
-    def set_pinned_codons(self, pinned_codons: Dict[int, CodonRestriction]) -> None:
-        """
-        Pin a specified group codons, leaving all others unpinned.
-
-        Parameters
-        ----------
-        pinned_codons:
-            A dict specifying which codons to pin, by pos: codon
-        """
-        pinned_codons = self.graph.validate_codon_restrictions(pinned_codons)
-        self.pinned_codons = dict(pinned_codons)
-        self._requires_compile = True
-
-    def clear_pins(self) -> None:
-        """
-        Remove all codon pins from this graph view
-        """
-        self.pinned_codons.clear()
-        self._requires_compile = True
-
-    def set_banned_sequences(self, banned_sequences: Sequence[str]) -> None:
-        """
-        Set banned nucleotide sequences for this view.
-
-        Banned-sequence tracking depends only on the graph and banned sequences,
-        not on temporary pins, so it is rebuilt only when the banned list changes.
-        """
-        self.banned_sequences = self._validate_banned_sequences(banned_sequences)
-        self._banned_tracker = BannedSequenceTracker(self.graph, self.banned_sequences)
-        self._advance_cache.clear()
-        self._requires_compile = True
-
-    def set_path_constraint(self, path_constraint: PathConstraint) -> None:
-        """
-        Set an additional generic path constraint for this view.
-
-        The view does not interpret the constraint. It only lets the constraint
-        track state while walking the graph and reject choices or final states.
-        """
-        self.path_constraint = path_constraint
-        self._requires_compile = True
-
-    def clear_path_constraint(self) -> None:
-        """
-        Remove the additional generic path constraint from this view.
-        """
-        self.path_constraint = PathConstraint()
-        self._requires_compile = True
-
     def contains(self, seq: str) -> bool:
         """
-        Check whether a DNA sequence is contained in this view.
+        Check whether a coding sequence is contained in this view.
 
         Parameters
         ----------
@@ -366,65 +198,18 @@ class CodonGraphView:
 
         return True
 
-    def sequence_at(self, index: int) -> str:
+    def sample(self) -> str:
         """
-        Return the valid sequence at a given index.
-
-        Parameters
-        ----------
-        index
-            Zero-based sequence index.
+        Sample a coding sequence from this graph view.
 
         Returns
         -------
-        str
-            The indexed valid DNA sequence.
+        A random valid coding sequence that satisfies the provided constraints.
         """
         if self._requires_compile:
             self.compile()
 
-        if index < 0 or index >= self._compiled.n_valid_sequences:
-            raise IndexError(
-                f'Sequence index {index} out of range for {self._compiled.n_valid_sequences} valid sequences.'
-            )
-
-        state = self.initial_state
-        sequence = []
-
-        choice_results_by_state = self.choice_results_by_state
-        codon_pos_by_state = self.codon_pos_by_state
-
-        while state is not None:
-            results = choice_results_by_state[state]
-
-            if state not in codon_pos_by_state:
-                result = results[0]
-            else:
-                remaining = index
-
-                for result in results:
-                    if remaining < result.descendant_count:
-                        index = remaining
-                        break
-
-                    remaining -= result.descendant_count
-                else:
-                    raise RuntimeError('Failed to resolve sequence index.')
-
-                sequence.append(result.choice)
-
-            state = result.next_state
-
-        return ''.join(sequence)
-
-    def sample(self) -> str:
-        """
-        Sample a DNA sequence from this graph view.
-        """
-        if self._requires_compile:
-            self.compile()
-
-        if self._compiled.n_valid_sequences == 0:
+        if self.n_valid_sequences == 0:
             raise ValueError('Cannot sample from an empty coding space.')
 
         state = self.initial_state
@@ -439,40 +224,6 @@ class CodonGraphView:
 
         return ''.join(sequence)
 
-    def sequences_at(self, index_slice: slice) -> List[str]:
-        """
-        Return valid sequences from a slice.
-
-        Parameters
-        ----------
-        index_slice
-            Slice of zero-based sequence indices.
-
-        Returns
-        -------
-        list of str
-            The sliced valid DNA sequences.
-        """
-        if self._requires_compile:
-            self.compile()
-
-        start, stop, step = index_slice.indices(self._compiled.n_valid_sequences)
-
-        if step != 1:
-            return [self.sequence_at(index) for index in range(start, stop, step)]
-
-        if start == 0:
-            sequences = []
-            for index, sequence in enumerate(self.enumerate()):
-                if index >= stop:
-                    break
-
-                sequences.append(sequence)
-
-            return sequences
-
-        return [*self.enumerate_range(start, stop)]
-
     def enumerate(self) -> Generator[str, None, None]:
         """
         Enumerate all valid sequences in this view.
@@ -480,43 +231,33 @@ class CodonGraphView:
         Yields
         ------
         str
-            A valid DNA sequence.
+            All valid coding sequences, one by one.
         """
         if self._requires_compile:
             self.compile()
 
-        stack = [(self.initial_state, [])]
-
-        while stack:
-            state, sequence_parts = stack.pop()
-
-            if state is None:
-                yield ''.join(sequence_parts)
-                continue
-
-            results = self.choice_results_by_state[state]
-
-            if not results:
-                continue
-
-            if state not in self.codon_pos_by_state:
-                stack.append((results[0].next_state, sequence_parts))
-                continue
-
-            for result in reversed(results):
-                stack.append((
-                    result.next_state,
-                    [*sequence_parts, result.choice],
-                ))
+        yield from self._iter_all_sequences()
 
     def enumerate_range(self, start: int = 0, stop: Optional[int] = None) -> Generator[str, None, None]:
         """
         Enumerate valid sequences from start up to, but not including, stop.
+
+        Parameters
+        ----------
+        start
+            The zero-based start from which to begin enumeration
+        stop
+            The zero-based enumeration stop.
+
+        Yields
+        -------
+        str
+            Sequences in the range, one by one.
         """
         if self._requires_compile:
             self.compile()
 
-        n_sequences = self._compiled.n_valid_sequences
+        n_sequences = self.n_valid_sequences
 
         if stop is None:
             stop = n_sequences
@@ -524,18 +265,78 @@ class CodonGraphView:
         if start < 0 or stop < start or stop > n_sequences:
             raise IndexError('Enumeration range is out of bounds.')
 
-        for index in range(start, stop):
-            yield self.sequence_at(index)
+        if start == stop:
+            return
+
+        if start == 0 and stop == n_sequences:
+            yield from self._iter_all_sequences()
+            return
+
+        if start == 0:
+            yield from islice(self._iter_all_sequences(), stop)
+            return
+
+        yield from self._iter_sequence_range(start, stop)
+
+    def sequence_at(self, index: int) -> str:
+        """
+        Return the valid sequence at a given index.
+
+        Parameters
+        ----------
+        index
+            Zero-based sequence index.
+
+        Returns
+        -------
+        str
+            The indexed valid coding sequence.
+        """
+        if self._requires_compile:
+            self.compile()
+
+        if index < 0 or index >= self.n_valid_sequences:
+            raise IndexError(
+                f'Sequence index {index} out of range for '
+                f'{self.n_valid_sequences} valid sequences.'
+            )
+
+        return next(self._iter_sequence_range(index, index + 1))
+
+    def sequences_at(self, index_slice: slice) -> List[str]:
+        """
+        Return valid sequences from a slice.
+        """
+        if self._requires_compile:
+            self.compile()
+
+        n_sequences = self.n_valid_sequences
+        start, stop, step = index_slice.indices(n_sequences)
+
+        if start == stop:
+            return []
+
+        if step != 1:
+            return [self.sequence_at(index) for index in range(start, stop, step)]
+
+        if start == 0 and stop == n_sequences:
+            return [*self._iter_all_sequences()]
+
+        if start == 0:
+            return [*islice(self._iter_all_sequences(), stop)]
+
+        return [*self._iter_sequence_range(start, stop)]
 
     def copy(self) -> 'CodonGraphView':
         """
-        Copy this view and all its constraints.
+        Copy this view and all its constraints and attributes.
 
         Returns
         -------
         A copy of the view.
         """
         view = self.graph.view()
+        view._rng.setstate(self._rng.getstate())
 
         view.pinned_codons = self.pinned_codons.copy()
         view.banned_sequences = self.banned_sequences.copy()
@@ -561,7 +362,7 @@ class CodonGraphView:
         Calculate all graph properties that are derived from its structure plus constraints
         such as pins and banned sequences.
 
-        Remember to do this after editing constraints!
+        Remember to do this after editing any constraints!
         """
         compiler = ViewCompiler(self)
         compiled = compiler.compile()
@@ -577,9 +378,148 @@ class CodonGraphView:
         self.fixed_choice_by_state = compiled.fixed_choice_by_state
         self.samplers = compiled.samplers
 
-    def _validate_banned_sequences(self, banned_sequences: Sequence[str]) -> List[str]:
+    def pin_codons(self, pinned_codons: Dict[int, CodonRestriction]) -> None:
         """
-        Check the inputted banned sequences make sense.
+        Pin (temporarily fix) a codon in this codon graph view
+
+        Parameters
+        ----------
+        pinned_codons
+            A dict specifying which codons to pin, by pos: codon.
+        """
+        pinned_codons = self.graph.validate_codon_restrictions(pinned_codons)
+        self.pinned_codons.update(pinned_codons)
+        self._requires_compile = True
+
+    def unpin_codons(self, positions: Sequence[int]) -> None:
+        """
+        Unpin codon nodes by pos.
+
+        Parameters
+        ----------
+        positions
+            A list of positions to unpin.
+        """
+        for pos in positions:
+            if pos < 1 or pos > len(self.graph.codon_nodes):
+                raise ValueError(f'Pinned codon position {pos} is out of range.')
+
+            self.pinned_codons.pop(pos, None)
+
+        self._requires_compile = True
+
+    def set_pinned_codons(self, pinned_codons: Dict[int, CodonRestriction]) -> None:
+        """
+        Pin (temporarily fix) a specified group codons, leaving all others unpinned.
+
+        Parameters
+        ----------
+        pinned_codons:
+            A dict specifying which codons to pin, by pos: codon
+        """
+        pinned_codons = self.graph.validate_codon_restrictions(pinned_codons)
+        self.pinned_codons = dict(pinned_codons)
+        self._requires_compile = True
+
+    def clear_pins(self) -> None:
+        """
+        Remove all codon pins from this graph view
+        """
+        self.pinned_codons.clear()
+        self._requires_compile = True
+
+    def set_banned_sequences(self, banned_sequences: Sequence[str]) -> None:
+        """
+        Set banned nucleotide sequences for this view.
+
+        Banned-sequence tracking depends only on the graph and banned sequences,
+        not on temporary pins, so it is rebuilt only when the banned list changes.
+        """
+        self.banned_sequences = self._validate_banned_sequences(banned_sequences)
+        self._banned_tracker = BannedSequenceTracker(self.graph, self.banned_sequences)
+        self._advance_cache.clear()
+        self._requires_compile = True
+
+    def clear_banned_sequences(self) -> None:
+        """
+        Remove all banned sequence restrictions from this view.
+        """
+        self.set_banned_sequences([])
+
+    def set_path_constraint(self, path_constraint: Optional[PathConstraint]) -> None:
+        """
+        Set an additional generic path constraint for this view.
+
+        Pass None to remove any path constraint.
+        """
+        self.path_constraint = path_constraint
+        self._requires_compile = True
+
+    def clear_path_constraint(self) -> None:
+        """
+        Remove the additional generic path constraint from this view.
+        """
+        self.set_path_constraint(None)
+
+    @property
+    def aa_seq(self) -> str:
+        """
+        The amino acid sequence.
+
+        Returns
+        -------
+        The aa seq.
+        """
+        return self.graph.aa_seq
+
+    @property
+    def translation_table(self) -> TranslationTable:
+        """
+        The translation table used by the codon graph.
+        """
+        return self.graph.tt
+
+    @property
+    def codon_weights(self) -> CodonWeights:
+        """
+        The codon weights used by the codon graph.
+        """
+        return self.graph.cw
+
+    @property
+    def codon_restrictions(self) -> Dict[int, CodonRestriction]:
+        """
+        Any hard-fixed codon restrictions on the codon graph.
+        """
+        return self.graph.codon_restrictions
+
+    @property
+    def context_l(self) -> str:
+        """
+        The left context sequence.
+        """
+        return self.graph.context_l
+
+    @property
+    def context_r(self) -> str:
+        """
+        The right context sequence.
+        """
+        return self.graph.context_r
+
+    @property
+    def n_valid_sequences(self) -> int:
+        """
+        Number of valid coding sequences in this view given all constraints.
+        """
+        if self._requires_compile:
+            self.compile()
+
+        return self._compiled.n_valid_sequences
+
+    def _validate_banned_sequences(self, banned_sequences: Optional[Sequence[str]]) -> List[str]:
+        """
+        Check the inputted banned sequences make sense, and return normalised versions of them.
 
         Parameters
         ----------
@@ -603,389 +543,108 @@ class CodonGraphView:
 
         return sorted(set(normalised))
 
-
-class ViewCompiler:
-    """
-    Compile a CodonGraphView into cached choice, count, and sampling data.
-    """
-
-    def __init__(self, view: CodonGraphView) -> None:
-        self.view = view
-        self.graph = view.graph
-        self.tracker = view._banned_tracker
-        self.advance_cache = view._advance_cache
-        self.path_constraint = view.path_constraint
-
-        self.totals_by_state: Dict[NodeState, Tuple[int, float]] = {}
-        self.choices_by_state: Dict[NodeState, Dict[str, ChoiceResult]] = {}
-        self.choice_start_by_state: Dict[NodeState, int] = {}
-        self.choice_results_by_state: Dict[NodeState, Tuple[ChoiceResult, ...]] = {}
-        self.codon_pos_by_state: Dict[NodeState, int] = {}
-        self.fixed_choice_by_state: Dict[NodeState, str] = {}
-
-        self.choices_by_node = {
-            node: tuple(self._get_choices_for_node(node))
-            for node in self.graph.nodes
-            if node is not self.graph.final_node
-        }
-
-    def compile(self) -> CompiledView:
+    def _iter_all_sequences(self) -> Generator[str, None, None]:
         """
-        Compile descendant counts, graph choices, and samplers.
-        """
-        initial_state = self._initial_state()
-        self._compile_from(initial_state)
+        Iterate over all valid sequences. Faster than _iter_sequence_range when
+        we're starting at 0.
 
-        self._compile_choice_result_tuples()
-        self._compile_choice_starts()
-        samplers = self._make_samplers()
-
-        return CompiledView(
-            initial_state=initial_state,
-            n_valid_sequences=self.totals_by_state[initial_state][0],
-            choices_by_state=self.choices_by_state,
-            choice_results_by_state=self.choice_results_by_state,
-            choice_start_by_state=self.choice_start_by_state,
-            codon_pos_by_state=self.codon_pos_by_state,
-            fixed_choice_by_state=self.fixed_choice_by_state,
-            samplers=samplers,
-        )
-
-    def _compile_from(self, initial_state: NodeState) -> None:
+        Yields
+        ------
+        str
+            All valid coding sequences, one by one
         """
-        Walk the reachable graph states and compile each one after its children.
-        """
-        initial_node, initial_tracker_state, initial_constraint_state = initial_state
-        stack = [(initial_node, initial_tracker_state, initial_constraint_state, False)]
+        # Stack is:
+        # (
+        #       state,
+        #       coding sequence constructed so far,
+        # )
+        choice_results_by_state = self.choice_results_by_state
+        codon_pos_by_state = self.codon_pos_by_state
+
+        stack = [(self.initial_state, '')]
 
         while stack:
-            node, tracker_state, constraint_state, expanded = stack.pop()
-            state = self._state(node, tracker_state, constraint_state)
+            state, prefix = stack.pop()
 
-            if state in self.totals_by_state:
+            if state is None:
+                yield prefix
                 continue
 
-            if node is self.graph.final_node:
-                self._compile_final_state(state, constraint_state)
+            results = choice_results_by_state[state]
+
+            if not results:
                 continue
 
-            if not expanded:
-                stack.append((node, tracker_state, constraint_state, True))
-                stack.extend(self._uncompiled_children(node, tracker_state, constraint_state))
+            if state not in codon_pos_by_state:
+                stack.append((results[0].next_state, prefix))
                 continue
 
-            self._compile_state(node, tracker_state, constraint_state)
+            for result in reversed(results):
+                stack.append((result.next_state, prefix + result.choice))
 
-    def _compile_final_state(self, state: NodeState, constraint_state: ConstraintState) -> None:
-        """
-        Compile the final graph state.
-        """
-        if self.path_constraint.is_satisfied(constraint_state):
-            self.totals_by_state[state] = (1, 0.0)
-        else:
-            self.totals_by_state[state] = (0, -math.inf)
-
-        self.choices_by_state[state] = {}
-
-    def _compile_state(
+    def _iter_sequence_range(
         self,
-        node,
-        tracker_state: TrackerState,
-        constraint_state: ConstraintState,
-    ) -> None:
+        start: int,
+        stop: int,
+    ) -> Generator[str, None, None]:
         """
-        Compile one non-final graph state after all valid children have been compiled.
+        Iterate over valid sequences in a given index range.
+
+        Parameters
+        ----------
+        start
+            0-based index of the first sequence.
+        stop
+            0-based index one past the final sequence.
+
+        Yields
+        ------
+        str
+            Valid coding sequences in the requested range.
         """
-        state = self._state(node, tracker_state, constraint_state)
-        raw_results = []
+        # Stack is:
+        # (
+        #       state,
+        #       sequence constructed so far,
+        #       0-based index of the first sequence reachable from that state.
+        # )
+        choice_results_by_state = self.choice_results_by_state
+        codon_pos_by_state = self.codon_pos_by_state
 
-        self._record_state_kind(state, node)
+        stack = [(self.initial_state, '', 0)]
 
-        for choice in self.choices_by_node[node]:
-            result = self._choice_result(node, tracker_state, constraint_state, choice)
+        while stack:
+            state, prefix, offset = stack.pop()
 
-            if result is None:
+            if state is None:
+                if start <= offset < stop:
+                    yield prefix
                 continue
 
-            raw_results.append(result)
+            results = choice_results_by_state[state]
 
-        results = raw_results
-
-        choice_results = {}
-        descendant_count = 0
-        descendant_weight_masses = []
-
-        for result in results:
-            choice_results[result.choice] = result
-            descendant_count += result.descendant_count
-            descendant_weight_masses.append(result.descendant_weight_mass)
-
-        descendant_weight_mass = self._sum_weight_masses(descendant_weight_masses)
-
-        self.choices_by_state[state] = choice_results
-        self.totals_by_state[state] = (descendant_count, descendant_weight_mass)
-
-    def _compile_choice_result_tuples(self) -> None:
-        """
-        Store each state's choice results as tuples for fast indexed traversal.
-        """
-        self.choice_results_by_state = {
-            state: tuple(choice_results.values())
-            for state, choice_results in self.choices_by_state.items()
-        }
-
-    def _get_choices_for_node(self, node) -> List[str]:
-        """
-        Return choices available to this node in this view.
-        """
-        if isinstance(node, CodonNode):
-            if node.pos in self.view.pinned_codons:
-                return self.view.pinned_codons[node.pos]
-
-            return node.codons
-
-        return [node.sequence]
-
-    def _choice_result(
-        self,
-        node,
-        tracker_state: TrackerState,
-        constraint_state: ConstraintState,
-        choice: str,
-    ) -> Optional[ChoiceResult]:
-        """
-        Compile the result of taking one outgoing choice from a graph node.
-        """
-        child = node.transitions.get(choice)
-
-        if child is None:
-            return None
-
-        advance = self._advance_tracker(tracker_state, node, choice)
-
-        if advance.banned:
-            return None
-
-        next_constraint_state = self.path_constraint.advance(
-            constraint_state,
-            node,
-            choice,
-        )
-
-        if next_constraint_state is None:
-            return None
-
-        child_state = self._state(child, advance.state, next_constraint_state)
-        child_count, child_weight_mass = self.totals_by_state[child_state]
-
-        if child_count == 0:
-            return None
-
-        descendant_weight_mass = self._choice_weight_mass(node, choice, child_weight_mass)
-
-        if descendant_weight_mass == -math.inf:
-            return None
-
-        return ChoiceResult(
-            choice=choice,
-            descendant_count=child_count,
-            descendant_weight_mass=descendant_weight_mass,
-            next_state=None if child is self.graph.final_node else child_state,
-            is_coding=isinstance(node, CodonNode),
-        )
-
-    def _uncompiled_children(
-        self,
-        node,
-        tracker_state: TrackerState,
-        constraint_state: ConstraintState,
-    ) -> List[Tuple[object, TrackerState, ConstraintState, bool]]:
-        """
-        Return uncompiled child states reachable from a graph state.
-        """
-        children = []
-
-        for choice in self.choices_by_node[node]:
-            child = node.transitions.get(choice)
-
-            if child is None:
+            if not results:
                 continue
 
-            advance = self._advance_tracker(tracker_state, node, choice)
-
-            if advance.banned:
+            if state not in codon_pos_by_state:
+                stack.append((results[0].next_state, prefix, offset))
                 continue
 
-            next_constraint_state = self.path_constraint.advance(
-                constraint_state,
-                node,
-                choice,
-            )
+            child_start = offset
+            push = []
 
-            if next_constraint_state is None:
-                continue
+            for result in results:
+                child_stop = child_start + result.descendant_count
 
-            child_state = self._state(child, advance.state, next_constraint_state)
+                if child_stop > start and child_start < stop:
+                    push.append((result, child_start))
 
-            if child_state not in self.totals_by_state:
-                children.append((child, advance.state, next_constraint_state, False))
+                child_start = child_stop
 
-        return children
+            for result, child_start in reversed(push):
+                stack.append((
+                    result.next_state,
+                    prefix + result.choice,
+                    child_start,
+                ))
 
-    def _normalise_choice_results(self, results: List[ChoiceResult]) -> List[ChoiceResult]:
-        """
-        Rescale descendant weight masses within one state.
-
-        Only relative weights matter for sampling, so this prevents long paths
-        from underflowing toward zero.
-        """
-        max_mass = max((result.descendant_weight_mass for result in results), default=0.0)
-
-        if max_mass <= 0:
-            return results
-
-        return [
-            ChoiceResult(
-                choice=result.choice,
-                descendant_count=result.descendant_count,
-                descendant_weight_mass=result.descendant_weight_mass / max_mass,
-                next_state=result.next_state,
-                is_coding=result.is_coding,
-            )
-            for result in results
-        ]
-
-    def _normalise_weights(self, weights: List[float]) -> List[float]:
-        """
-        Rescale sampler weights defensively.
-        """
-        if not weights:
-            return weights
-
-        max_weight = max(weights)
-
-        if max_weight == -math.inf:
-            return [1.0] * len(weights)
-
-        return [math.exp(weight - max_weight) for weight in weights]
-
-    def _make_samplers(self) -> dict:
-        """
-        Make samplers for each reachable graph state.
-        """
-        samplers = {}
-
-        for state, choice_results in self.choice_results_by_state.items():
-            node, _, _ = state
-
-            if node is self.graph.final_node:
-                continue
-
-            runtime_items = []
-            runtime_weights = []
-
-            for result in choice_results:
-                runtime_items.append((result.choice, result.is_coding, result.next_state))
-                runtime_weights.append(result.descendant_weight_mass)
-
-            if runtime_items:
-                runtime_weights = self._normalise_weights(runtime_weights)
-                samplers[state] = Sampler(runtime_items, runtime_weights, rng=self.view._rng)
-
-        return samplers
-
-    def _record_state_kind(self, state: NodeState, node) -> None:
-        """
-        Record whether a graph state consumes a codon from the user sequence
-        or follows a fixed context sequence.
-        """
-        if isinstance(node, CodonNode):
-            self.codon_pos_by_state[state] = node.pos
-        else:
-            self.fixed_choice_by_state[state] = node.sequence
-
-    def _choice_weight_mass(self, node, choice: str, child_weight_mass: float) -> float:
-        """
-        Return the weighted mass for a choice.
-        """
-        if isinstance(node, CodonNode):
-            weight = self.graph.cw[choice]
-
-            if weight <= 0:
-                return -math.inf
-
-            return math.log(weight) + child_weight_mass
-
-        return child_weight_mass
-
-    def _sum_weight_masses(self, weights: List[float]) -> float:
-        """
-        Sum weight masses defensively.
-        """
-        weights = [weight for weight in weights if weight != -math.inf]
-
-        if not weights:
-            return -math.inf
-
-        max_weight = max(weights)
-
-        return max_weight + math.log(
-            sum(math.exp(weight - max_weight) for weight in weights)
-        )
-
-    def _initial_state(self) -> NodeState:
-        """
-        Return the initial compiled graph state.
-        """
-        return self._state(
-            self.graph.initial_node,
-            self._initial_tracker_state(),
-            self.path_constraint.initial_state,
-        )
-
-    def _initial_tracker_state(self) -> TrackerState:
-        """
-        Return the initial banned-sequence tracker state.
-        """
-        if not self.view.banned_sequences:
-            return frozenset()
-
-        return self.tracker.initial_state
-
-    def _compile_choice_starts(self) -> None:
-        """
-        Store sequence slice starts for coding states.
-        """
-        self.choice_start_by_state = {
-            state: (pos - 1) * 3
-            for state, pos in self.codon_pos_by_state.items()
-        }
-
-    def _advance_tracker(self, tracker_state: TrackerState, node: Node, choice: str) -> AdvanceResult:
-        """
-        Advance banned-sequence tracking after taking a graph step. Results are cached.
-        """
-        key = (node, tracker_state, choice)
-
-        if key in self.advance_cache:
-            return self.advance_cache[key]
-
-        if self.tracker.is_trivial:
-            result = AdvanceResult(banned=False, state=tracker_state)
-        else:
-            step = (node.pos, choice)
-            result = self.tracker.advance(step, tracker_state)
-
-        self.advance_cache[key] = result
-        return result
-
-    def _state(
-            self,
-            node,
-            tracker_state: TrackerState = frozenset(),
-            constraint_state: ConstraintState = (),
-    ) -> NodeState:
-        """
-        Return the compiled state for a graph node plus tracker states.
-        """
-        return node, tracker_state, constraint_state

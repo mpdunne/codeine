@@ -3,7 +3,20 @@ import pytest
 from codeine.graph.base import CodonGraph
 from codeine.graph.nodes import ContextNode, CodonNode
 from codeine.translation.tables import TranslationTable
-from codeine.graph.tracking import BannedSequenceTracker, AdvanceResult, _find_matching_subpaths
+from codeine.constraints.banned import BannedSequenceTracker, AdvanceResult, _find_matching_subpaths
+
+
+def test_tracker_finds_ban_inside_left_context():
+    graph = CodonGraph('REGINALD', context_l='aaggaaggaagg')
+    banned_seqs = (
+        'ATG',
+        'TAAAAG',
+        'AAGGAA',
+        'ATTAAGG',
+        'GAATAC',
+    )
+    tracker = BannedSequenceTracker(graph, banned_seqs)
+    assert tracker.paths
 
 
 def helper_find_first_path_for(tracker, sequence):
