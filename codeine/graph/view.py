@@ -150,7 +150,7 @@ class CodonGraphView:
                 '',
                 ]
 
-        lines.append(f'Num. valid coding sequences: {format_count(self._compiled.n_valid_sequences)}')
+        lines.append(f'Num. valid coding sequences: {format_count(self.n_valid_sequences)}')
 
         return '\n'.join(lines)
 
@@ -208,7 +208,7 @@ class CodonGraphView:
         if self._requires_compile:
             self.compile()
 
-        if self._compiled.n_valid_sequences == 0:
+        if self.n_valid_sequences == 0:
             raise ValueError('Cannot sample from an empty coding space.')
 
         state = self.initial_state
@@ -230,34 +230,12 @@ class CodonGraphView:
         Yields
         ------
         str
-            Al valid coding sequences, one by one.
+            All valid coding sequences, one by one.
         """
         if self._requires_compile:
             self.compile()
 
-        stack = [(self.initial_state, [])]
-
-        while stack:
-            state, sequence_parts = stack.pop()
-
-            if state is None:
-                yield ''.join(sequence_parts)
-                continue
-
-            results = self.choice_results_by_state[state]
-
-            if not results:
-                continue
-
-            if state not in self.codon_pos_by_state:
-                stack.append((results[0].next_state, sequence_parts))
-                continue
-
-            for result in reversed(results):
-                stack.append((
-                    result.next_state,
-                    [*sequence_parts, result.choice],
-                ))
+        yield from self._iter_all_sequences()
 
     def enumerate_range(self, start: int = 0, stop: Optional[int] = None) -> Generator[str, None, None]:
         """
@@ -278,7 +256,7 @@ class CodonGraphView:
         if self._requires_compile:
             self.compile()
 
-        n_sequences = self._compiled.n_valid_sequences
+        n_sequences = self.n_valid_sequences
 
         if stop is None:
             stop = n_sequences
@@ -286,8 +264,10 @@ class CodonGraphView:
         if start < 0 or stop < start or stop > n_sequences:
             raise IndexError('Enumeration range is out of bounds.')
 
-        for index in range(start, stop):
-            yield self.sequence_at(index)
+        if start == 0 and stop == n_sequences:
+            yield from self._iter_all_sequences()
+        else:
+            yield from self._iter_sequence_range(start, stop)
 
     def sequence_at(self, index: int) -> str:
         """
@@ -306,73 +286,30 @@ class CodonGraphView:
         if self._requires_compile:
             self.compile()
 
-        if index < 0 or index >= self._compiled.n_valid_sequences:
+        if index < 0 or index >= self.n_valid_sequences:
             raise IndexError(
-                f'Sequence index {index} out of range for {self._compiled.n_valid_sequences} valid sequences.'
+                f'Sequence index {index} out of range for '
+                f'{self.n_valid_sequences} valid sequences.'
             )
 
-        state = self.initial_state
-        sequence = []
-
-        choice_results_by_state = self.choice_results_by_state
-        codon_pos_by_state = self.codon_pos_by_state
-
-        while state is not None:
-            results = choice_results_by_state[state]
-
-            if state not in codon_pos_by_state:
-                result = results[0]
-            else:
-                remaining = index
-
-                for result in results:
-                    if remaining < result.descendant_count:
-                        index = remaining
-                        break
-
-                    remaining -= result.descendant_count
-                else:
-                    raise RuntimeError('Failed to resolve sequence index.')
-
-                sequence.append(result.choice)
-
-            state = result.next_state
-
-        return ''.join(sequence)
+        return next(self._iter_sequence_range(index, index + 1))
 
     def sequences_at(self, index_slice: slice) -> List[str]:
         """
         Return valid sequences from a slice.
-
-        Parameters
-        ----------
-        index_slice
-            Slice of zero-based sequence indices.
-
-        Returns
-        -------
-        list of str
-            The sliced valid coding sequences.
         """
         if self._requires_compile:
             self.compile()
 
-        start, stop, step = index_slice.indices(self._compiled.n_valid_sequences)
+        start, stop, step = index_slice.indices(self.n_valid_sequences)
 
         if step != 1:
             return [self.sequence_at(index) for index in range(start, stop, step)]
 
-        if start == 0:
-            sequences = []
-            for index, sequence in enumerate(self.enumerate()):
-                if index >= stop:
-                    break
+        if start == 0 and stop == self.n_valid_sequences:
+            return [*self._iter_all_sequences()]
 
-                sequences.append(sequence)
-
-            return sequences
-
-        return [*self.enumerate_range(start, stop)]
+        return [*self._iter_sequence_range(start, stop)]
 
     def copy(self) -> 'CodonGraphView':
         """
@@ -591,3 +528,106 @@ class CodonGraphView:
             normalised.append(sequence)
 
         return sorted(set(normalised))
+
+    def _iter_all_sequences(self) -> Generator[str, None, None]:
+        """
+        Iterate over all valid sequences. Faster than _iter_sequence_range when
+        we're starting at 0.
+
+        Yields
+        ------
+        str
+            All valid coding sequences, one by one
+        """
+        # Stack is:
+        # (
+        #       state,
+        #       coding sequence constructed so far,
+        # )
+        stack = [(self.initial_state, [])]
+
+        while stack:
+            state, sequence_parts = stack.pop()
+
+            if state is None:
+                yield ''.join(sequence_parts)
+                continue
+
+            results = self.choice_results_by_state[state]
+
+            if not results:
+                continue
+
+            if state not in self.codon_pos_by_state:
+                stack.append((results[0].next_state, sequence_parts))
+                continue
+
+            for result in reversed(results):
+                stack.append((
+                    result.next_state,
+                    [*sequence_parts, result.choice],
+                ))
+
+    def _iter_sequence_range(
+        self,
+        start: int,
+        stop: int,
+    ) -> Generator[str, None, None]:
+        """
+        Iterate over valid sequences in a given index range.
+
+        Parameters
+        ----------
+        start
+            0-based index of the first sequence.
+        stop
+            0-based index one past the final sequence.
+
+        Yields
+        ------
+        str
+            Valid coding sequences in the requested range.
+        """
+        # Stack is:
+        # (
+        #       state,
+        #       sequence constructed so far,
+        #       0-based index of the first sequence reachable from that state.
+        # )
+        stack = [(self.initial_state, [], 0)]
+
+        while stack:
+            state, sequence_parts, offset = stack.pop()
+
+            if state is None:
+                if start <= offset < stop:
+                    yield ''.join(sequence_parts)
+                continue
+
+            results = self.choice_results_by_state[state]
+
+            if not results:
+                continue
+
+            if state not in self.codon_pos_by_state:
+                stack.append((results[0].next_state, sequence_parts, offset))
+                continue
+
+            child_ranges = []
+            child_start = offset
+
+            for result in results:
+                child_stop = child_start + result.descendant_count
+
+                if child_stop > start and child_start < stop:
+                    child_ranges.append((result, child_start))
+
+                child_start = child_stop
+
+            for result, child_start in reversed(child_ranges):
+                stack.append((
+                    result.next_state,
+                    [*sequence_parts, result.choice],
+                    child_start,
+                ))
+

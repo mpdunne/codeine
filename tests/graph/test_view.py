@@ -11,7 +11,6 @@ from codeine.constraints.base import PathConstraint
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
 from codeine.graph.base import CodonGraph
-from codeine.graph.nodes import CodonNode
 from codeine.graph.view import CodonGraphView
 
 from tests.data import NORMAL_PROTEINS
@@ -314,6 +313,116 @@ def test_enumerate_pinned_sequences(standard_codon_table):
     assert set(generated_unpinned_seqs) == set(expected_all_seqs)
 
 
+def test_enumerate_range_matches_full_enumeration_slice():
+    view = CodonGraph('MIKEY').view()
+    all_seqs = [*view.enumerate()]
+
+    assert [*view.enumerate_range(0, 0)] == []
+    assert [*view.enumerate_range(0, 5)] == all_seqs[0:5]
+    assert [*view.enumerate_range(5, 12)] == all_seqs[5:12]
+    assert [*view.enumerate_range(12, 24)] == all_seqs[12:24]
+    assert [*view.enumerate_range(0)] == all_seqs
+
+
+def test_sequences_at_matches_full_enumeration_slice():
+    view = CodonGraph('MIKEY').view()
+    all_seqs = [*view.enumerate()]
+
+    assert view[:0] == all_seqs[:0]
+    assert view[:5] == all_seqs[:5]
+    assert view[5:12] == all_seqs[5:12]
+    assert view[12:] == all_seqs[12:]
+    assert view[:] == all_seqs
+
+
+def test_sequences_at_with_step_matches_expected_slice():
+    view = CodonGraph('MIKEY').view()
+    all_seqs = [*view.enumerate()]
+
+    assert view[::2] == all_seqs[::2]
+    assert view[1::3] == all_seqs[1::3]
+    assert view[20:2:-4] == all_seqs[20:2:-4]
+
+
+def test_sequence_at_matches_single_item_slice():
+    view = CodonGraph('MIKEY').view()
+
+    for index in range(view.n_valid_sequences):
+        assert view.sequence_at(index) == view[index:index + 1][0]
+
+
+def test_large_sequence_at_matches_large_slice():
+    view = CodonGraph('MIKEY' * 1000).view()
+
+    index = 10**69
+
+    assert view.sequence_at(index) == view[index:index + 1][0]
+
+
+def test_large_enumerate_range_matches_repeated_sequence_at():
+    view = CodonGraph('MIKEY' * 1000).view()
+
+    start = 10**69
+    stop = start + 10
+
+    observed = [*view.enumerate_range(start, stop)]
+    expected = [view.sequence_at(index) for index in range(start, stop)]
+
+    assert observed == expected
+
+
+def test_large_slice_matches_large_enumerate_range():
+    view = CodonGraph('MIKEY' * 1000).view()
+
+    start = 10**69
+    stop = start + 10
+
+    assert view[start:stop] == [*view.enumerate_range(start, stop)]
+
+
+def test_large_stepped_slice_matches_repeated_sequence_at():
+    view = CodonGraph('MIKEY' * 1000).view()
+
+    start = 10**69
+    stop = start + 42
+    step = 7
+
+    observed = view[start:stop:step]
+    expected = [view.sequence_at(index) for index in range(start, stop, step)]
+
+    assert observed == expected
+
+
+def test_large_enumerate_range_respects_pins_and_banned_sequences():
+    view = CodonGraph('MIKEY' * 100).view()
+    view.pin_codons({2: 'ATC'})
+    view.set_banned_sequences(['AAA'])
+
+    start = 10**69
+    stop = start + 10
+
+    observed = [*view.enumerate_range(start, stop)]
+    expected = [view.sequence_at(index) for index in range(start, stop)]
+
+    assert observed == expected
+    assert all(seq[3:6] == 'ATC' for seq in observed)
+    assert all('AAA' not in seq for seq in observed)
+
+
+def test_enumerate_range_raise_if_bounds_are_bad():
+    view = CodonGraph('MIKEY').view()
+    n = view.n_valid_sequences
+
+    with pytest.raises(IndexError):
+        [*view.enumerate_range(-1, 1)]
+
+    with pytest.raises(IndexError):
+        [*view.enumerate_range(2, 1)]
+
+    with pytest.raises(IndexError):
+        [*view.enumerate_range(0, n + 1)]
+
+
 def test_view_seed_consistent():
     samples_by_rep = []
 
@@ -382,7 +491,7 @@ def test_view_rng_is_used():
     assert samples == expected
 
 
-def test_view_copy_copies_pins_not_rng_state():
+def test_view_copy_copies_pins():
     view = CodonGraph('MIKEY').view(seed=8675309)
     view.pin_codons({2: 'ATC'})
 
