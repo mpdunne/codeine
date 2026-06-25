@@ -367,6 +367,7 @@ class CodonGraphView:
         A copy of the view.
         """
         view = self.graph.view()
+        view._rng.setstate(self._rng.getstate())
 
         view.pinned_codons = self.pinned_codons.copy()
         view.banned_sequences = self.banned_sequences.copy()

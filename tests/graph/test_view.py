@@ -599,6 +599,15 @@ def test_copy_preserves_uncompiled_state():
     assert copied.n_valid_sequences == 8
 
 
+def test_copied_view_copies_rng_state():
+    view = CodonGraph('MIKEY').view(seed=123)
+    copied = view.copy()
+
+    assert copied._rng is not view._rng
+    assert copied.sample() == view.sample()
+    assert copied.sample() == view.sample()
+
+
 SHORT_AA_SEQUENCES = (
     'M',
     'MIKEY',
