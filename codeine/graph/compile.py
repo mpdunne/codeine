@@ -56,10 +56,10 @@ class ViewCompiler:
         self.view = view
         self.graph = view.graph
         self.tracker = view.banned_tracker
-        self.advance_cache = view._advance_cache
         self.path_constraint = view.path_constraint
         self.has_path_constraint = self.path_constraint is not None
 
+        self.advance_cache: Dict[Tuple[Node, TrackerState, str], AdvanceResult] = {}
         self.totals_by_state: Dict[NodeState, Tuple[int, float]] = {}
         self.choices_by_state: Dict[NodeState, Dict[str, ChoiceResult]] = {}
         self.choice_start_by_state: Dict[NodeState, int] = {}

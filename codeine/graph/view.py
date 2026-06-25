@@ -1,12 +1,11 @@
 import random
 
 from itertools import islice
-from typing import Dict, Generator, List, Optional, Sequence, Tuple, Union
+from typing import Dict, Generator, List, Optional, Sequence, Union
 
 from codeine.constraints.base import PathConstraint
-from codeine.constraints.banned import AdvanceResult, BannedSequenceTracker, TrackerState
+from codeine.constraints.banned import BannedSequenceTracker
 from codeine.graph.base import CodonGraph, CodonRestriction
-from codeine.graph.nodes import Node
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
 from codeine.utils.display import format_forbidden_motifs, format_count, format_restrictions
@@ -53,7 +52,6 @@ class CodonGraphView:
         self.path_constraint: Optional[PathConstraint] = None
 
         self.banned_tracker = BannedSequenceTracker(self.graph, self.banned_sequences)
-        self._advance_cache: Dict[Tuple[Node, TrackerState, str], AdvanceResult] = {}
 
         self._compiled = None
         self._requires_compile = True
@@ -342,7 +340,6 @@ class CodonGraphView:
         view.banned_sequences = self.banned_sequences.copy()
         view.path_constraint = self.path_constraint
         view.banned_tracker = self.banned_tracker
-        view._advance_cache = self._advance_cache.copy()
 
         view._compiled = self._compiled
         view._requires_compile = self._requires_compile
@@ -437,7 +434,6 @@ class CodonGraphView:
         """
         self.banned_sequences = self._validate_banned_sequences(banned_sequences)
         self.banned_tracker = BannedSequenceTracker(self.graph, self.banned_sequences)
-        self._advance_cache.clear()
         self._requires_compile = True
 
     def clear_banned_sequences(self) -> None:
