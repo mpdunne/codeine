@@ -6,7 +6,7 @@ from typing import Dict, Generator, List, Optional, Sequence, Union
 from codeine.constraints.base import PathConstraint
 from codeine.constraints.banned import BannedSequenceTracker
 from codeine.graph.base import CodonGraph, CodonRestriction
-from codeine.graph.node import CodonNode
+from codeine.graph.nodes import CodonNode
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
 from codeine.utils.display import format_forbidden_motifs, format_count, format_restrictions
@@ -178,7 +178,7 @@ class CodonGraphView:
 
         while state is not None:
 
-            node = state[0]
+            node = state.node
 
             if isinstance(node, CodonNode):
                 start = (node.pos - 1) * 3
@@ -565,9 +565,7 @@ class CodonGraphView:
             if not results:
                 continue
 
-            node = state[0]
-
-            if not isinstance(node, CodonNode):
+            if not isinstance(state.node, CodonNode):
                 stack.append((results[0].next_state, prefix))
                 continue
 
@@ -617,7 +615,7 @@ class CodonGraphView:
             if not results:
                 continue
 
-            if state not in codon_pos_by_state:
+            if not isinstance(state.node, CodonNode):
                 stack.append((results[0].next_state, prefix, offset))
                 continue
 

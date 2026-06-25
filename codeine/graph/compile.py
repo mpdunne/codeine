@@ -1,7 +1,7 @@
 import math
 
 from dataclasses import dataclass
-from typing import Dict, Tuple, List, Optional, TYPE_CHECKING
+from typing import Dict, NamedTuple, Tuple, List, Optional, TYPE_CHECKING
 
 from codeine.constraints.banned import TrackerState, AdvanceResult
 from codeine.constraints.base import ConstraintState
@@ -12,7 +12,10 @@ if TYPE_CHECKING:
     from codeine.graph.view import CodonGraphView
 
 
-TraversalState = Tuple[Node, TrackerState, ConstraintState]
+class TraversalState(NamedTuple):
+    node: Node
+    tracker_state: TrackerState
+    constraint_state: ConstraintState
 
 
 @dataclass(frozen=True)
@@ -117,7 +120,7 @@ class ViewCompiler:
         else:
             tracker_state = frozenset()
 
-        return self.graph.initial_node, tracker_state, constraint_state
+        return TraversalState(self.graph.initial_node, tracker_state, constraint_state)
 
     def _compile_from(self, initial_state: TraversalState) -> None:
         """
@@ -128,7 +131,7 @@ class ViewCompiler:
 
         while stack:
             node, tracker_state, constraint_state, expanded = stack.pop()
-            state = (node, tracker_state, constraint_state)
+            state = TraversalState(node, tracker_state, constraint_state)
 
             if state in self.totals_by_state:
                 continue
@@ -164,7 +167,7 @@ class ViewCompiler:
         """
         Compile one non-final graph state after all valid children have been compiled.
         """
-        state = (node, tracker_state, constraint_state)
+        state = TraversalState(node, tracker_state, constraint_state)
         choice_results = {}
         descendant_count = 0
         descendant_log_masses = []
@@ -176,7 +179,7 @@ class ViewCompiler:
             if child_state is None:
                 continue
 
-            child, _, _ = child_state
+            child = child_state.node
             child_count, child_log_mass = self.totals_by_state[child_state]
 
             if child_count == 0:
@@ -239,7 +242,7 @@ class ViewCompiler:
             else:
                 next_constraint_state = ()
 
-            child_state = (child, advance.state, next_constraint_state)
+            child_state = TraversalState(child, advance.state, next_constraint_state)
             self.child_state_by_state_choice[(state, choice)] = child_state
 
             if child_state not in self.totals_by_state:
@@ -254,7 +257,7 @@ class ViewCompiler:
         samplers = {}
 
         for state, choice_results in self.choice_results_by_state.items():
-            node, _, _ = state
+            node = state.node
 
             if node is self.graph.final_node:
                 continue
