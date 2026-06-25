@@ -77,7 +77,7 @@ class CodonGraphView:
         Returns
         -------
         str or list of str
-            The indexed valid DNA sequence, or a list of valid DNA sequences.
+            The indexed valid coding sequence, or a list of valid coding sequences.
         """
         if isinstance(index, slice):
             return self.sequences_at(index)
@@ -156,7 +156,7 @@ class CodonGraphView:
 
     def contains(self, seq: str) -> bool:
         """
-        Check whether a DNA sequence is contained in this view.
+        Check whether a coding sequence is contained in this view.
 
         Parameters
         ----------
@@ -199,7 +199,11 @@ class CodonGraphView:
 
     def sample(self) -> str:
         """
-        Sample a DNA sequence from this graph view.
+        Sample a coding sequence from this graph view.
+
+        Returns
+        -------
+        A random valid coding sequence that satisfies the provided constraints.
         """
         if self._requires_compile:
             self.compile()
@@ -226,7 +230,7 @@ class CodonGraphView:
         Yields
         ------
         str
-            A valid DNA sequence.
+            Al valid coding sequences, one by one.
         """
         if self._requires_compile:
             self.compile()
@@ -258,6 +262,18 @@ class CodonGraphView:
     def enumerate_range(self, start: int = 0, stop: Optional[int] = None) -> Generator[str, None, None]:
         """
         Enumerate valid sequences from start up to, but not including, stop.
+
+        Parameters
+        ----------
+        start
+            The zero-based start from which to begin enumeration
+        stop
+            The zero-based enumeration stop.
+
+        Yields
+        -------
+        str
+            Sequences in the range, one by one.
         """
         if self._requires_compile:
             self.compile()
@@ -285,7 +301,7 @@ class CodonGraphView:
         Returns
         -------
         str
-            The indexed valid DNA sequence.
+            The indexed valid coding sequence.
         """
         if self._requires_compile:
             self.compile()
@@ -336,7 +352,7 @@ class CodonGraphView:
         Returns
         -------
         list of str
-            The sliced valid DNA sequences.
+            The sliced valid coding sequences.
         """
         if self._requires_compile:
             self.compile()
@@ -360,7 +376,7 @@ class CodonGraphView:
 
     def copy(self) -> 'CodonGraphView':
         """
-        Copy this view and all its constraints.
+        Copy this view and all its constraints and attributes.
 
         Returns
         -------
@@ -393,7 +409,7 @@ class CodonGraphView:
         Calculate all graph properties that are derived from its structure plus constraints
         such as pins and banned sequences.
 
-        Remember to do this after editing constraints!
+        Remember to do this after editing any constraints!
         """
         compiler = ViewCompiler(self)
         compiled = compiler.compile()
@@ -441,7 +457,7 @@ class CodonGraphView:
 
     def set_pinned_codons(self, pinned_codons: Dict[int, CodonRestriction]) -> None:
         """
-        Pin a specified group codons, leaving all others unpinned.
+        Pin (temporarily fix) a specified group codons, leaving all others unpinned.
 
         Parameters
         ----------
@@ -497,7 +513,7 @@ class CodonGraphView:
     @property
     def aa_seq(self) -> str:
         """
-        The amino acid sequence on the underlying graph.
+        The amino acid sequence.
 
         Returns
         -------
@@ -522,7 +538,7 @@ class CodonGraphView:
     @property
     def codon_restrictions(self) -> Dict[int, CodonRestriction]:
         """
-        Fixed codon restrictions.
+        Any hard-fixed codon restrictions on the codon graph.
         """
         return self.graph.codon_restrictions
 
@@ -543,7 +559,7 @@ class CodonGraphView:
     @property
     def n_valid_sequences(self) -> int:
         """
-        Number of valid coding sequences in this view.
+        Number of valid coding sequences in this view given all constraints.
         """
         if self._requires_compile:
             self.compile()
@@ -552,7 +568,7 @@ class CodonGraphView:
 
     def _validate_banned_sequences(self, banned_sequences: Optional[Sequence[str]]) -> List[str]:
         """
-        Check the inputted banned sequences make sense.
+        Check the inputted banned sequences make sense, and return normalised versions of them.
 
         Parameters
         ----------
