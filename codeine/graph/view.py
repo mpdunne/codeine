@@ -6,6 +6,8 @@ from codeine.constraints.base import PathConstraint
 from codeine.constraints.banned import AdvanceResult, BannedSequenceTracker, TrackerState
 from codeine.graph.base import CodonGraph, CodonRestriction
 from codeine.graph.nodes import Node
+from codeine.translation.tables import TranslationTable
+from codeine.translation.weights import CodonWeights
 from codeine.utils.display import format_forbidden_motifs, format_count, format_restrictions
 from codeine.utils.sampling import Seedable
 from codeine.graph.compile import ViewCompiler
@@ -63,62 +65,6 @@ class CodonGraphView:
         self.fixed_choice_by_state = {}
         self.samplers = {}
 
-    @property
-    def aa_seq(self):
-        """
-        The amino acid sequence on the underlying graph.
-
-        Returns
-        -------
-        The aa seq.
-        """
-        return self.graph.aa_seq
-
-    @property
-    def translation_table(self):
-        """
-        The translation table used by the codon graph.
-        """
-        return self.graph.tt
-
-    @property
-    def codon_weights(self):
-        """
-        The codon weights used by the codon graph.
-        """
-        return self.graph.cw
-
-    @property
-    def codon_restrictions(self):
-        """
-        Fixed codon restrictions.
-        """
-        return self.graph.codon_restrictions
-
-    @property
-    def context_l(self):
-        """
-        The left context sequence.
-        """
-        return self.graph.context_l
-
-    @property
-    def context_r(self):
-        """
-        The right context sequence.
-        """
-        return self.graph.context_r
-
-    @property
-    def n_valid_sequences(self) -> int:
-        """
-        Number of valid coding sequences in this view.
-        """
-        if self._requires_compile:
-            self.compile()
-
-        return self._compiled.n_valid_sequences
-
     def __getitem__(self, index: Union[int, slice]) -> Union[str, List[str]]:
         """
         Return one valid sequence, or a list of valid sequences for a slice.
@@ -144,7 +90,7 @@ class CodonGraphView:
 
         Yields
         ----------
-        All valid sequences in the graph, in order.
+        All valid sequences in the graph view, in order.
         """
         yield from self.enumerate()
 
@@ -208,6 +154,260 @@ class CodonGraphView:
 
         return '\n'.join(lines)
 
+    def contains(self, seq: str) -> bool:
+        """
+        Check whether a DNA sequence is contained in this view.
+
+        Parameters
+        ----------
+        seq
+            The sequence to check
+
+        Returns
+        -------
+        True if and only if the sequence is contained in this coding space.
+        """
+        if self._requires_compile:
+            self.compile()
+
+        seq = seq.upper()
+
+        if len(seq) != len(self.graph.aa_seq) * 3:
+            return False
+
+        state = self.initial_state
+        choices_by_state = self.choices_by_state
+        choice_start_by_state = self.choice_start_by_state
+        fixed_choice_by_state = self.fixed_choice_by_state
+
+        while state is not None:
+            start = choice_start_by_state.get(state)
+
+            if start is None:
+                choice = fixed_choice_by_state[state]
+            else:
+                choice = seq[start:start + 3]
+
+            result = choices_by_state[state].get(choice)
+
+            if result is None:
+                return False
+
+            state = result.next_state
+
+        return True
+
+    def sample(self) -> str:
+        """
+        Sample a DNA sequence from this graph view.
+        """
+        if self._requires_compile:
+            self.compile()
+
+        if self._compiled.n_valid_sequences == 0:
+            raise ValueError('Cannot sample from an empty coding space.')
+
+        state = self.initial_state
+        sequence = []
+        samplers = self.samplers
+
+        while state is not None:
+            choice, is_coding, state = samplers[state].sample()
+
+            if is_coding:
+                sequence.append(choice)
+
+        return ''.join(sequence)
+
+    def enumerate(self) -> Generator[str, None, None]:
+        """
+        Enumerate all valid sequences in this view.
+
+        Yields
+        ------
+        str
+            A valid DNA sequence.
+        """
+        if self._requires_compile:
+            self.compile()
+
+        stack = [(self.initial_state, [])]
+
+        while stack:
+            state, sequence_parts = stack.pop()
+
+            if state is None:
+                yield ''.join(sequence_parts)
+                continue
+
+            results = self.choice_results_by_state[state]
+
+            if not results:
+                continue
+
+            if state not in self.codon_pos_by_state:
+                stack.append((results[0].next_state, sequence_parts))
+                continue
+
+            for result in reversed(results):
+                stack.append((
+                    result.next_state,
+                    [*sequence_parts, result.choice],
+                ))
+
+    def enumerate_range(self, start: int = 0, stop: Optional[int] = None) -> Generator[str, None, None]:
+        """
+        Enumerate valid sequences from start up to, but not including, stop.
+        """
+        if self._requires_compile:
+            self.compile()
+
+        n_sequences = self._compiled.n_valid_sequences
+
+        if stop is None:
+            stop = n_sequences
+
+        if start < 0 or stop < start or stop > n_sequences:
+            raise IndexError('Enumeration range is out of bounds.')
+
+        for index in range(start, stop):
+            yield self.sequence_at(index)
+
+    def sequence_at(self, index: int) -> str:
+        """
+        Return the valid sequence at a given index.
+
+        Parameters
+        ----------
+        index
+            Zero-based sequence index.
+
+        Returns
+        -------
+        str
+            The indexed valid DNA sequence.
+        """
+        if self._requires_compile:
+            self.compile()
+
+        if index < 0 or index >= self._compiled.n_valid_sequences:
+            raise IndexError(
+                f'Sequence index {index} out of range for {self._compiled.n_valid_sequences} valid sequences.'
+            )
+
+        state = self.initial_state
+        sequence = []
+
+        choice_results_by_state = self.choice_results_by_state
+        codon_pos_by_state = self.codon_pos_by_state
+
+        while state is not None:
+            results = choice_results_by_state[state]
+
+            if state not in codon_pos_by_state:
+                result = results[0]
+            else:
+                remaining = index
+
+                for result in results:
+                    if remaining < result.descendant_count:
+                        index = remaining
+                        break
+
+                    remaining -= result.descendant_count
+                else:
+                    raise RuntimeError('Failed to resolve sequence index.')
+
+                sequence.append(result.choice)
+
+            state = result.next_state
+
+        return ''.join(sequence)
+
+    def sequences_at(self, index_slice: slice) -> List[str]:
+        """
+        Return valid sequences from a slice.
+
+        Parameters
+        ----------
+        index_slice
+            Slice of zero-based sequence indices.
+
+        Returns
+        -------
+        list of str
+            The sliced valid DNA sequences.
+        """
+        if self._requires_compile:
+            self.compile()
+
+        start, stop, step = index_slice.indices(self._compiled.n_valid_sequences)
+
+        if step != 1:
+            return [self.sequence_at(index) for index in range(start, stop, step)]
+
+        if start == 0:
+            sequences = []
+            for index, sequence in enumerate(self.enumerate()):
+                if index >= stop:
+                    break
+
+                sequences.append(sequence)
+
+            return sequences
+
+        return [*self.enumerate_range(start, stop)]
+
+    def copy(self) -> 'CodonGraphView':
+        """
+        Copy this view and all its constraints.
+
+        Returns
+        -------
+        A copy of the view.
+        """
+        view = self.graph.view()
+
+        view.pinned_codons = self.pinned_codons.copy()
+        view.banned_sequences = self.banned_sequences.copy()
+        view.path_constraint = self.path_constraint
+        view._banned_tracker = self._banned_tracker
+        view._advance_cache = self._advance_cache.copy()
+
+        view._compiled = self._compiled
+        view._requires_compile = self._requires_compile
+
+        view.initial_state = self.initial_state
+        view.choices_by_state = self.choices_by_state
+        view.choice_start_by_state = self.choice_start_by_state
+        view.choice_results_by_state = self.choice_results_by_state
+        view.codon_pos_by_state = self.codon_pos_by_state
+        view.fixed_choice_by_state = self.fixed_choice_by_state
+        view.samplers = self.samplers
+
+        return view
+
+    def compile(self) -> None:
+        """
+        Calculate all graph properties that are derived from its structure plus constraints
+        such as pins and banned sequences.
+
+        Remember to do this after editing constraints!
+        """
+        compiler = ViewCompiler(self)
+        compiled = compiler.compile()
+
+        self._compiled = compiled
+        self._requires_compile = False
+
+        self.initial_state = compiled.initial_state
+        self.choices_by_state = compiled.choices_by_state
+        self.choice_results_by_state = compiled.choice_results_by_state
+        self.choice_start_by_state = compiled.choice_start_by_state
+        self.codon_pos_by_state = compiled.codon_pos_by_state
+        self.fixed_choice_by_state = compiled.fixed_choice_by_state
+        self.samplers = compiled.samplers
+
     def pin_codons(self, pinned_codons: Dict[int, CodonRestriction]) -> None:
         """
         Pin (temporarily fix) a codon in this codon graph view
@@ -270,6 +470,12 @@ class CodonGraphView:
         self._advance_cache.clear()
         self._requires_compile = True
 
+    def clear_banned_sequences(self) -> None:
+        """
+        Remove all banned sequence restrictions from this view.
+        """
+        self.set_banned_sequences([])
+
     def set_path_constraint(self, path_constraint: PathConstraint) -> None:
         """
         Set an additional generic path constraint for this view.
@@ -287,261 +493,63 @@ class CodonGraphView:
         self.path_constraint = PathConstraint()
         self._requires_compile = True
 
-    def contains(self, seq: str) -> bool:
+    @property
+    def aa_seq(self) -> str:
         """
-        Check whether a DNA sequence is contained in this view.
-
-        Parameters
-        ----------
-        seq
-            The sequence to check
+        The amino acid sequence on the underlying graph.
 
         Returns
         -------
-        True if and only if the sequence is contained in this coding space.
+        The aa seq.
+        """
+        return self.graph.aa_seq
+
+    @property
+    def translation_table(self) -> TranslationTable:
+        """
+        The translation table used by the codon graph.
+        """
+        return self.graph.tt
+
+    @property
+    def codon_weights(self) -> CodonWeights:
+        """
+        The codon weights used by the codon graph.
+        """
+        return self.graph.cw
+
+    @property
+    def codon_restrictions(self) -> Dict[int, CodonRestriction]:
+        """
+        Fixed codon restrictions.
+        """
+        return self.graph.codon_restrictions
+
+    @property
+    def context_l(self) -> str:
+        """
+        The left context sequence.
+        """
+        return self.graph.context_l
+
+    @property
+    def context_r(self) -> str:
+        """
+        The right context sequence.
+        """
+        return self.graph.context_r
+
+    @property
+    def n_valid_sequences(self) -> int:
+        """
+        Number of valid coding sequences in this view.
         """
         if self._requires_compile:
             self.compile()
 
-        seq = seq.upper()
+        return self._compiled.n_valid_sequences
 
-        if len(seq) != len(self.graph.aa_seq) * 3:
-            return False
-
-        state = self.initial_state
-        choices_by_state = self.choices_by_state
-        choice_start_by_state = self.choice_start_by_state
-        fixed_choice_by_state = self.fixed_choice_by_state
-
-        while state is not None:
-            start = choice_start_by_state.get(state)
-
-            if start is None:
-                choice = fixed_choice_by_state[state]
-            else:
-                choice = seq[start:start + 3]
-
-            result = choices_by_state[state].get(choice)
-
-            if result is None:
-                return False
-
-            state = result.next_state
-
-        return True
-
-    def sequence_at(self, index: int) -> str:
-        """
-        Return the valid sequence at a given index.
-
-        Parameters
-        ----------
-        index
-            Zero-based sequence index.
-
-        Returns
-        -------
-        str
-            The indexed valid DNA sequence.
-        """
-        if self._requires_compile:
-            self.compile()
-
-        if index < 0 or index >= self._compiled.n_valid_sequences:
-            raise IndexError(
-                f'Sequence index {index} out of range for {self._compiled.n_valid_sequences} valid sequences.'
-            )
-
-        state = self.initial_state
-        sequence = []
-
-        choice_results_by_state = self.choice_results_by_state
-        codon_pos_by_state = self.codon_pos_by_state
-
-        while state is not None:
-            results = choice_results_by_state[state]
-
-            if state not in codon_pos_by_state:
-                result = results[0]
-            else:
-                remaining = index
-
-                for result in results:
-                    if remaining < result.descendant_count:
-                        index = remaining
-                        break
-
-                    remaining -= result.descendant_count
-                else:
-                    raise RuntimeError('Failed to resolve sequence index.')
-
-                sequence.append(result.choice)
-
-            state = result.next_state
-
-        return ''.join(sequence)
-
-    def sample(self) -> str:
-        """
-        Sample a DNA sequence from this graph view.
-        """
-        if self._requires_compile:
-            self.compile()
-
-        if self._compiled.n_valid_sequences == 0:
-            raise ValueError('Cannot sample from an empty coding space.')
-
-        state = self.initial_state
-        sequence = []
-        samplers = self.samplers
-
-        while state is not None:
-            choice, is_coding, state = samplers[state].sample()
-
-            if is_coding:
-                sequence.append(choice)
-
-        return ''.join(sequence)
-
-    def sequences_at(self, index_slice: slice) -> List[str]:
-        """
-        Return valid sequences from a slice.
-
-        Parameters
-        ----------
-        index_slice
-            Slice of zero-based sequence indices.
-
-        Returns
-        -------
-        list of str
-            The sliced valid DNA sequences.
-        """
-        if self._requires_compile:
-            self.compile()
-
-        start, stop, step = index_slice.indices(self._compiled.n_valid_sequences)
-
-        if step != 1:
-            return [self.sequence_at(index) for index in range(start, stop, step)]
-
-        if start == 0:
-            sequences = []
-            for index, sequence in enumerate(self.enumerate()):
-                if index >= stop:
-                    break
-
-                sequences.append(sequence)
-
-            return sequences
-
-        return [*self.enumerate_range(start, stop)]
-
-    def enumerate(self) -> Generator[str, None, None]:
-        """
-        Enumerate all valid sequences in this view.
-
-        Yields
-        ------
-        str
-            A valid DNA sequence.
-        """
-        if self._requires_compile:
-            self.compile()
-
-        stack = [(self.initial_state, [])]
-
-        while stack:
-            state, sequence_parts = stack.pop()
-
-            if state is None:
-                yield ''.join(sequence_parts)
-                continue
-
-            results = self.choice_results_by_state[state]
-
-            if not results:
-                continue
-
-            if state not in self.codon_pos_by_state:
-                stack.append((results[0].next_state, sequence_parts))
-                continue
-
-            for result in reversed(results):
-                stack.append((
-                    result.next_state,
-                    [*sequence_parts, result.choice],
-                ))
-
-    def enumerate_range(self, start: int = 0, stop: Optional[int] = None) -> Generator[str, None, None]:
-        """
-        Enumerate valid sequences from start up to, but not including, stop.
-        """
-        if self._requires_compile:
-            self.compile()
-
-        n_sequences = self._compiled.n_valid_sequences
-
-        if stop is None:
-            stop = n_sequences
-
-        if start < 0 or stop < start or stop > n_sequences:
-            raise IndexError('Enumeration range is out of bounds.')
-
-        for index in range(start, stop):
-            yield self.sequence_at(index)
-
-    def copy(self) -> 'CodonGraphView':
-        """
-        Copy this view and all its constraints.
-
-        Returns
-        -------
-        A copy of the view.
-        """
-        view = self.graph.view()
-
-        view.pinned_codons = self.pinned_codons.copy()
-        view.banned_sequences = self.banned_sequences.copy()
-        view.path_constraint = self.path_constraint
-        view._banned_tracker = self._banned_tracker
-        view._advance_cache = self._advance_cache.copy()
-
-        view._compiled = self._compiled
-        view._requires_compile = self._requires_compile
-
-        view.initial_state = self.initial_state
-        view.choices_by_state = self.choices_by_state
-        view.choice_start_by_state = self.choice_start_by_state
-        view.choice_results_by_state = self.choice_results_by_state
-        view.codon_pos_by_state = self.codon_pos_by_state
-        view.fixed_choice_by_state = self.fixed_choice_by_state
-        view.samplers = self.samplers
-
-        return view
-
-    def compile(self) -> None:
-        """
-        Calculate all graph properties that are derived from its structure plus constraints
-        such as pins and banned sequences.
-
-        Remember to do this after editing constraints!
-        """
-        compiler = ViewCompiler(self)
-        compiled = compiler.compile()
-
-        self._compiled = compiled
-        self._requires_compile = False
-
-        self.initial_state = compiled.initial_state
-        self.choices_by_state = compiled.choices_by_state
-        self.choice_results_by_state = compiled.choice_results_by_state
-        self.choice_start_by_state = compiled.choice_start_by_state
-        self.codon_pos_by_state = compiled.codon_pos_by_state
-        self.fixed_choice_by_state = compiled.fixed_choice_by_state
-        self.samplers = compiled.samplers
-
-    def _validate_banned_sequences(self, banned_sequences: Sequence[str]) -> List[str]:
+    def _validate_banned_sequences(self, banned_sequences: Optional[Sequence[str]]) -> List[str]:
         """
         Check the inputted banned sequences make sense.
 
