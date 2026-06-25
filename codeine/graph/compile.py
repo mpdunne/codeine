@@ -5,7 +5,7 @@ from typing import Dict, NamedTuple, Tuple, List, Optional, TYPE_CHECKING
 
 from codeine.constraints.banned import BannedTrackerState, AdvanceResult
 from codeine.constraints.base import ConstraintState
-from codeine.graph.nodes import CodonNode, Node
+from codeine.graph.nodes import CodonNode, Node, ContextNode
 from codeine.utils.sampling import Sampler
 
 if TYPE_CHECKING:
@@ -82,6 +82,11 @@ class ViewCompiler:
     def compile(self) -> CompiledView:
         """
         Compile descendant counts, graph choices, and samplers.
+
+        Returns
+        -------
+        CompiledView
+            A compiled view.
         """
         initial_state = self._initial_state()
         self._compile_from(initial_state)
@@ -105,10 +110,13 @@ class ViewCompiler:
         """
         Return the starting traversal state.
 
-        A traversal state combines the current graph node, the banned-sequence
-        tracker state, and the path-constraint state. Different tracker or
-        constraint states at the same graph node can have different valid
-        futures, so they are treated as distinct states.
+        The initial state starts at the graph's initial node, with fresh banned-
+        sequence and path-constraint states if those systems are active.
+
+        Returns
+        -------
+        TraversalState
+            Starting state for graph compilation.
         """
         if self.has_path_constraint:
             constraint_state = self.path_constraint.initial_state
@@ -124,7 +132,15 @@ class ViewCompiler:
 
     def _compile_from(self, initial_state: TraversalState) -> None:
         """
-        Walk the reachable graph states and compile each one after its children.
+        Compile every reachable traversal state starting from an initial state.
+
+        Uses an explicit depth-first stack so that each non-final state is compiled
+        only after its valid child states have been compiled.
+
+        Parameters
+        ----------
+        initial_state
+            State from which graph compilation should begin.
         """
         initial_node, initial_banned_tracker_state, initial_constraint_state = initial_state
         stack = [(initial_node, initial_banned_tracker_state, initial_constraint_state, False)]
@@ -149,7 +165,17 @@ class ViewCompiler:
 
     def _compile_final_state(self, state: TraversalState, constraint_state: ConstraintState) -> None:
         """
-        Compile the final graph state.
+        Compile a final graph state.
+
+        A final state contributes one valid sequence with log mass 0.0 if the path
+        constraint is satisfied. Otherwise, it contributes no valid sequences.
+
+        Parameters
+        ----------
+        state
+            Final traversal state being compiled.
+        constraint_state
+            Path-constraint state associated with the final traversal state.
         """
         if not self.has_path_constraint or self.path_constraint.is_satisfied(constraint_state):
             self.totals_by_state[state] = (1, 0.0)
@@ -160,12 +186,25 @@ class ViewCompiler:
 
     def _compile_state(
             self,
-            node,
+            node: Node,
             banned_tracker_state: BannedTrackerState,
             constraint_state: ConstraintState,
     ) -> None:
         """
-        Compile one non-final graph state after all valid children have been compiled.
+        Compile one non-final traversal state.
+
+        For each outgoing graph choice, combine the previously compiled child state
+        with the contribution from the current node to produce a ChoiceResult.
+        The total descendant count and log mass are then cached for the current state.
+
+        Parameters
+        ----------
+        node
+            Graph node being compiled.
+        banned_tracker_state
+            Banned-sequence tracker state at this node.
+        constraint_state
+            Path-constraint state at this node.
         """
         state = TraversalState(node, banned_tracker_state, constraint_state)
         choice_results = {}
@@ -213,9 +252,28 @@ class ViewCompiler:
             node,
             banned_tracker_state: BannedTrackerState,
             constraint_state: ConstraintState,
-    ) -> List[Tuple[object, BannedTrackerState, ConstraintState, bool]]:
+    ) -> List[Tuple[Node, BannedTrackerState, ConstraintState, bool]]:
         """
-        Return uncompiled child states reachable from a graph state.
+        Return child states reached by taking each outgoing graph choice.
+
+        Choices rejected by the banned-sequence tracker or path constraint are skipped.
+        Only child states that have not yet been compiled are returned.
+
+        Parameters
+        ----------
+        state
+            Current traversal state.
+        node
+            Current graph node.
+        banned_tracker_state
+            Banned-sequence tracker state at this node.
+        constraint_state
+            Path-constraint state at this node.
+
+        Returns
+        -------
+        list of tuple
+            Stack entries for child states still needing compilation.
         """
         children = []
 
@@ -252,7 +310,15 @@ class ViewCompiler:
 
     def _make_samplers(self) -> dict:
         """
-        Make samplers for each reachable graph state.
+        Build weighted samplers for every compiled traversal state.
+
+        Each sampler chooses between the state's valid outgoing choices with
+        probabilities proportional to their descendant probability masses.
+
+        Returns
+        -------
+        dict
+            Mapping from traversal state to a sampler over its outgoing choices.
         """
         samplers = {}
 
@@ -277,15 +343,29 @@ class ViewCompiler:
 
     def _get_choices_for_node(self, node: Node) -> List[str]:
         """
-        Return choices available to this node in this view.
+        Return the graph choices available from a node in this view.
+
+        Codon nodes respect any pinned codons defined by the view. Context nodes
+        always have a single fixed sequence.
+
+        Parameters
+        ----------
+        node
+            Graph node whose available choices are required.
+
+        Returns
+        -------
+        list of str
+            The choices that may be taken from this node in the current view.
         """
         if isinstance(node, CodonNode):
             if node.pos in self.view.pinned_codons:
                 return self.view.pinned_codons[node.pos]
+            else:
+                return node.codons
 
-            return node.codons
-
-        return [node.sequence]
+        elif isinstance(node, ContextNode):
+            return [node.sequence]
 
     def _advance_banned_tracker(
             self,
@@ -294,7 +374,25 @@ class ViewCompiler:
             choice: str,
     ) -> AdvanceResult:
         """
-        Advance banned-sequence tracking after taking a graph step. Results are cached.
+        Advance the banned-sequence tracker after taking one graph choice.
+
+        Results are cached because the same tracker transition may be encountered
+        from many traversal states during compilation.
+
+        Parameters
+        ----------
+        banned_tracker_state
+            Current banned-sequence tracker state.
+        node
+            Current graph node.
+        choice
+            Graph choice taken from the current node.
+
+        Returns
+        -------
+        AdvanceResult
+            Whether the choice enters a banned state and the resulting tracker
+            state.
         """
         key = (node, banned_tracker_state, choice)
 
