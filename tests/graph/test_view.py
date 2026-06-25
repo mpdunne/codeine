@@ -318,6 +318,7 @@ def test_enumerate_range_matches_full_enumeration_slice():
     all_seqs = [*view.enumerate()]
 
     assert [*view.enumerate_range(0, 0)] == []
+    assert [*view.enumerate_range(5, 5)] == []
     assert [*view.enumerate_range(0, 5)] == all_seqs[0:5]
     assert [*view.enumerate_range(5, 12)] == all_seqs[5:12]
     assert [*view.enumerate_range(12, 24)] == all_seqs[12:24]
@@ -328,6 +329,7 @@ def test_sequences_at_matches_full_enumeration_slice():
     view = CodonGraph('MIKEY').view()
     all_seqs = [*view.enumerate()]
 
+    assert view[5:5] == []
     assert view[:0] == all_seqs[:0]
     assert view[:5] == all_seqs[:5]
     assert view[5:12] == all_seqs[5:12]
