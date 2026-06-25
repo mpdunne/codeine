@@ -58,6 +58,7 @@ class ViewCompiler:
         self.tracker = view._banned_tracker
         self.advance_cache = view._advance_cache
         self.path_constraint = view.path_constraint
+        self.has_path_constraint = self.path_constraint is not None
 
         self.totals_by_state: Dict[NodeState, Tuple[int, float]] = {}
         self.choices_by_state: Dict[NodeState, Dict[str, ChoiceResult]] = {}
@@ -123,7 +124,10 @@ class ViewCompiler:
         """
         Compile the final graph state.
         """
-        if self.path_constraint.is_satisfied(constraint_state):
+        if (
+            not self.has_path_constraint
+            or self.path_constraint.is_satisfied(constraint_state)
+        ):
             self.totals_by_state[state] = (1, 0.0)
         else:
             self.totals_by_state[state] = (0, -math.inf)
@@ -209,14 +213,17 @@ class ViewCompiler:
         if advance.banned:
             return None
 
-        next_constraint_state = self.path_constraint.advance(
-            constraint_state,
-            node.pos,
-            choice,
-        )
+        if self.has_path_constraint:
+            next_constraint_state = self.path_constraint.advance(
+                constraint_state,
+                node.pos,
+                choice,
+            )
 
-        if next_constraint_state is None:
-            return None
+            if next_constraint_state is None:
+                return None
+        else:
+            next_constraint_state = ()
 
         child_state = self._state(child, advance.state, next_constraint_state)
         child_count, child_weight_mass = self.totals_by_state[child_state]
@@ -259,14 +266,17 @@ class ViewCompiler:
             if advance.banned:
                 continue
 
-            next_constraint_state = self.path_constraint.advance(
-                constraint_state,
-                node.pos,
-                choice,
-            )
+            if self.has_path_constraint:
+                next_constraint_state = self.path_constraint.advance(
+                    constraint_state,
+                    node.pos,
+                    choice,
+                )
 
-            if next_constraint_state is None:
-                continue
+                if next_constraint_state is None:
+                    continue
+            else:
+                next_constraint_state = ()
 
             child_state = self._state(child, advance.state, next_constraint_state)
 
@@ -380,10 +390,15 @@ class ViewCompiler:
         """
         Return the initial compiled graph state.
         """
+        if self.has_path_constraint:
+            constraint_state = self.path_constraint.initial_state
+        else:
+            constraint_state = ()
+
         return self._state(
             self.graph.initial_node,
             self._initial_tracker_state(),
-            self.path_constraint.initial_state,
+            constraint_state,
         )
 
     def _initial_tracker_state(self) -> TrackerState:

@@ -50,7 +50,7 @@ class CodonGraphView:
         self.graph = graph
         self.pinned_codons: Dict[int, List[str]] = {}
         self.banned_sequences: List[str] = self._validate_banned_sequences(banned_sequences)
-        self.path_constraint: PathConstraint = PathConstraint()
+        self.path_constraint: Optional[PathConstraint] = None
 
         self._banned_tracker = BannedSequenceTracker(self.graph, self.banned_sequences)
         self._advance_cache: Dict[Tuple[Node, TrackerState, str], AdvanceResult] = {}
@@ -446,12 +446,11 @@ class CodonGraphView:
         """
         self.set_banned_sequences([])
 
-    def set_path_constraint(self, path_constraint: PathConstraint) -> None:
+    def set_path_constraint(self, path_constraint: Optional[PathConstraint]) -> None:
         """
         Set an additional generic path constraint for this view.
 
-        The view does not interpret the constraint. It only lets the constraint
-        track state while walking the graph and reject choices or final states.
+        Pass None to remove any path constraint.
         """
         self.path_constraint = path_constraint
         self._requires_compile = True
@@ -460,8 +459,7 @@ class CodonGraphView:
         """
         Remove the additional generic path constraint from this view.
         """
-        self.path_constraint = PathConstraint()
-        self._requires_compile = True
+        self.set_path_constraint(None)
 
     @property
     def aa_seq(self) -> str:
