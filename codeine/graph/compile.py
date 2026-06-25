@@ -180,27 +180,27 @@ class ViewCompiler:
                 continue
 
             child = child_state.node
-            child_count, child_log_mass = self.totals_by_state[child_state]
+            child_count, subtree_log_mass = self.totals_by_state[child_state]
 
             if child_count == 0:
                 continue
 
-            descendant_log_mass = self._choice_log_mass(node, choice, child_log_mass)
+            choice_log_mass = self._accumulate_log_mass(node, choice, subtree_log_mass)
 
-            if descendant_log_mass == -math.inf:
+            if choice_log_mass == -math.inf:
                 continue
 
             result = ChoiceResult(
                 choice=choice,
                 descendant_count=child_count,
-                descendant_log_mass=descendant_log_mass,
+                descendant_log_mass=choice_log_mass,
                 next_state=None if child is self.graph.final_node else child_state,
                 is_coding=is_coding,
             )
 
             choice_results[choice] = result
             descendant_count += child_count
-            descendant_log_masses.append(descendant_log_mass)
+            descendant_log_masses.append(choice_log_mass)
 
         descendant_log_mass = self._sum_log_masses(descendant_log_masses)
 
@@ -310,12 +310,18 @@ class ViewCompiler:
         self.advance_cache[key] = result
         return result
 
-    def _choice_log_mass(self, node, choice: str, child_log_mass: float) -> float:
+    def _accumulate_log_mass(
+            self,
+            node: Node,
+            choice: str,
+            subtree_log_mass: float,
+    ) -> float:
         """
-        Return the total log probability mass contributed by taking a given graph choice.
+        Accumulate the log probability mass contributed by one graph choice.
 
-        Each graph choice contributes the log of its codon weight plus the total
-        downstream log mass. Context nodes do not contribute any additional weight.
+        The subtree log mass has already been computed for the child state. Codon
+        nodes contribute the log of their codon weight, whereas context nodes
+        contribute no additional mass.
 
         Parameters
         ----------
@@ -323,13 +329,13 @@ class ViewCompiler:
             The graph node from which the choice is taken.
         choice
             The outgoing graph choice.
-        child_log_mass
-            The total downstream mass from the child state, represented in log space.
+        subtree_log_mass
+            The total log mass reachable from the child state.
 
         Returns
         -------
         float
-            The total log mass reachable through this choice.
+            The total log mass reachable after taking this choice.
         """
         if isinstance(node, CodonNode):
             codon_log_weight = self.log_codon_weights.get(choice)
@@ -337,9 +343,9 @@ class ViewCompiler:
             if codon_log_weight is None:
                 return -math.inf
 
-            return codon_log_weight + child_log_mass
+            return codon_log_weight + subtree_log_mass
 
-        return child_log_mass
+        return subtree_log_mass
 
     def _sum_log_masses(self, log_masses: List[float]) -> float:
         """
