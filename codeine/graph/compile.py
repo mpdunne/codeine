@@ -111,6 +111,26 @@ class ViewCompiler:
             samplers=samplers,
         )
 
+    def _initial_state(self) -> NodeState:
+        """
+        Return the initial compiled graph state.
+        """
+        if self.has_path_constraint:
+            constraint_state = self.path_constraint.initial_state
+        else:
+            constraint_state = ()
+
+        return self.graph.initial_node, self._initial_tracker_state(), constraint_state
+
+    def _initial_tracker_state(self) -> TrackerState:
+        """
+        Return the initial banned-sequence tracker state.
+        """
+        if not self.view.banned_sequences:
+            return frozenset()
+
+        return self.tracker.initial_state
+
     def _compile_from(self, initial_state: NodeState) -> None:
         """
         Walk the reachable graph states and compile each one after its children.
@@ -201,18 +221,6 @@ class ViewCompiler:
         self.choices_by_state[state] = choice_results
         self.totals_by_state[state] = (descendant_count, descendant_log_mass)
 
-    def _get_choices_for_node(self, node) -> List[str]:
-        """
-        Return choices available to this node in this view.
-        """
-        if isinstance(node, CodonNode):
-            if node.pos in self.view.pinned_codons:
-                return self.view.pinned_codons[node.pos]
-
-            return node.codons
-
-        return [node.sequence]
-
     def _uncompiled_children(
         self,
         state: NodeState,
@@ -291,25 +299,17 @@ class ViewCompiler:
         else:
             self.fixed_choice_by_state[state] = node.sequence
 
-    def _initial_state(self) -> NodeState:
+    def _get_choices_for_node(self, node: Node) -> List[str]:
         """
-        Return the initial compiled graph state.
+        Return choices available to this node in this view.
         """
-        if self.has_path_constraint:
-            constraint_state = self.path_constraint.initial_state
-        else:
-            constraint_state = ()
+        if isinstance(node, CodonNode):
+            if node.pos in self.view.pinned_codons:
+                return self.view.pinned_codons[node.pos]
 
-        return self.graph.initial_node, self._initial_tracker_state(), constraint_state
+            return node.codons
 
-    def _initial_tracker_state(self) -> TrackerState:
-        """
-        Return the initial banned-sequence tracker state.
-        """
-        if not self.view.banned_sequences:
-            return frozenset()
-
-        return self.tracker.initial_state
+        return [node.sequence]
 
     def _advance_tracker(
         self,
