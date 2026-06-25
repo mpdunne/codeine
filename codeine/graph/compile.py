@@ -67,6 +67,14 @@ class ViewCompiler:
         self.codon_pos_by_state: Dict[NodeState, int] = {}
         self.fixed_choice_by_state: Dict[NodeState, str] = {}
 
+        self.child_state_by_state_choice: Dict[Tuple[NodeState, str], NodeState] = {}
+
+        self.log_weight_by_codon = {
+            codon: math.log(weight)
+            for codon, weight in self.graph.cw.weights.items()
+            if weight > 0
+        }
+
         self.choices_by_node = {
             node: tuple(self._get_choices_for_node(node))
             for node in self.graph.nodes
@@ -115,7 +123,7 @@ class ViewCompiler:
 
             if not expanded:
                 stack.append((node, tracker_state, constraint_state, True))
-                stack.extend(self._uncompiled_children(node, tracker_state, constraint_state))
+                stack.extend(self._uncompiled_children(state, node, tracker_state, constraint_state))
                 continue
 
             self._compile_state(node, tracker_state, constraint_state)
@@ -201,29 +209,13 @@ class ViewCompiler:
         """
         Compile the result of taking one outgoing choice from a graph node.
         """
-        child = node.transitions.get(choice)
+        state = self._state(node, tracker_state, constraint_state)
+        child_state = self.child_state_by_state_choice.get((state, choice))
 
-        if child is None:
+        if child_state is None:
             return None
 
-        advance = self._advance_tracker(tracker_state, node, choice)
-
-        if advance.banned:
-            return None
-
-        if self.has_path_constraint:
-            next_constraint_state = self.path_constraint.advance(
-                constraint_state,
-                node.pos,
-                choice,
-            )
-
-            if next_constraint_state is None:
-                return None
-        else:
-            next_constraint_state = ()
-
-        child_state = self._state(child, advance.state, next_constraint_state)
+        child, _, _ = child_state
         child_count, child_weight_mass = self.totals_by_state[child_state]
 
         if child_count == 0:
@@ -244,6 +236,7 @@ class ViewCompiler:
 
     def _uncompiled_children(
         self,
+        state: NodeState,
         node,
         tracker_state: TrackerState,
         constraint_state: ConstraintState,
@@ -277,6 +270,7 @@ class ViewCompiler:
                 next_constraint_state = ()
 
             child_state = self._state(child, advance.state, next_constraint_state)
+            self.child_state_by_state_choice[(state, choice)] = child_state
 
             if child_state not in self.totals_by_state:
                 children.append((child, advance.state, next_constraint_state, False))
@@ -337,12 +331,12 @@ class ViewCompiler:
         Return the weighted mass for a choice.
         """
         if isinstance(node, CodonNode):
-            weight = self.graph.cw[choice]
+            codon_log_weight = self.log_weight_by_codon.get(choice)
 
-            if weight <= 0:
+            if codon_log_weight is None:
                 return -math.inf
 
-            return math.log(weight) + child_weight_mass
+            return codon_log_weight + child_weight_mass
 
         return child_weight_mass
 
