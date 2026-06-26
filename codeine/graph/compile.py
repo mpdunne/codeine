@@ -67,6 +67,7 @@ class CompiledView:
 
     n_valid_sequences: int
     samplers: dict
+    samplers_by_state_id: tuple
 
 
 class ViewCompiler:
@@ -154,6 +155,11 @@ class ViewCompiler:
 
         samplers = self._make_samplers()
 
+        samplers_by_state_id = tuple(
+            samplers.get(state)
+            for state in self.states
+        )
+
         return CompiledView(
             initial_state=initial_state,
             initial_state_id=initial_state_id,
@@ -164,6 +170,7 @@ class ViewCompiler:
             choices_by_state_id=choices_by_state_id,
             choice_results_by_state_id=choice_results_by_state_id,
             samplers=samplers,
+            samplers_by_state_id=samplers_by_state_id,
         )
 
     def _get_or_register_state_id(self, state: TraversalState) -> int:
@@ -388,7 +395,7 @@ class ViewCompiler:
             runtime_log_masses = []
 
             for result in choice_results:
-                runtime_items.append((result.choice, result.is_coding, result.next_state))
+                runtime_items.append((result.choice, result.is_coding, result.next_state_id))
                 runtime_log_masses.append(result.descendant_log_mass)
 
             if runtime_items:

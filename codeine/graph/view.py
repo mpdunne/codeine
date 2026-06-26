@@ -66,6 +66,7 @@ class CodonGraphView:
         self.choice_results_by_state_id = ()
 
         self.samplers = {}
+        self.samplers_by_state_id = ()
 
     def __getitem__(self, index: Union[int, slice]) -> Union[str, List[str]]:
         """
@@ -213,12 +214,12 @@ class CodonGraphView:
         if self.n_valid_sequences == 0:
             raise ValueError('Cannot sample from an empty coding space.')
 
-        state = self.initial_state
+        state_id = self.initial_state_id
         sequence = []
-        samplers = self.samplers
+        samplers = self.samplers_by_state_id
 
-        while state is not None:
-            choice, is_coding, state = samplers[state].sample()
+        while state_id is not None:
+            choice, is_coding, state_id = samplers[state_id].sample()
 
             if is_coding:
                 sequence.append(choice)
@@ -356,6 +357,7 @@ class CodonGraphView:
         view.choice_results_by_state_id = self.choice_results_by_state_id
 
         view.samplers = self.samplers
+        view.samplers_by_state_id = self.samplers_by_state_id
 
         return view
 
@@ -381,6 +383,7 @@ class CodonGraphView:
         self.choice_results_by_state_id = compiled.choice_results_by_state_id
 
         self.samplers = compiled.samplers
+        self.samplers_by_state_id = compiled.samplers_by_state_id
 
     def pin_codons(self, pinned_codons: Dict[int, CodonRestriction]) -> None:
         """
