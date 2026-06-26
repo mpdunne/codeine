@@ -107,3 +107,14 @@ class TranslationTable:
             raise ValueError('Sequence to normalise must be a nucleotide sequence.')
         else:
             return seq
+
+    def translate(self, seq: str) -> str:
+        """
+        Translate a DNA/RNA coding sequence into its amino-acid sequence.
+        """
+        if len(seq) % 3 != 0:
+            raise ValueError('Sequence length must be a multiple of 3')
+
+        seq = self.normalise_sequence(seq)
+
+        return ''.join(self.codons_to_aa[seq[i:i + 3]] for i in range(0, len(seq), 3))

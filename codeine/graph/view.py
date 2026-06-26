@@ -57,11 +57,10 @@ class CodonGraphView:
         self._compiled = None
         self._requires_compile = True
 
-        self.initial_state = None
-        self.choices_by_state = {}
-        self.choice_results_by_state = {}
-
-        self.samplers = {}
+        self.initial_state_id = None
+        self.choices_by_state_id = ()
+        self.choice_results_by_state_id = ()
+        self.samplers_by_state_id = ()
 
     def __getitem__(self, index: Union[int, slice]) -> Union[str, List[str]]:
         """
@@ -173,11 +172,13 @@ class CodonGraphView:
         if len(seq) != len(self.graph.aa_seq) * 3:
             return False
 
-        state = self.initial_state
-        choices_by_state = self.choices_by_state
+        state_id = self.initial_state_id
+        choices_by_state_id = self.choices_by_state_id
+        states = self._compiled.states
 
-        while state is not None:
+        while state_id is not None:
 
+            state = states[state_id]
             node = state.node
 
             if isinstance(node, CodonNode):
@@ -186,12 +187,12 @@ class CodonGraphView:
             else:
                 choice = node.sequence
 
-            result = choices_by_state[state].get(choice)
+            result = choices_by_state_id[state_id].get(choice)
 
             if result is None:
                 return False
 
-            state = result.next_state
+            state_id = result.next_state_id
 
         return True
 
@@ -209,12 +210,12 @@ class CodonGraphView:
         if self.n_valid_sequences == 0:
             raise ValueError('Cannot sample from an empty coding space.')
 
-        state = self.initial_state
+        state_id = self.initial_state_id
         sequence = []
-        samplers = self.samplers
+        samplers = self.samplers_by_state_id
 
-        while state is not None:
-            choice, is_coding, state = samplers[state].sample()
+        while state_id is not None:
+            choice, is_coding, state_id = samplers[state_id].sample()
 
             if is_coding:
                 sequence.append(choice)
@@ -298,7 +299,7 @@ class CodonGraphView:
                 f'{self.n_valid_sequences} valid sequences.'
             )
 
-        return next(self._iter_sequence_range(index, index + 1))
+        return self._sequence_at(index)
 
     def sequences_at(self, index_slice: slice) -> List[str]:
         """
@@ -343,11 +344,10 @@ class CodonGraphView:
         view._compiled = self._compiled
         view._requires_compile = self._requires_compile
 
-        view.initial_state = self.initial_state
-        view.choices_by_state = self.choices_by_state
-        view.choice_results_by_state = self.choice_results_by_state
-
-        view.samplers = self.samplers
+        view.initial_state_id = self.initial_state_id
+        view.choices_by_state_id = self.choices_by_state_id
+        view.choice_results_by_state_id = self.choice_results_by_state_id
+        view.samplers_by_state_id = self.samplers_by_state_id
 
         return view
 
@@ -364,11 +364,10 @@ class CodonGraphView:
         self._compiled = compiled
         self._requires_compile = False
 
-        self.initial_state = compiled.initial_state
-        self.choices_by_state = compiled.choices_by_state
-        self.choice_results_by_state = compiled.choice_results_by_state
-
-        self.samplers = compiled.samplers
+        self.initial_state_id = compiled.initial_state_id
+        self.choices_by_state_id = compiled.choices_by_state_id
+        self.choice_results_by_state_id = compiled.choice_results_by_state_id
+        self.samplers_by_state_id = compiled.samplers_by_state_id
 
     def pin_codons(self, pinned_codons: Dict[int, CodonRestriction]) -> None:
         """
@@ -534,6 +533,47 @@ class CodonGraphView:
 
         return sorted(set(normalised))
 
+    def _sequence_at(self, index: int) -> str:
+        """
+        Return one valid sequence by directly descending through descendant counts.
+
+        Parameters
+        ----------
+        index
+            The index of the sequence in the graph.
+
+        Returns
+        -------
+        The sequence at the desired index.
+        """
+        state_id = self.initial_state_id
+        choice_results_by_state_id = self.choice_results_by_state_id
+        sequence_parts = []
+
+        while state_id is not None:
+            results = choice_results_by_state_id[state_id]
+
+            if not results:
+                break
+
+            if not results[0].is_coding:
+                state_id = results[0].next_state_id
+                continue
+
+            for result in results:
+                descendant_count = result.descendant_count
+
+                if index < descendant_count:
+                    sequence_parts.append(result.choice)
+                    state_id = result.next_state_id
+                    break
+
+                index -= descendant_count
+            else:
+                raise RuntimeError('Invalid sequence index traversal state.')
+
+        return ''.join(sequence_parts)
+
     def _iter_all_sequences(self) -> Generator[str, None, None]:
         """
         Iterate over all valid sequences. Faster than _iter_sequence_range when
@@ -549,28 +589,34 @@ class CodonGraphView:
         #       state,
         #       coding sequence constructed so far,
         # )
-        choice_results_by_state = self.choice_results_by_state
+        choice_results_by_state_id = self.choice_results_by_state_id
+        sequence_parts = [''] * len(self.graph.aa_seq)
 
-        stack = [(self.initial_state, '')]
+        stack = [(self.initial_state_id, 0, None)]
 
         while stack:
-            state, prefix = stack.pop()
+            state_id, codon_index, choice = stack.pop()
 
-            if state is None:
-                yield prefix
+            if choice is not None:
+                sequence_parts[codon_index - 1] = choice
+
+            if state_id is None:
+                yield ''.join(sequence_parts)
                 continue
 
-            results = choice_results_by_state[state]
+            results = choice_results_by_state_id[state_id]
 
             if not results:
                 continue
 
-            if not isinstance(state.node, CodonNode):
-                stack.append((results[0].next_state, prefix))
+            if not results[0].is_coding:
+                stack.append((results[0].next_state_id, codon_index, None))
                 continue
 
+            next_codon_index = codon_index + 1
+
             for result in reversed(results):
-                stack.append((result.next_state, prefix + result.choice))
+                stack.append((result.next_state_id, next_codon_index, result.choice))
 
     def _iter_sequence_range(
         self,
@@ -598,27 +644,32 @@ class CodonGraphView:
         #       sequence constructed so far,
         #       0-based index of the first sequence reachable from that state.
         # )
-        choice_results_by_state = self.choice_results_by_state
+        choice_results_by_state_id = self.choice_results_by_state_id
+        sequence_parts = [''] * len(self.graph.aa_seq)
 
-        stack = [(self.initial_state, '', 0)]
+        stack = [(self.initial_state_id, 0, None, 0)]
 
         while stack:
-            state, prefix, offset = stack.pop()
+            state_id, codon_index, choice, offset = stack.pop()
 
-            if state is None:
+            if choice is not None:
+                sequence_parts[codon_index - 1] = choice
+
+            if state_id is None:
                 if start <= offset < stop:
-                    yield prefix
+                    yield ''.join(sequence_parts)
                 continue
 
-            results = choice_results_by_state[state]
+            results = choice_results_by_state_id[state_id]
 
             if not results:
                 continue
 
-            if not isinstance(state.node, CodonNode):
-                stack.append((results[0].next_state, prefix, offset))
+            if not results[0].is_coding:
+                stack.append((results[0].next_state_id, codon_index, None, offset))
                 continue
 
+            next_codon_index = codon_index + 1
             child_start = offset
             push = []
 
@@ -632,8 +683,8 @@ class CodonGraphView:
 
             for result, child_start in reversed(push):
                 stack.append((
-                    result.next_state,
-                    prefix + result.choice,
+                    result.next_state_id,
+                    next_codon_index,
+                    result.choice,
                     child_start,
                 ))
-

@@ -810,14 +810,6 @@ def helper_ban_sequences_and_check_sample(
 ):
     tt = TranslationTable()
 
-    unconstrained_graph = CodonGraph(
-        aa_seq,
-        context_l=context_l,
-        context_r=context_r,
-        translation_table=tt,
-    )
-    unconstrained_view = unconstrained_graph.view()
-
     graph = CodonGraph(
         aa_seq,
         context_l=context_l,
@@ -842,8 +834,7 @@ def helper_ban_sequences_and_check_sample(
     for _ in range(n_samples):
         seq = view.sample()
 
-        assert seq in unconstrained_view
-        assert seq in view
+        assert tt.translate(seq) == aa_seq
 
         full_seq = f'{context_l.upper()}{seq.upper()}{context_r.upper()}'
 
@@ -1164,8 +1155,9 @@ def test_regression_banned_sequences_long_aa_sequence_long_banned_sequences(aa_s
     # Grab 50 random 50nt-long sequences from here.
     # (I personally think that's "long", don't know about you!)
     banned_seqs = []
+    n_valid_sequences = unconstrained_view.n_valid_sequences
     for _ in range(50):
-        ix = rng.randrange(unconstrained_view.n_valid_sequences)
+        ix = rng.randrange(n_valid_sequences)
         seq = unconstrained_view[ix]
         start = rng.randrange(len(seq) - 49)
         banned_seqs.append(seq[start:start + 50])
