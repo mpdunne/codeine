@@ -480,13 +480,12 @@ class ViewCompiler:
         float
             The log of the summed masses, or -inf if no finite masses exist.
         """
-        log_masses = [m for m in log_masses if m != -math.inf]
-
         if not log_masses:
             return -math.inf
 
         max_log_mass = max(log_masses)
 
-        total_relative_mass = sum(math.exp(log_mass - max_log_mass) for log_mass in log_masses)
+        total_relative_mass = sum(math.exp(log_mass - max_log_mass)for log_mass in log_masses)
 
         return max_log_mass + math.log(total_relative_mass)
+
