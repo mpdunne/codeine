@@ -194,3 +194,43 @@ def test_non_standard_translation_tables_differ():
 
     assert mitochondrial.table_id == 2
     assert standard.codons_to_aa != mitochondrial.codons_to_aa
+
+
+def test_translate_dna_sequence():
+    tt = TranslationTable()
+    assert tt.translate('ATGGAA') == 'ME'
+
+
+def test_translate_lowercase_sequence():
+    tt = TranslationTable()
+    assert tt.translate('atggaa') == 'ME'
+
+
+def test_translate_rna_sequence():
+    tt = TranslationTable()
+    assert tt.translate('AUGGAA') == 'ME'
+
+
+def test_translate_empty_sequence():
+    tt = TranslationTable()
+    assert tt.translate('') == ''
+
+
+def test_translate_rejects_unknown_codon():
+    tt = TranslationTable()
+
+    with pytest.raises(ValueError):
+        tt.translate('ATGNAA')
+
+
+def test_translate_rejects_sequences_of_bad_length():
+    tt = TranslationTable()
+
+    with pytest.raises(ValueError):
+        tt.translate('A')
+
+    with pytest.raises(ValueError):
+        tt.translate('AT')
+
+    with pytest.raises(ValueError):
+        tt.translate('ATGG')
