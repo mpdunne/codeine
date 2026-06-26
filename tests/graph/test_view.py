@@ -1155,8 +1155,9 @@ def test_regression_banned_sequences_long_aa_sequence_long_banned_sequences(aa_s
     # Grab 50 random 50nt-long sequences from here.
     # (I personally think that's "long", don't know about you!)
     banned_seqs = []
+    n_valid_sequences = unconstrained_view.n_valid_sequences
     for _ in range(50):
-        ix = rng.randrange(unconstrained_view.n_valid_sequences)
+        ix = rng.randrange(n_valid_sequences)
         seq = unconstrained_view[ix]
         start = rng.randrange(len(seq) - 49)
         banned_seqs.append(seq[start:start + 50])

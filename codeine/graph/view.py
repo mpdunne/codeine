@@ -299,7 +299,7 @@ class CodonGraphView:
                 f'{self.n_valid_sequences} valid sequences.'
             )
 
-        return next(self._iter_sequence_range(index, index + 1))
+        return self._sequence_at(index)
 
     def sequences_at(self, index_slice: slice) -> List[str]:
         """
@@ -532,6 +532,47 @@ class CodonGraphView:
             normalised.append(sequence)
 
         return sorted(set(normalised))
+
+    def _sequence_at(self, index: int) -> str:
+        """
+        Return one valid sequence by directly descending through descendant counts.
+
+        Parameters
+        ----------
+        index
+            The index of the sequence in the graph.
+
+        Returns
+        -------
+        The sequence at the desired index.
+        """
+        state_id = self.initial_state_id
+        choice_results_by_state_id = self.choice_results_by_state_id
+        sequence_parts = []
+
+        while state_id is not None:
+            results = choice_results_by_state_id[state_id]
+
+            if not results:
+                break
+
+            if not results[0].is_coding:
+                state_id = results[0].next_state_id
+                continue
+
+            for result in results:
+                descendant_count = result.descendant_count
+
+                if index < descendant_count:
+                    sequence_parts.append(result.choice)
+                    state_id = result.next_state_id
+                    break
+
+                index -= descendant_count
+            else:
+                raise RuntimeError('Invalid sequence index traversal state.')
+
+        return ''.join(sequence_parts)
 
     def _iter_all_sequences(self) -> Generator[str, None, None]:
         """
