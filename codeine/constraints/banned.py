@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Dict, FrozenSet, List, Sequence, Tuple
+from typing import Dict, FrozenSet, List, NamedTuple, Optional, Sequence, Tuple
 
 from codeine.graph.base import CodonGraph
 from codeine.graph.nodes import Node, CodonNode
@@ -27,9 +27,15 @@ Watch = Tuple[int, int]
 # watches every time we make a choice.
 BannedTrackerState = FrozenSet[Watch]
 
+# Internal transition value:
+#   None   -> banned sequence completed
+#   Watch  -> continue watching this path
+TransitionValue = Optional[Watch]
 
-@dataclass(frozen=True)
-class AdvanceResult:
+NO_TRANSITION = object()
+
+
+class AdvanceResult(NamedTuple):
     """
     The result of moving the tracker state forward, indicating whether we are
     currently in a disallowed state, and if not, what the new state is.
@@ -108,8 +114,8 @@ class BannedSequenceTracker:
 
         return tuple(paths)
 
-    def _build_starts(self) -> Dict[Step, Tuple[AdvanceResult, ...]]:
-        starts: Dict[Step, List[AdvanceResult]] = {}
+    def _build_starts(self) -> Dict[Step, Tuple[TransitionValue, ...]]:
+        starts: Dict[Step, List[TransitionValue]] = {}
 
         for path_ix, path in enumerate(self.paths):
             first_step = path.steps[0]
@@ -119,10 +125,9 @@ class BannedSequenceTracker:
             matched_length = min(len(emitted), len(path.sequence))
 
             if matched_length >= len(path.sequence):
-                result = AdvanceResult(banned=True)
+                result = None
             else:
-                state = frozenset({(path_ix, matched_length)})
-                result = AdvanceResult(banned=False, state=state)
+                result = (path_ix, matched_length)
 
             starts.setdefault(first_step, []).append(result)
 
@@ -131,7 +136,7 @@ class BannedSequenceTracker:
             for key, results in starts.items()
         }
 
-    def _build_transitions(self) -> Dict[Tuple[Watch, str], AdvanceResult]:
+    def _build_transitions(self) -> Dict[Tuple[Watch, str], TransitionValue]:
         transitions = {}
 
         for path_ix, path in enumerate(self.paths):
@@ -148,13 +153,12 @@ class BannedSequenceTracker:
                 remaining = path.sequence[matched_length:]
 
                 if choice.startswith(remaining):
-                    transitions[(watch, choice)] = AdvanceResult(banned=True)
+                    transitions[(watch, choice)] = None
                     break
 
                 if remaining.startswith(choice):
                     matched_length += len(choice)
-                    state = frozenset({(path_ix, matched_length)})
-                    transitions[(watch, choice)] = AdvanceResult(banned=False, state=state)
+                    transitions[(watch, choice)] = (path_ix, matched_length)
                     continue
 
                 break
@@ -191,22 +195,25 @@ class BannedSequenceTracker:
         next_state = set()
 
         if starts is not None:
-            for result in starts:
-                if result.banned:
-                    return AdvanceResult(banned=True)
+            for watch in starts:
+                if watch is None:
+                    return BANNED_ADVANCE_RESULT
 
-                next_state.update(result.state)
+                next_state.add(watch)
 
         for watch in state:
-            result = self.transitions.get((watch, choice))
+            next_watch = self.transitions.get((watch, choice), NO_TRANSITION)
 
-            if result is None:
+            if next_watch is NO_TRANSITION:
                 continue
 
-            if result.banned:
+            if next_watch is None:
                 return BANNED_ADVANCE_RESULT
 
-            next_state.update(result.state)
+            next_state.add(next_watch)
+
+        if not next_state:
+            return CLEAR_ADVANCE_RESULT
 
         return AdvanceResult(banned=False, state=frozenset(next_state))
 
