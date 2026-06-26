@@ -201,8 +201,12 @@ class BannedSequenceTracker:
         return AdvanceResult(banned=False, state=frozenset(next_state))
 
 
+MatchedPath = Tuple[Tuple[Node, str], ...]
+MatchedSubPath = Tuple[MatchedPath, int]
+
+
 def _find_matching_subpaths(graph: CodonGraph, sequence: str) \
-        -> List[Tuple[List[Tuple[Node, str]], int]]:
+        -> List[MatchedSubPath]:
     """
     For a given sequence, find subpaths in the graph that match that sequence.
     Return each found subpath in the following format:
@@ -231,7 +235,7 @@ def _find_matching_subpaths(graph: CodonGraph, sequence: str) \
     if len(sequence) == 0:
         raise ValueError('Sequence cannot be empty.')
 
-    matches = []
+    matches: List[MatchedSubPath] = []
     candidate_matches = []
 
     # First, check which nodes we can start at.
@@ -245,11 +249,15 @@ def _find_matching_subpaths(graph: CodonGraph, sequence: str) \
 
                 if choice_subsequence.startswith(sequence):
                     # Bingo!
-                    matches.append(([(node, choice)], offset))
+                    matches.append((((node, choice),), offset))
 
                 elif sequence.startswith(choice_subsequence):
                     # Maybe bingo! Maygo!
-                    candidate_matches.append(([(node, choice)], offset, len(choice_subsequence)))
+                    candidate_matches.append((
+                        ((node, choice),),
+                        offset,
+                        len(choice_subsequence),
+                    ))
 
     def reinspect_candidate_matches(candidate_matches):
         reinspect = []
@@ -293,7 +301,11 @@ def _find_matching_subpaths(graph: CodonGraph, sequence: str) \
 
                     if remaining_sequence.startswith(choice):
                         # Keep going...
-                        reinspect.append((partial_path + [(node, choice)], offset, seen_length + choice_length))
+                        reinspect.append((
+                            partial_path + ((node, choice),),
+                            offset,
+                            seen_length + choice_length,
+                        ))
 
                     else:
                         # Hard luck this time.
@@ -303,7 +315,10 @@ def _find_matching_subpaths(graph: CodonGraph, sequence: str) \
 
                     if choice.startswith(remaining_sequence):
                         # Wahoo!
-                        matches.append((partial_path + [(node, choice)], offset))
+                        matches.append((
+                            partial_path + ((node, choice),),
+                            offset,
+                        ))
 
                     else:
                         # Hard luck this time.
