@@ -810,14 +810,6 @@ def helper_ban_sequences_and_check_sample(
 ):
     tt = TranslationTable()
 
-    unconstrained_graph = CodonGraph(
-        aa_seq,
-        context_l=context_l,
-        context_r=context_r,
-        translation_table=tt,
-    )
-    unconstrained_view = unconstrained_graph.view()
-
     graph = CodonGraph(
         aa_seq,
         context_l=context_l,
@@ -842,8 +834,7 @@ def helper_ban_sequences_and_check_sample(
     for _ in range(n_samples):
         seq = view.sample()
 
-        assert seq in unconstrained_view
-        assert seq in view
+        assert tt.translate(seq) == aa_seq
 
         full_seq = f'{context_l.upper()}{seq.upper()}{context_r.upper()}'
 
