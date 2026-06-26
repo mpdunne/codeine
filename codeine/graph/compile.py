@@ -40,6 +40,7 @@ class ChoiceResult:
     descendant_count: int
     descendant_log_mass: float
     next_state: Optional[TraversalState]
+    next_state_id: Optional[int]
     is_coding: bool
 
 
@@ -49,16 +50,20 @@ class CompiledView:
     Cached data for a compiled CodonGraphView, to speed up sampling and enumeration.
     """
     initial_state: TraversalState
+    initial_state_id: int
+    states: Tuple[TraversalState, ...]
 
     # Compiled graph choices (lookup):
-    # state -> choice -> ChoiceResult
+    # state/ID -> choice -> ChoiceResult
     # Used for fast sequence validation and graph traversal in the graph view.
     choices_by_state: Dict[TraversalState, Dict[str, ChoiceResult]]
+    choices_by_state_id: Tuple[Dict[str, ChoiceResult], ...]
 
     # Compiled graph choices (iteration):
-    # state -> ChoiceResults in graph order
+    # state/ID -> ChoiceResults in graph order
     # Used for fast sampling and sequence enumeration in the graph view.
     choice_results_by_state: Dict[TraversalState, Tuple[ChoiceResult, ...]]
+    choice_results_by_state_id: Tuple[Tuple[ChoiceResult, ...], ...]
 
     n_valid_sequences: int
     samplers: dict
@@ -75,6 +80,9 @@ class ViewCompiler:
         self.banned_tracker = view.banned_tracker
         self.path_constraint = view.path_constraint
         self.has_path_constraint = self.path_constraint is not None
+
+        self.state_ids: Dict[TraversalState, int] = {}
+        self.states: List[TraversalState] = []
 
         # Dynamic-programming totals:
         # state -> (descendant count, descendant log mass)
@@ -125,6 +133,8 @@ class ViewCompiler:
             A compiled view.
         """
         initial_state = self._initial_state()
+        initial_state_id = self._get_or_register_state_id(initial_state)
+
         self._compile_from(initial_state)
 
         self.choice_results_by_state = {
@@ -132,15 +142,42 @@ class ViewCompiler:
             for state, choice_results in self.choices_by_state.items()
         }
 
+        choices_by_state_id = tuple(
+            self.choices_by_state.get(state, {})
+            for state in self.states
+        )
+
+        choice_results_by_state_id = tuple(
+            self.choice_results_by_state.get(state, ())
+            for state in self.states
+        )
+
         samplers = self._make_samplers()
 
         return CompiledView(
             initial_state=initial_state,
+            initial_state_id=initial_state_id,
+            states=tuple(self.states),
             n_valid_sequences=self.totals_by_state[initial_state][0],
             choices_by_state=self.choices_by_state,
             choice_results_by_state=self.choice_results_by_state,
+            choices_by_state_id=choices_by_state_id,
+            choice_results_by_state_id=choice_results_by_state_id,
             samplers=samplers,
         )
+
+    def _get_or_register_state_id(self, state: TraversalState) -> int:
+        """
+        Return the stable integer ID for a traversal state, creating one if needed.
+        """
+        state_id = self.state_ids.get(state)
+
+        if state_id is None:
+            state_id = len(self.states)
+            self.state_ids[state] = state_id
+            self.states.append(state)
+
+        return state_id
 
     def _initial_state(self) -> TraversalState:
         """
@@ -183,6 +220,8 @@ class ViewCompiler:
         while stack:
             state, expanded = stack.pop()
             node = state.node
+
+            _ = self._get_or_register_state_id(state)
 
             if state in self.totals_by_state:
                 continue
@@ -264,6 +303,7 @@ class ViewCompiler:
                 descendant_count=child_count,
                 descendant_log_mass=choice_log_mass,
                 next_state=None if child is self.graph.final_node else child_state,
+                next_state_id=None if child is self.graph.final_node else self.state_ids[child_state],
                 is_coding=is_coding,
             )
 
@@ -316,6 +356,7 @@ class ViewCompiler:
                 next_constraint_state = ()
 
             child_state = TraversalState(child, advance.state, next_constraint_state)
+            _ = self._get_or_register_state_id(child_state)
             self.child_state_by_state_choice[(state, choice)] = child_state
 
             if child_state not in self.totals_by_state:
@@ -482,7 +523,6 @@ class ViewCompiler:
         if not log_masses:
             return -math.inf
 
-        # Use the max value to keep exp(log_mass - max_log_mass) numerically stable.
         max_log_mass = max(log_masses)
 
         total_relative_mass = sum(math.exp(log_mass - max_log_mass) for log_mass in log_masses)
