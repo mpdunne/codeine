@@ -97,9 +97,9 @@ class ViewCompiler:
         self.banned_advance_cache: Dict[Tuple[Node, BannedTrackerState, str], AdvanceResult] = {}
 
         # Traversal transition table:
-        # (state, choice) -> child state ID
+        # (state ID, choice) -> child state ID
         # Avoids rediscovering successor states during compilation.
-        self.child_id_by_state_choice: Dict[Tuple[TraversalState, str], int] = {}
+        self.child_id_by_state_id_choice: Dict[Tuple[int, str], int] = {}
 
         # Compiled graph choices (lookup):
         # state ID -> choice -> ChoiceResult
@@ -138,7 +138,7 @@ class ViewCompiler:
         initial_state = self._initial_state()
         initial_state_id = self._get_or_register_state_id(initial_state)
 
-        self._compile_from(initial_state)
+        self._compile_from(initial_state_id)
 
         choices_by_state_id = tuple(
             choices or {}
@@ -219,43 +219,40 @@ class ViewCompiler:
 
         return TraversalState(self.graph.initial_node, banned_tracker_state, constraint_state)
 
-    def _compile_from(self, initial_state: TraversalState) -> None:
+    def _compile_from(self, initial_state_id: int) -> None:
         """
-        Compile every reachable traversal state starting from an initial state.
+        Compile every reachable traversal state starting from an initial state ID.
 
         Uses an explicit depth-first stack so that each non-final state is compiled
         only after its child states have been compiled.
 
         Parameters
         ----------
-        initial_state
-            State from which graph compilation should begin.
+        initial_state_id
+            ID of the state from which graph compilation should begin.
         """
-        stack = [(initial_state, False)]
+        stack = [(initial_state_id, False)]
 
         while stack:
-            state, expanded = stack.pop()
+            state_id, expanded = stack.pop()
+            state = self.states[state_id]
             node = state.node
-
-            _ = self._get_or_register_state_id(state)
-
-            state_id = self.state_ids[state]
 
             if self.totals_by_state_id[state_id] is not None:
                 continue
 
             if node is self.graph.final_node:
-                self._compile_final_state(state)
+                self._compile_final_state(state_id)
                 continue
 
             if not expanded:
-                stack.append((state, True))
-                stack.extend(self._uncompiled_children(state))
+                stack.append((state_id, True))
+                stack.extend(self._uncompiled_children(state_id))
                 continue
 
-            self._compile_state(state)
+            self._compile_state(state_id)
 
-    def _compile_final_state(self, state: TraversalState) -> None:
+    def _compile_final_state(self, state_id: int) -> None:
         """
         Compile a terminal traversal state.
 
@@ -270,10 +267,10 @@ class ViewCompiler:
 
         Parameters
         ----------
-        state
-            Terminal traversal state being compiled.
+        state_id
+            ID of the terminal traversal state being compiled.
         """
-        state_id = self.state_ids[state]
+        state = self.states[state_id]
 
         if not self.has_path_constraint or self.path_constraint.is_satisfied(state.constraint_state):
             total = (1, 0.0)
@@ -284,7 +281,7 @@ class ViewCompiler:
         self.totals_by_state_id[state_id] = total
         self.choices_by_state_id_working[state_id] = {}
 
-    def _compile_state(self, state: TraversalState) -> None:
+    def _compile_state(self, state_id: int) -> None:
         """
         Compile one non-final traversal state.
 
@@ -294,9 +291,10 @@ class ViewCompiler:
 
         Parameters
         ----------
-        state
-            Traversal state being compiled.
+        state_id
+            ID of the traversal state being compiled.
         """
+        state = self.states[state_id]
         node = state.node
         choice_results = {}
         descendant_count = 0
@@ -304,7 +302,7 @@ class ViewCompiler:
         is_coding = isinstance(node, CodonNode)
 
         for choice in self.choices_by_node[node]:
-            child_id = self.child_id_by_state_choice.get((state, choice))
+            child_id = self.child_id_by_state_id_choice.get((state_id, choice))
 
             if child_id is None:
                 continue
@@ -341,31 +339,31 @@ class ViewCompiler:
 
         descendant_log_mass = self._sum_log_masses(descendant_log_masses)
 
-        state_id = self.state_ids[state]
         total = (descendant_count, descendant_log_mass)
 
         self.choices_by_state_id_working[state_id] = choice_results
         self.totals_by_state[state] = total
         self.totals_by_state_id[state_id] = total
 
-    def _uncompiled_children(self, state: TraversalState) -> List[Tuple[TraversalState, bool]]:
+    def _uncompiled_children(self, state_id: int) -> List[Tuple[int, bool]]:
         """
-        Return child states reached by taking each outgoing graph choice.
+        Return child state IDs reached by taking each outgoing graph choice.
 
         Choices rejected by the banned-sequence tracker or path constraint are skipped.
         Only child states that have not yet been compiled are returned.
 
         Parameters
         ----------
-        state
-            Traversal state whose children should be discovered.
+        state_id
+            ID of the traversal state whose children should be discovered.
 
         Returns
         -------
         list of tuple
-            Stack entries for child states still needing compilation.
+            Stack entries for child state IDs still needing compilation.
         """
         children = []
+        state = self.states[state_id]
         node = state.node
 
         for choice in self.choices_by_node[node]:
@@ -389,10 +387,10 @@ class ViewCompiler:
 
             child_state = TraversalState(child, advance.state, next_constraint_state)
             child_id = self._get_or_register_state_id(child_state)
-            self.child_id_by_state_choice[(state, choice)] = child_id
+            self.child_id_by_state_id_choice[(state_id, choice)] = child_id
 
             if self.totals_by_state_id[child_id] is None:
-                children.append((child_state, False))
+                children.append((child_id, False))
 
         return children
 
