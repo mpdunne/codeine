@@ -70,7 +70,10 @@ class ViewCompiler:
     def __init__(self, view: 'CodonGraphView') -> None:
         self.view = view
         self.graph = view.graph
+        
         self.banned_tracker = view.banned_tracker
+        self.has_banned_tracker = not self.banned_tracker.is_trivial
+
         self.path_constraint = view.path_constraint
         self.has_path_constraint = self.path_constraint is not None
 
@@ -417,7 +420,7 @@ class ViewCompiler:
         if key in self.banned_advance_cache:
             return self.banned_advance_cache[key]
 
-        if self.banned_tracker.is_trivial:
+        if not self.has_banned_tracker:
             result = AdvanceResult(banned=False, state=banned_tracker_state)
         else:
             step = (node.pos, choice)
