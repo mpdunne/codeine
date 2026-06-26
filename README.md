@@ -55,15 +55,25 @@ space = CodingSpace('MKTLEFQNGSCPRYKKL')
 print(space.n_valid_sequences)
 ```
 
-Sample valid sequences:
+Sample a single valid sequences:
 
 ```python
 from codeine import CodingSpace
 
 space = CodingSpace('MKTLEFQNGSCPRYKKL')
 
-for _ in range(5):
-    print(space.sample())
+seq = space.sample()
+print(seq)
+```
+
+Sample many:
+```python
+from codeine import CodingSpace
+
+space = CodingSpace('MKTLEFQNGSCPRYKKL')
+
+for seq in space.sample(n=5):
+    print(seq)
 ```
 
 Apply restrictions:
@@ -86,6 +96,7 @@ space = CodingSpace(
 )
 
 print(space.n_valid_sequences)
+print(space.sample())
 ```
 
 Use custom codon weights to change sampling distribution:
@@ -97,7 +108,8 @@ weights = CodonWeights.ecoli()
 
 space = CodingSpace("MKTLEFQNGSCPRYKKL", codon_weights=weights)
 
-space.sample()
+seq = space.sample()
+print(seq)
 ```
 
 Nonstandard translation tables and RNA:
@@ -109,7 +121,8 @@ table = TranslationTable(table_id=2, rna=True)
 
 space = CodingSpace("MKTLEFQNGSCPRYKKL", translation_table=table)
 
-space.sample()
+seq = space.sample()
+print(seq)
 ```
 
 Enumerate all sequences (only recommended for small spaces):
@@ -130,14 +143,15 @@ from codeine import CodingSpace
 
 space = CodingSpace('MKTLEFQNGSCPRYKKL')
 
-reference_cds = space.sample()
+reference = space.sample()
 
 mutants = space.mutants(
-    reference_cds,
+    reference,
     free_positions=range(5, 14),
     min_nts=2,
     max_nts=5,
 )
 
-mutants.sample()
+mutant = mutants.sample()
+print(mutant)
 ```

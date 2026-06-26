@@ -852,6 +852,31 @@ def test_sample_respects_pins():
         assert view.sample()[3:6] == 'ATT'
 
 
+def test_sample_many_returns_correct_number():
+    view = CodonGraph('MIKEY').view(seed=8675309)
+    seqs = view.sample(n=10)
+
+    assert len(seqs) == 10
+    assert all(isinstance(seq, str) for seq in seqs)
+
+
+def test_sample_many_zero():
+    view = CodonGraph('MIKEY').view()
+    assert view.sample(n=0) == []
+
+
+def test_sample_many_negative_n_raises():
+    view = CodonGraph('MIKEY').view()
+    with pytest.raises(ValueError):
+        view.sample(n=-1)
+
+
+def test_sample_many_sequences_are_valid():
+    view = CodonGraph('MIKEY').view()
+    seqs = view.sample(n=100)
+    assert all(seq in view for seq in seqs)
+
+
 @pytest.mark.parametrize('aa_seq', SHORT_AA_SEQUENCES)
 @pytest.mark.parametrize('context_l', CONTEXTS_L)
 @pytest.mark.parametrize('context_r', CONTEXTS_R)
