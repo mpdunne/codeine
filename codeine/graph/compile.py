@@ -5,7 +5,6 @@ from typing import Dict, NamedTuple, Tuple, List, Optional, TYPE_CHECKING
 from codeine.constraints.banned import BannedTrackerState, AdvanceResult
 from codeine.constraints.base import ConstraintState
 from codeine.graph.nodes import CodonNode, Node, ContextNode
-from codeine.utils.sampling import Sampler
 
 if TYPE_CHECKING:
     from codeine.graph.view import CodonGraphView
@@ -61,7 +60,6 @@ class CompiledView(NamedTuple):
     choice_results_by_state_id: Tuple[Tuple[ChoiceResult, ...], ...]
 
     n_valid_sequences: int
-    samplers_by_state_id: tuple
 
 
 class ViewCompiler:
@@ -137,8 +135,6 @@ class ViewCompiler:
             for choices in self.choices_by_state_id
         )
 
-        samplers_by_state_id = self._make_samplers(choice_results_by_state_id)
-
         initial_total = self.totals_by_state_id[initial_state_id]
         assert initial_total is not None
 
@@ -149,7 +145,6 @@ class ViewCompiler:
             n_valid_sequences=initial_total[0],
             choices_by_state_id=choices_by_state_id,
             choice_results_by_state_id=choice_results_by_state_id,
-            samplers_by_state_id=samplers_by_state_id,
         )
 
     def _get_or_register_state_id(self, state: TraversalState) -> int:
@@ -364,47 +359,6 @@ class ViewCompiler:
 
         return children
 
-    def _make_samplers(
-            self,
-            choice_results_by_state_id: Tuple[Tuple[ChoiceResult, ...], ...],
-    ) -> Tuple:
-        """
-        Build weighted samplers for every compiled traversal state.
-
-        Each sampler chooses between the state's valid outgoing choices with
-        probabilities proportional to their descendant probability masses.
-
-        Returns
-        -------
-        tuple
-            Samplers in state-ID order.
-        """
-        samplers_by_state_id = []
-
-        for state_id, choice_results in enumerate(choice_results_by_state_id):
-            state = self.states[state_id]
-            node = state.node
-
-            if node is self.graph.final_node:
-                samplers_by_state_id.append(None)
-                continue
-
-            runtime_items = []
-            runtime_log_masses = []
-
-            for result in choice_results:
-                runtime_items.append((result.choice, result.is_coding, result.next_state_id))
-                runtime_log_masses.append(result.descendant_log_mass)
-
-            if runtime_items:
-                runtime_weights = self._convert_log_masses_to_sampler_weights(runtime_log_masses)
-                sampler = Sampler(runtime_items, runtime_weights, rng=self.view._rng)
-                samplers_by_state_id.append(sampler)
-            else:
-                samplers_by_state_id.append(None)
-
-        return tuple(samplers_by_state_id)
-
     def _get_choices_for_node(self, node: Node) -> List[str]:
         """
         Return the graph choices available from a node in this view.
@@ -536,31 +490,3 @@ class ViewCompiler:
         total_relative_mass = sum(math.exp(log_mass - max_log_mass) for log_mass in log_masses)
 
         return max_log_mass + math.log(total_relative_mass)
-
-    def _convert_log_masses_to_sampler_weights(self, log_masses: List[float]) -> List[float]:
-        """
-        Convert subtree log masses into relative weights for sampling.
-
-        The returned weights are proportional to the true subtree probabilities but
-        are rescaled to avoid numerical underflow. Only the relative values matter
-        for weighted sampling.
-
-        Parameters
-        ----------
-        log_masses
-            Choice masses represented in log space.
-
-        Returns
-        -------
-        list of float
-            Relative non-log weights suitable for weighted sampling.
-        """
-        if not log_masses:
-            return log_masses
-
-        max_log_mass = max(log_masses)
-
-        if max_log_mass == -math.inf:
-            return [1.0] * len(log_masses)
-
-        return [math.exp(log_mass - max_log_mass) for log_mass in log_masses]
