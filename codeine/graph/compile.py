@@ -102,8 +102,9 @@ class ViewCompiler:
         self.child_id_by_state_choice: Dict[Tuple[TraversalState, str], int] = {}
 
         # Compiled graph choices (lookup):
-        # state -> choice -> ChoiceResult
+        # state ID -> choice -> ChoiceResult
         # Used for fast sequence validation and graph traversal in the graph view.
+        self.choices_by_state_id_working: List[Optional[Dict[str, ChoiceResult]]] = []
         self.choices_by_state: Dict[TraversalState, Dict[str, ChoiceResult]] = {}
 
         # Compiled graph choices (iteration):
@@ -139,20 +140,25 @@ class ViewCompiler:
 
         self._compile_from(initial_state)
 
-        self.choice_results_by_state = {
-            state: tuple(choice_results.values())
-            for state, choice_results in self.choices_by_state.items()
-        }
-
         choices_by_state_id = tuple(
-            self.choices_by_state.get(state, {})
-            for state in self.states
+            choices or {}
+            for choices in self.choices_by_state_id_working
         )
 
         choice_results_by_state_id = tuple(
-            self.choice_results_by_state.get(state, ())
-            for state in self.states
+            tuple(choices.values()) if choices else ()
+            for choices in self.choices_by_state_id_working
         )
+
+        self.choices_by_state = {
+            state: choices_by_state_id[state_id]
+            for state_id, state in enumerate(self.states)
+        }
+
+        self.choice_results_by_state = {
+            state: choice_results_by_state_id[state_id]
+            for state_id, state in enumerate(self.states)
+        }
 
         samplers = self._make_samplers()
 
@@ -185,6 +191,7 @@ class ViewCompiler:
             self.state_ids[state] = state_id
             self.states.append(state)
             self.totals_by_state_id.append(None)
+            self.choices_by_state_id_working.append(None)
 
         return state_id
 
@@ -275,7 +282,7 @@ class ViewCompiler:
 
         self.totals_by_state[state] = total
         self.totals_by_state_id[state_id] = total
-        self.choices_by_state[state] = {}
+        self.choices_by_state_id_working[state_id] = {}
 
     def _compile_state(self, state: TraversalState) -> None:
         """
@@ -337,7 +344,7 @@ class ViewCompiler:
         state_id = self.state_ids[state]
         total = (descendant_count, descendant_log_mass)
 
-        self.choices_by_state[state] = choice_results
+        self.choices_by_state_id_working[state_id] = choice_results
         self.totals_by_state[state] = total
         self.totals_by_state_id[state_id] = total
 
