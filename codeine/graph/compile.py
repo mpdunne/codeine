@@ -86,9 +86,8 @@ class ViewCompiler:
         self.states: List[TraversalState] = []
 
         # Dynamic-programming totals:
-        # state -> (descendant count, descendant log mass)
+        # state ID -> (descendant count, descendant log mass)
         # Avoids repeatedly recomputing subtree sizes and probability masses.
-        self.totals_by_state: Dict[TraversalState, Tuple[int, float]] = {}
         self.totals_by_state_id: List[Optional[Tuple[int, float]]] = []
 
         # Banned-sequence tracker transitions:
@@ -104,13 +103,7 @@ class ViewCompiler:
         # Compiled graph choices (lookup):
         # state ID -> choice -> ChoiceResult
         # Used for fast sequence validation and graph traversal in the graph view.
-        self.choices_by_state_id_working: List[Optional[Dict[str, ChoiceResult]]] = []
-        self.choices_by_state: Dict[TraversalState, Dict[str, ChoiceResult]] = {}
-
-        # Compiled graph choices (iteration):
-        # state -> ChoiceResults in graph order
-        # Used for fast sampling and sequence enumeration in the graph view.
-        self.choice_results_by_state: Dict[TraversalState, Tuple[ChoiceResult, ...]] = {}
+        self.choices_by_state_id: List[Optional[Dict[str, ChoiceResult]]] = []
 
         # The cached log-ified codon weights, to avoid repeated log calculations
         self.log_codon_weights = {
@@ -142,38 +135,36 @@ class ViewCompiler:
 
         choices_by_state_id = tuple(
             choices or {}
-            for choices in self.choices_by_state_id_working
+            for choices in self.choices_by_state_id
         )
 
         choice_results_by_state_id = tuple(
             tuple(choices.values()) if choices else ()
-            for choices in self.choices_by_state_id_working
+            for choices in self.choices_by_state_id
         )
 
-        self.choices_by_state = {
+        choices_by_state = {
             state: choices_by_state_id[state_id]
             for state_id, state in enumerate(self.states)
         }
 
-        self.choice_results_by_state = {
+        choice_results_by_state = {
             state: choice_results_by_state_id[state_id]
             for state_id, state in enumerate(self.states)
         }
 
-        samplers = self._make_samplers()
+        samplers, samplers_by_state_id = self._make_samplers(choice_results_by_state_id)
 
-        samplers_by_state_id = tuple(
-            samplers.get(state)
-            for state in self.states
-        )
+        initial_total = self.totals_by_state_id[initial_state_id]
+        assert initial_total is not None
 
         return CompiledView(
             initial_state=initial_state,
             initial_state_id=initial_state_id,
             states=tuple(self.states),
-            n_valid_sequences=self.totals_by_state[initial_state][0],
-            choices_by_state=self.choices_by_state,
-            choice_results_by_state=self.choice_results_by_state,
+            n_valid_sequences=initial_total[0],
+            choices_by_state=choices_by_state,
+            choice_results_by_state=choice_results_by_state,
             choices_by_state_id=choices_by_state_id,
             choice_results_by_state_id=choice_results_by_state_id,
             samplers=samplers,
@@ -191,7 +182,7 @@ class ViewCompiler:
             self.state_ids[state] = state_id
             self.states.append(state)
             self.totals_by_state_id.append(None)
-            self.choices_by_state_id_working.append(None)
+            self.choices_by_state_id.append(None)
 
         return state_id
 
@@ -277,9 +268,8 @@ class ViewCompiler:
         else:
             total = (0, -math.inf)
 
-        self.totals_by_state[state] = total
         self.totals_by_state_id[state_id] = total
-        self.choices_by_state_id_working[state_id] = {}
+        self.choices_by_state_id[state_id] = {}
 
     def _compile_state(self, state_id: int) -> None:
         """
@@ -341,8 +331,7 @@ class ViewCompiler:
 
         total = (descendant_count, descendant_log_mass)
 
-        self.choices_by_state_id_working[state_id] = choice_results
-        self.totals_by_state[state] = total
+        self.choices_by_state_id[state_id] = choice_results
         self.totals_by_state_id[state_id] = total
 
     def _uncompiled_children(self, state_id: int) -> List[Tuple[int, bool]]:
@@ -394,7 +383,10 @@ class ViewCompiler:
 
         return children
 
-    def _make_samplers(self) -> dict:
+    def _make_samplers(
+            self,
+            choice_results_by_state_id: Tuple[Tuple[ChoiceResult, ...], ...],
+    ) -> Tuple[dict, tuple]:
         """
         Build weighted samplers for every compiled traversal state.
 
@@ -403,15 +395,18 @@ class ViewCompiler:
 
         Returns
         -------
-        dict
-            Mapping from traversal state to a sampler over its outgoing choices.
+        tuple
+            Mapping from traversal state to sampler, plus samplers in state-ID order.
         """
         samplers = {}
+        samplers_by_state_id = []
 
-        for state, choice_results in self.choice_results_by_state.items():
+        for state_id, choice_results in enumerate(choice_results_by_state_id):
+            state = self.states[state_id]
             node = state.node
 
             if node is self.graph.final_node:
+                samplers_by_state_id.append(None)
                 continue
 
             runtime_items = []
@@ -423,9 +418,13 @@ class ViewCompiler:
 
             if runtime_items:
                 runtime_weights = self._convert_log_masses_to_sampler_weights(runtime_log_masses)
-                samplers[state] = Sampler(runtime_items, runtime_weights, rng=self.view._rng)
+                sampler = Sampler(runtime_items, runtime_weights, rng=self.view._rng)
+                samplers[state] = sampler
+                samplers_by_state_id.append(sampler)
+            else:
+                samplers_by_state_id.append(None)
 
-        return samplers
+        return samplers, tuple(samplers_by_state_id)
 
     def _get_choices_for_node(self, node: Node) -> List[str]:
         """
