@@ -204,15 +204,20 @@ class MutationSpace:
 
         return '\n'.join(lines)
 
-    def sample(self) -> str:
+    def sample(self, n: Optional[int] = None) -> str:
         """
-        Sample a variant from this mutation space.
+        Sample one or more variants from this mutation space.
+
+        Parameters
+        ----------
+        n
+            Number of sequences to sample. If omitted, return a single sequence.
 
         Returns
         -------
         A sampled string sequence from this mutation space.
         """
-        return self.view.sample()
+        return self.view.sample(n=n)
 
     def enumerate(self) -> Generator[str, None, None]:
         """

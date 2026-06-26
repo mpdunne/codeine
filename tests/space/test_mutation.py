@@ -368,6 +368,15 @@ def test_mutation_space_samples_correctly():
         assert variant[9:12] == cds[9:12]
 
 
+def test_mutation_space_sample_many():
+    space = CodingSpace('MIKEY', seed=88)
+    reference = space[0]
+    muts = space.mutants(reference)
+    seqs = muts.sample(n=10)
+    assert len(seqs) == 10
+    assert all(seq in space for seq in seqs)
+
+
 def test_mutation_space_does_not_modify_original_space():
     space = CodingSpace('MIKEY')
     cds = space[0]
