@@ -1,6 +1,5 @@
 import math
 
-from dataclasses import dataclass
 from typing import Dict, NamedTuple, Tuple, List, Optional, TYPE_CHECKING
 
 from codeine.constraints.banned import BannedTrackerState, AdvanceResult
@@ -26,8 +25,7 @@ class TraversalState(NamedTuple):
     constraint_state: ConstraintState
 
 
-@dataclass(frozen=True)
-class ChoiceResult:
+class ChoiceResult(NamedTuple):
     """
     Cached result of taking one graph choice from one compiled state. The
     "choice" is the graph edge label, i.e. a codon or a context sequence.
@@ -44,8 +42,7 @@ class ChoiceResult:
     is_coding: bool
 
 
-@dataclass(frozen=True)
-class CompiledView:
+class CompiledView(NamedTuple):
     """
     Cached data for a compiled CodonGraphView, to speed up sampling and enumeration.
     """
