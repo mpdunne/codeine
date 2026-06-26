@@ -38,6 +38,10 @@ class AdvanceResult:
     state: BannedTrackerState = frozenset()
 
 
+CLEAR_ADVANCE_RESULT = AdvanceResult(banned=False)
+BANNED_ADVANCE_RESULT = AdvanceResult(banned=True)
+
+
 class BannedSequenceTracker:
     """
     Tracks progress along concrete "banned" graph subpaths.
@@ -158,9 +162,9 @@ class BannedSequenceTracker:
         return transitions
 
     def advance(
-        self,
-        step: Step,
-        state: BannedTrackerState,
+            self,
+            step: Step,
+            state: BannedTrackerState,
     ) -> AdvanceResult:
         """
         Move the tracker state forward after taking a graph step.
@@ -178,14 +182,20 @@ class BannedSequenceTracker:
             Whether the step completed a banned sequence, and otherwise the
             updated tracker state.
         """
+        starts = self.starts.get(step)
+
+        if starts is None and not state:
+            return CLEAR_ADVANCE_RESULT
+
         _pos, choice = step
         next_state = set()
 
-        for result in self.starts.get(step, ()):
-            if result.banned:
-                return AdvanceResult(banned=True)
+        if starts is not None:
+            for result in starts:
+                if result.banned:
+                    return AdvanceResult(banned=True)
 
-            next_state.update(result.state)
+                next_state.update(result.state)
 
         for watch in state:
             result = self.transitions.get((watch, choice))
@@ -194,7 +204,7 @@ class BannedSequenceTracker:
                 continue
 
             if result.banned:
-                return AdvanceResult(banned=True)
+                return BANNED_ADVANCE_RESULT
 
             next_state.update(result.state)
 
