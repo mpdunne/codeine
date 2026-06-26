@@ -561,28 +561,28 @@ class CodonGraphView:
         #       state,
         #       coding sequence constructed so far,
         # )
-        choice_results_by_state = self.choice_results_by_state
+        choice_results_by_state_id = self.choice_results_by_state_id
 
-        stack = [(self.initial_state, '')]
+        stack = [(self.initial_state_id, '')]
 
         while stack:
-            state, prefix = stack.pop()
+            state_id, prefix = stack.pop()
 
-            if state is None:
+            if state_id is None:
                 yield prefix
                 continue
 
-            results = choice_results_by_state[state]
+            results = choice_results_by_state_id[state_id]
 
             if not results:
                 continue
 
-            if not isinstance(state.node, CodonNode):
-                stack.append((results[0].next_state, prefix))
+            if not results[0].is_coding:
+                stack.append((results[0].next_state_id, prefix))
                 continue
 
             for result in reversed(results):
-                stack.append((result.next_state, prefix + result.choice))
+                stack.append((result.next_state_id, prefix + result.choice))
 
     def _iter_sequence_range(
         self,
@@ -610,25 +610,25 @@ class CodonGraphView:
         #       sequence constructed so far,
         #       0-based index of the first sequence reachable from that state.
         # )
-        choice_results_by_state = self.choice_results_by_state
+        choice_results_by_state_id = self.choice_results_by_state_id
 
-        stack = [(self.initial_state, '', 0)]
+        stack = [(self.initial_state_id, '', 0)]
 
         while stack:
-            state, prefix, offset = stack.pop()
+            state_id, prefix, offset = stack.pop()
 
-            if state is None:
+            if state_id is None:
                 if start <= offset < stop:
                     yield prefix
                 continue
 
-            results = choice_results_by_state[state]
+            results = choice_results_by_state_id[state_id]
 
             if not results:
                 continue
 
-            if not isinstance(state.node, CodonNode):
-                stack.append((results[0].next_state, prefix, offset))
+            if not results[0].is_coding:
+                stack.append((results[0].next_state_id, prefix, offset))
                 continue
 
             child_start = offset
@@ -644,8 +644,7 @@ class CodonGraphView:
 
             for result, child_start in reversed(push):
                 stack.append((
-                    result.next_state,
+                    result.next_state_id,
                     prefix + result.choice,
                     child_start,
                 ))
-
