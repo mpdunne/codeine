@@ -61,6 +61,10 @@ class CodonGraphView:
         self.choices_by_state = {}
         self.choice_results_by_state = {}
 
+        self.initial_state_id = None
+        self.choices_by_state_id = ()
+        self.choice_results_by_state_id = ()
+
         self.samplers = {}
 
     def __getitem__(self, index: Union[int, slice]) -> Union[str, List[str]]:
@@ -347,6 +351,10 @@ class CodonGraphView:
         view.choices_by_state = self.choices_by_state
         view.choice_results_by_state = self.choice_results_by_state
 
+        view.initial_state_id = self.initial_state_id
+        view.choices_by_state_id = self.choices_by_state_id
+        view.choice_results_by_state_id = self.choice_results_by_state_id
+
         view.samplers = self.samplers
 
         return view
@@ -367,6 +375,10 @@ class CodonGraphView:
         self.initial_state = compiled.initial_state
         self.choices_by_state = compiled.choices_by_state
         self.choice_results_by_state = compiled.choice_results_by_state
+
+        self.initial_state_id = compiled.initial_state_id
+        self.choices_by_state_id = compiled.choices_by_state_id
+        self.choice_results_by_state_id = compiled.choice_results_by_state_id
 
         self.samplers = compiled.samplers
 
