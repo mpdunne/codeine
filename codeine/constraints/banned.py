@@ -1,15 +1,13 @@
-from dataclasses import dataclass
-from typing import Dict, FrozenSet, List, Sequence, Tuple
+from typing import Dict, FrozenSet, List, NamedTuple, Optional, Sequence, Tuple
 
 from codeine.graph.base import CodonGraph
-from codeine.graph.nodes import Node, CodonNode
+from codeine.graph.nodes import CodonNode
 
 # A step is a decision in the codon graph, i.e. (graph pos, choice)
 Step = Tuple[int, str]
 
 
-@dataclass(frozen=True)
-class SubPath:
+class SubPath(NamedTuple):
     """
     A subpath in the codon graph, indicating a sequence that can be obtained
     by following a specified sequence of steps, starting at a given offset.
@@ -27,15 +25,23 @@ Watch = Tuple[int, int]
 # watches every time we make a choice.
 BannedTrackerState = FrozenSet[Watch]
 
+# Internal transition value:
+#   None   -> banned sequence completed
+#   Watch  -> continue watching this path
+TransitionValue = Optional[Watch]
 
-@dataclass(frozen=True)
-class AdvanceResult:
+
+class AdvanceResult(NamedTuple):
     """
     The result of moving the tracker state forward, indicating whether we are
     currently in a disallowed state, and if not, what the new state is.
     """
     banned: bool
     state: BannedTrackerState = frozenset()
+
+
+CLEAR_ADVANCE_RESULT = AdvanceResult(banned=False)
+BANNED_ADVANCE_RESULT = AdvanceResult(banned=True)
 
 
 class BannedSequenceTracker:
@@ -62,7 +68,7 @@ class BannedSequenceTracker:
 
     Transitions are precomputed:
 
-        (path_ix, matched_length), choice -> banned | next watch | dead
+        choice -> (path_ix, matched_length) -> banned | next watch | dead
     """
 
     def __init__(self, graph: CodonGraph, banned_sequences: Sequence[str]) -> None:
@@ -86,26 +92,51 @@ class BannedSequenceTracker:
 
     @property
     def is_trivial(self) -> bool:
+        """
+        Whether this tracker is trivial - i.e. there are no paths that would generate
+        a sequence containing a banned sequence.
+
+        Returns
+        -------
+        True if and only if the tracker is trivial.
+        """
         return len(self.paths) == 0
 
     def _find_banned_paths(self) -> Tuple[SubPath, ...]:
+        """
+        Find every concrete graph path that can generate a banned sequence.
+
+        Each returned SubPath records the emitted sequence, the graph steps
+        required to produce it, and the offset at which the banned sequence begins
+        within the first emitted choice.
+
+        Returns
+        -------
+        Tuple[SubPath, ...]
+            All graph subpaths capable of producing one of the banned sequences.
+        """
         paths = []
 
         for sequence in self.banned_sequences:
-            for parts, offset in _find_matching_subpaths(self.graph, sequence):
-                steps = tuple(
-                    (node.pos, choice)
-                    for node, choice in parts
-                )
-
-                paths.append(
-                    SubPath(sequence=sequence, steps=steps, offset=offset)
-                )
+            paths.extend(_find_matching_subpaths(self.graph, sequence))
 
         return tuple(paths)
 
-    def _build_starts(self) -> Dict[Step, Tuple[AdvanceResult, ...]]:
-        starts: Dict[Step, List[AdvanceResult]] = {}
+    def _build_starts(self) -> Dict[Step, Tuple[TransitionValue, ...]]:
+        """
+        Build the initial watch transitions for each possible graph step.
+
+        The returned mapping records which watches should be created when a given
+        step is taken. If a banned sequence is completed immediately, the transition
+        value is None.
+
+        Returns
+        -------
+        Dict[Step, Tuple[TransitionValue, ...]]
+            Mapping from graph step to the watches that should be started after
+            taking that step.
+        """
+        starts: Dict[Step, List[TransitionValue]] = {}
 
         for path_ix, path in enumerate(self.paths):
             first_step = path.steps[0]
@@ -115,10 +146,9 @@ class BannedSequenceTracker:
             matched_length = min(len(emitted), len(path.sequence))
 
             if matched_length >= len(path.sequence):
-                result = AdvanceResult(banned=True)
+                result = None
             else:
-                state = frozenset({(path_ix, matched_length)})
-                result = AdvanceResult(banned=False, state=state)
+                result = (path_ix, matched_length)
 
             starts.setdefault(first_step, []).append(result)
 
@@ -127,8 +157,21 @@ class BannedSequenceTracker:
             for key, results in starts.items()
         }
 
-    def _build_transitions(self) -> Dict[Tuple[Watch, str], AdvanceResult]:
-        transitions = {}
+    def _build_transitions(self) -> Dict[str, Dict[Watch, TransitionValue]]:
+        """
+        Build transitions between tracker states.
+
+        For each emitted graph choice, records how every active watch should
+        advance. A transition value of None indicates that the banned sequence
+        has been completed.
+
+        Returns
+        -------
+        Dict[str, Dict[Watch, TransitionValue]]
+            Mapping from emitted graph choice to the corresponding watch
+            transitions.
+        """
+        transitions: Dict[str, Dict[Watch, TransitionValue]] = {}
 
         for path_ix, path in enumerate(self.paths):
             matched_length = min(
@@ -144,13 +187,12 @@ class BannedSequenceTracker:
                 remaining = path.sequence[matched_length:]
 
                 if choice.startswith(remaining):
-                    transitions[(watch, choice)] = AdvanceResult(banned=True)
+                    transitions.setdefault(choice, {})[watch] = None
                     break
 
                 if remaining.startswith(choice):
                     matched_length += len(choice)
-                    state = frozenset({(path_ix, matched_length)})
-                    transitions[(watch, choice)] = AdvanceResult(banned=False, state=state)
+                    transitions.setdefault(choice, {})[watch] = (path_ix, matched_length)
                     continue
 
                 break
@@ -158,9 +200,9 @@ class BannedSequenceTracker:
         return transitions
 
     def advance(
-        self,
-        step: Step,
-        state: BannedTrackerState,
+            self,
+            step: Step,
+            state: BannedTrackerState,
     ) -> AdvanceResult:
         """
         Move the tracker state forward after taking a graph step.
@@ -178,61 +220,79 @@ class BannedSequenceTracker:
             Whether the step completed a banned sequence, and otherwise the
             updated tracker state.
         """
+        starts = self.starts.get(step)
+
+        if starts is None and not state:
+            return CLEAR_ADVANCE_RESULT
+
         _pos, choice = step
+        transitions = self.transitions.get(choice)
         next_state = set()
 
-        for result in self.starts.get(step, ()):
-            if result.banned:
-                return AdvanceResult(banned=True)
+        if starts is not None:
+            for watch in starts:
+                if watch is None:
+                    return BANNED_ADVANCE_RESULT
 
-            next_state.update(result.state)
+                next_state.add(watch)
 
-        for watch in state:
-            result = self.transitions.get((watch, choice))
+        if transitions is not None:
+            for watch in state:
+                if watch not in transitions:
+                    continue
 
-            if result is None:
-                continue
+                next_watch = transitions[watch]
 
-            if result.banned:
-                return AdvanceResult(banned=True)
+                if next_watch is None:
+                    return BANNED_ADVANCE_RESULT
 
-            next_state.update(result.state)
+                next_state.add(next_watch)
+
+        if not next_state:
+            return CLEAR_ADVANCE_RESULT
 
         return AdvanceResult(banned=False, state=frozenset(next_state))
 
 
-def _find_matching_subpaths(graph: CodonGraph, sequence: str) \
-        -> List[Tuple[List[Tuple[Node, str]], int]]:
+def _find_matching_subpaths(
+        graph: CodonGraph,
+        sequence: str,
+) -> List[SubPath]:
     """
-    For a given sequence, find subpaths in the graph that match that sequence.
-    Return each found subpath in the following format:
-
-        (
-            [
-                (node1, choice_1),
-                (node2, choice_2),
-                ...
-            ]
-            offset,  # Where the path starts relative to first node's codon choice.
-        )
+    Find all graph subpaths that can emit a given banned sequence.
 
     Parameters
     ----------
+    graph
+        The codon graph to search.
     sequence
-        The sequence to search for.
+        The banned sequence to search for.
 
     Returns
     -------
-    A tuple consisting of a list of (node, sequence) pairs, and the start offset for matching the sequence.
+    Matching subpaths as a list of SubPath objects.
     """
-
     sequence = sequence.upper()
 
     if len(sequence) == 0:
         raise ValueError('Sequence cannot be empty.')
 
-    matches = []
+    matches: List[SubPath] = []
     candidate_matches = []
+
+    def add_match(partial_path, offset):
+        steps = tuple(
+            (node.pos, choice)
+            for node, choice in partial_path
+        )
+
+        matches.append(
+            SubPath(
+                sequence=sequence,
+                steps=steps,
+                offset=offset,
+            )
+        )
 
     # First, check which nodes we can start at.
     for node in graph.nodes:
@@ -245,11 +305,15 @@ def _find_matching_subpaths(graph: CodonGraph, sequence: str) \
 
                 if choice_subsequence.startswith(sequence):
                     # Bingo!
-                    matches.append(([(node, choice)], offset))
+                    add_match(((node, choice),), offset)
 
                 elif sequence.startswith(choice_subsequence):
                     # Maybe bingo! Maygo!
-                    candidate_matches.append(([(node, choice)], offset, len(choice_subsequence)))
+                    candidate_matches.append((
+                        ((node, choice),),
+                        offset,
+                        len(choice_subsequence),
+                    ))
 
     def reinspect_candidate_matches(candidate_matches):
         reinspect = []
@@ -261,9 +325,8 @@ def _find_matching_subpaths(graph: CodonGraph, sequence: str) \
             remaining_sequence = sequence[seen_length:]
 
             if remaining_sequence == '':
-
                 # Fantastic!
-                matches.append((partial_path, offset))
+                add_match(partial_path, offset)
                 continue
 
             if node is graph.end_node:
@@ -293,7 +356,11 @@ def _find_matching_subpaths(graph: CodonGraph, sequence: str) \
 
                     if remaining_sequence.startswith(choice):
                         # Keep going...
-                        reinspect.append((partial_path + [(node, choice)], offset, seen_length + choice_length))
+                        reinspect.append((
+                            partial_path + ((node, choice),),
+                            offset,
+                            seen_length + choice_length,
+                        ))
 
                     else:
                         # Hard luck this time.
@@ -303,7 +370,10 @@ def _find_matching_subpaths(graph: CodonGraph, sequence: str) \
 
                     if choice.startswith(remaining_sequence):
                         # Wahoo!
-                        matches.append((partial_path + [(node, choice)], offset))
+                        add_match(
+                            partial_path + ((node, choice),),
+                            offset,
+                        )
 
                     else:
                         # Hard luck this time.

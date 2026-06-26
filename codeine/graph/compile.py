@@ -5,7 +5,6 @@ from typing import Dict, NamedTuple, Tuple, List, Optional, TYPE_CHECKING
 from codeine.constraints.banned import BannedTrackerState, AdvanceResult
 from codeine.constraints.base import ConstraintState
 from codeine.graph.nodes import CodonNode, Node, ContextNode
-from codeine.utils.sampling import Sampler
 
 if TYPE_CHECKING:
     from codeine.graph.view import CodonGraphView
@@ -61,7 +60,6 @@ class CompiledView(NamedTuple):
     choice_results_by_state_id: Tuple[Tuple[ChoiceResult, ...], ...]
 
     n_valid_sequences: int
-    samplers_by_state_id: tuple
 
 
 class ViewCompiler:
@@ -72,7 +70,10 @@ class ViewCompiler:
     def __init__(self, view: 'CodonGraphView') -> None:
         self.view = view
         self.graph = view.graph
+
         self.banned_tracker = view.banned_tracker
+        self.has_banned_tracker = not self.banned_tracker.is_trivial
+
         self.path_constraint = view.path_constraint
         self.has_path_constraint = self.path_constraint is not None
 
@@ -90,9 +91,9 @@ class ViewCompiler:
         self.banned_advance_cache: Dict[Tuple[Node, BannedTrackerState, str], AdvanceResult] = {}
 
         # Traversal transition table:
-        # (state ID, choice) -> child state ID
+        # state ID -> [(choice, child state ID), ...]
         # Avoids rediscovering successor states during compilation.
-        self.child_id_by_state_id_choice: Dict[Tuple[int, str], int] = {}
+        self.child_results_by_state_id: List[Optional[List[Tuple[str, int]]]] = []
 
         # Compiled graph choices (lookup):
         # state ID -> choice -> ChoiceResult
@@ -137,8 +138,6 @@ class ViewCompiler:
             for choices in self.choices_by_state_id
         )
 
-        samplers_by_state_id = self._make_samplers(choice_results_by_state_id)
-
         initial_total = self.totals_by_state_id[initial_state_id]
         assert initial_total is not None
 
@@ -149,7 +148,6 @@ class ViewCompiler:
             n_valid_sequences=initial_total[0],
             choices_by_state_id=choices_by_state_id,
             choice_results_by_state_id=choice_results_by_state_id,
-            samplers_by_state_id=samplers_by_state_id,
         )
 
     def _get_or_register_state_id(self, state: TraversalState) -> int:
@@ -164,6 +162,7 @@ class ViewCompiler:
             self.states.append(state)
             self.totals_by_state_id.append(None)
             self.choices_by_state_id.append(None)
+            self.child_results_by_state_id.append(None)
 
         return state_id
 
@@ -184,7 +183,7 @@ class ViewCompiler:
         else:
             constraint_state = ()
 
-        if self.view.banned_sequences:
+        if self.has_banned_tracker:
             banned_tracker_state = self.banned_tracker.initial_state
         else:
             banned_tracker_state = frozenset()
@@ -271,13 +270,9 @@ class ViewCompiler:
         descendant_count = 0
         descendant_log_masses = []
         is_coding = isinstance(node, CodonNode)
+        child_results = self.child_results_by_state_id[state_id] or ()
 
-        for choice in self.choices_by_node[node]:
-            child_id = self.child_id_by_state_id_choice.get((state_id, choice))
-
-            if child_id is None:
-                continue
-
+        for choice, child_id in child_results:
             child_state = self.states[child_id]
             child = child_state.node
             child_total = self.totals_by_state_id[child_id]
@@ -333,6 +328,8 @@ class ViewCompiler:
             Stack entries for child state IDs still needing compilation.
         """
         children = []
+        child_results = []
+
         state = self.states[state_id]
         node = state.node
 
@@ -357,53 +354,14 @@ class ViewCompiler:
 
             child_state = TraversalState(child, advance.state, next_constraint_state)
             child_id = self._get_or_register_state_id(child_state)
-            self.child_id_by_state_id_choice[(state_id, choice)] = child_id
+            child_results.append((choice, child_id))
 
             if self.totals_by_state_id[child_id] is None:
                 children.append((child_id, False))
 
+        self.child_results_by_state_id[state_id] = child_results
+
         return children
-
-    def _make_samplers(
-            self,
-            choice_results_by_state_id: Tuple[Tuple[ChoiceResult, ...], ...],
-    ) -> Tuple:
-        """
-        Build weighted samplers for every compiled traversal state.
-
-        Each sampler chooses between the state's valid outgoing choices with
-        probabilities proportional to their descendant probability masses.
-
-        Returns
-        -------
-        tuple
-            Samplers in state-ID order.
-        """
-        samplers_by_state_id = []
-
-        for state_id, choice_results in enumerate(choice_results_by_state_id):
-            state = self.states[state_id]
-            node = state.node
-
-            if node is self.graph.final_node:
-                samplers_by_state_id.append(None)
-                continue
-
-            runtime_items = []
-            runtime_log_masses = []
-
-            for result in choice_results:
-                runtime_items.append((result.choice, result.is_coding, result.next_state_id))
-                runtime_log_masses.append(result.descendant_log_mass)
-
-            if runtime_items:
-                runtime_weights = self._convert_log_masses_to_sampler_weights(runtime_log_masses)
-                sampler = Sampler(runtime_items, runtime_weights, rng=self.view._rng)
-                samplers_by_state_id.append(sampler)
-            else:
-                samplers_by_state_id.append(None)
-
-        return tuple(samplers_by_state_id)
 
     def _get_choices_for_node(self, node: Node) -> List[str]:
         """
@@ -463,7 +421,7 @@ class ViewCompiler:
         if key in self.banned_advance_cache:
             return self.banned_advance_cache[key]
 
-        if self.banned_tracker.is_trivial:
+        if not self.has_banned_tracker:
             result = AdvanceResult(banned=False, state=banned_tracker_state)
         else:
             step = (node.pos, choice)
@@ -526,8 +484,6 @@ class ViewCompiler:
         float
             The log of the summed masses, or -inf if no finite masses exist.
         """
-        log_masses = [m for m in log_masses if m != -math.inf]
-
         if not log_masses:
             return -math.inf
 
@@ -536,31 +492,3 @@ class ViewCompiler:
         total_relative_mass = sum(math.exp(log_mass - max_log_mass) for log_mass in log_masses)
 
         return max_log_mass + math.log(total_relative_mass)
-
-    def _convert_log_masses_to_sampler_weights(self, log_masses: List[float]) -> List[float]:
-        """
-        Convert subtree log masses into relative weights for sampling.
-
-        The returned weights are proportional to the true subtree probabilities but
-        are rescaled to avoid numerical underflow. Only the relative values matter
-        for weighted sampling.
-
-        Parameters
-        ----------
-        log_masses
-            Choice masses represented in log space.
-
-        Returns
-        -------
-        list of float
-            Relative non-log weights suitable for weighted sampling.
-        """
-        if not log_masses:
-            return log_masses
-
-        max_log_mass = max(log_masses)
-
-        if max_log_mass == -math.inf:
-            return [1.0] * len(log_masses)
-
-        return [math.exp(log_mass - max_log_mass) for log_mass in log_masses]

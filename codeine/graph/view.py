@@ -1,3 +1,4 @@
+import math
 import random
 
 from itertools import islice
@@ -10,7 +11,7 @@ from codeine.graph.nodes import CodonNode
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
 from codeine.utils.display import format_forbidden_motifs, format_count, format_restrictions
-from codeine.utils.sampling import Seedable
+from codeine.utils.sampling import Seedable, Sampler
 from codeine.graph.compile import ViewCompiler
 
 
@@ -60,7 +61,7 @@ class CodonGraphView:
         self.initial_state_id = None
         self.choices_by_state_id = ()
         self.choice_results_by_state_id = ()
-        self.samplers_by_state_id = ()
+        self.samplers_by_state_id = []
 
     def __getitem__(self, index: Union[int, slice]) -> Union[str, List[str]]:
         """
@@ -349,7 +350,7 @@ class CodonGraphView:
         view.initial_state_id = self.initial_state_id
         view.choices_by_state_id = self.choices_by_state_id
         view.choice_results_by_state_id = self.choice_results_by_state_id
-        view.samplers_by_state_id = self.samplers_by_state_id
+        view.samplers_by_state_id = [None] * len(self.samplers_by_state_id)
 
         return view
 
@@ -369,7 +370,7 @@ class CodonGraphView:
         self.initial_state_id = compiled.initial_state_id
         self.choices_by_state_id = compiled.choices_by_state_id
         self.choice_results_by_state_id = compiled.choice_results_by_state_id
-        self.samplers_by_state_id = compiled.samplers_by_state_id
+        self.samplers_by_state_id = [None] * len(compiled.states)
 
     def pin_codons(self, pinned_codons: Dict[int, CodonRestriction]) -> None:
         """
@@ -535,6 +536,76 @@ class CodonGraphView:
 
         return sorted(set(normalised))
 
+    def _sampler_for_state_id(self, state_id: int) -> Optional[Sampler]:
+        """
+        Return the weighted sampler for one compiled traversal state.
+
+        Samplers are created lazily because many compiled states may never be
+        visited during sampling.
+
+        Parameters
+        ----------
+        state_id
+            The state ID.
+
+        Returns
+        -------
+        Sampler or None
+            The cached sampler for this state, or None if the state has no
+            valid choices.
+        """
+        sampler = self.samplers_by_state_id[state_id]
+
+        if sampler is not None:
+            return sampler
+
+        choice_results = self.choice_results_by_state_id[state_id]
+
+        if not choice_results:
+            return None
+
+        runtime_items = []
+        runtime_log_masses = []
+
+        for result in choice_results:
+            runtime_items.append((result.choice, result.is_coding, result.next_state_id))
+            runtime_log_masses.append(result.descendant_log_mass)
+
+        runtime_weights = self._convert_log_masses_to_sampler_weights(runtime_log_masses)
+        sampler = Sampler(runtime_items, runtime_weights, rng=self._rng)
+
+        self.samplers_by_state_id[state_id] = sampler
+
+        return sampler
+
+    def _convert_log_masses_to_sampler_weights(self, log_masses: List[float]) -> List[float]:
+        """
+        Convert subtree log masses into relative weights for sampling.
+
+        The returned weights are proportional to the true subtree probabilities but
+        are rescaled to avoid numerical underflow. Only the relative values matter
+        for weighted sampling.
+
+        Parameters
+        ----------
+        log_masses
+            Choice masses represented in log space.
+
+        Returns
+        -------
+        list of float
+            Relative non-log weights suitable for weighted sampling.
+        """
+        if not log_masses:
+            return log_masses
+
+        max_log_mass = max(log_masses)
+
+        if max_log_mass == -math.inf:
+            return [1.0] * len(log_masses)
+
+        return [math.exp(log_mass - max_log_mass) for log_mass in log_masses]
+
     def _sample(self) -> str:
         """
         Sample one coding sequence from an already-compiled graph view.
@@ -545,10 +616,14 @@ class CodonGraphView:
         """
         state_id = self.initial_state_id
         sequence = []
-        samplers = self.samplers_by_state_id
 
         while state_id is not None:
-            choice, is_coding, state_id = samplers[state_id].sample()
+            sampler = self._sampler_for_state_id(state_id)
+
+            if sampler is None:
+                raise ValueError('Cannot sample from a state with no valid choices.')
+
+            choice, is_coding, state_id = sampler.sample()
 
             if is_coding:
                 sequence.append(choice)
