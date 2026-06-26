@@ -348,7 +348,7 @@ def test_starts_only_reference_real_paths():
 
             assert 0 <= path_ix < len(tracker.paths)
             assert matched_length > 0
-            
+
 
 def test_all_start_keys_are_real_first_steps():
     tracker = BannedSequenceTracker(CodonGraph('MIKEY'), ['A', 'ATG', 'TCAAA'])

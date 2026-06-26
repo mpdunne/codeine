@@ -96,9 +96,29 @@ class BannedSequenceTracker:
 
     @property
     def is_trivial(self) -> bool:
+        """
+        Whether this tracker is trivial - i.e. there are no paths that would generate
+        a sequence containing a banned sequence.
+
+        Returns
+        -------
+        True if and only if the tracker is trivial.
+        """
         return len(self.paths) == 0
 
     def _find_banned_paths(self) -> Tuple[SubPath, ...]:
+        """
+        Find every concrete graph path that can generate a banned sequence.
+
+        Each returned SubPath records the emitted sequence, the graph steps
+        required to produce it, and the offset at which the banned sequence begins
+        within the first emitted choice.
+
+        Returns
+        -------
+        Tuple[SubPath, ...]
+            All graph subpaths capable of producing one of the banned sequences.
+        """
         paths = []
 
         for sequence in self.banned_sequences:
@@ -115,6 +135,19 @@ class BannedSequenceTracker:
         return tuple(paths)
 
     def _build_starts(self) -> Dict[Step, Tuple[TransitionValue, ...]]:
+        """
+        Build the initial watch transitions for each possible graph step.
+
+        The returned mapping records which watches should be created when a given
+        step is taken. If a banned sequence is completed immediately, the transition
+        value is None.
+
+        Returns
+        -------
+        Dict[Step, Tuple[TransitionValue, ...]]
+            Mapping from graph step to the watches that should be started after
+            taking that step.
+        """
         starts: Dict[Step, List[TransitionValue]] = {}
 
         for path_ix, path in enumerate(self.paths):
@@ -137,6 +170,19 @@ class BannedSequenceTracker:
         }
 
     def _build_transitions(self) -> Dict[str, Dict[Watch, TransitionValue]]:
+        """
+        Build transitions between tracker states.
+
+        For each emitted graph choice, records how every active watch should
+        advance. A transition value of ``None`` indicates that the banned sequence
+        has been completed.
+
+        Returns
+        -------
+        Dict[str, Dict[Watch, TransitionValue]]
+            Mapping from emitted graph choice to the corresponding watch
+            transitions.
+        """
         transitions: Dict[str, Dict[Watch, TransitionValue]] = {}
 
         for path_ix, path in enumerate(self.paths):
@@ -246,7 +292,7 @@ def _find_matching_subpaths(graph: CodonGraph, sequence: str) \
 
     Returns
     -------
-    A tuple consisting of a list of (node, sequence) pairs, and the start offset for matching the sequence.
+    A list of matched subpaths, each with the path steps and start offset.
     """
 
     sequence = sequence.upper()
