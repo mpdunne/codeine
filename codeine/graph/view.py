@@ -567,14 +567,18 @@ class CodonGraphView:
         #       coding sequence constructed so far,
         # )
         choice_results_by_state_id = self.choice_results_by_state_id
+        sequence_parts = [''] * len(self.graph.aa_seq)
 
-        stack = [(self.initial_state_id, '')]
+        stack = [(self.initial_state_id, 0, None)]
 
         while stack:
-            state_id, prefix = stack.pop()
+            state_id, codon_index, choice = stack.pop()
+
+            if choice is not None:
+                sequence_parts[codon_index - 1] = choice
 
             if state_id is None:
-                yield prefix
+                yield ''.join(sequence_parts)
                 continue
 
             results = choice_results_by_state_id[state_id]
@@ -583,11 +587,13 @@ class CodonGraphView:
                 continue
 
             if not results[0].is_coding:
-                stack.append((results[0].next_state_id, prefix))
+                stack.append((results[0].next_state_id, codon_index, None))
                 continue
 
+            next_codon_index = codon_index + 1
+
             for result in reversed(results):
-                stack.append((result.next_state_id, prefix + result.choice))
+                stack.append((result.next_state_id, next_codon_index, result.choice))
 
     def _iter_sequence_range(
         self,
@@ -616,15 +622,19 @@ class CodonGraphView:
         #       0-based index of the first sequence reachable from that state.
         # )
         choice_results_by_state_id = self.choice_results_by_state_id
+        sequence_parts = [''] * len(self.graph.aa_seq)
 
-        stack = [(self.initial_state_id, '', 0)]
+        stack = [(self.initial_state_id, 0, None, 0)]
 
         while stack:
-            state_id, prefix, offset = stack.pop()
+            state_id, codon_index, choice, offset = stack.pop()
+
+            if choice is not None:
+                sequence_parts[codon_index - 1] = choice
 
             if state_id is None:
                 if start <= offset < stop:
-                    yield prefix
+                    yield ''.join(sequence_parts)
                 continue
 
             results = choice_results_by_state_id[state_id]
@@ -633,9 +643,10 @@ class CodonGraphView:
                 continue
 
             if not results[0].is_coding:
-                stack.append((results[0].next_state_id, prefix, offset))
+                stack.append((results[0].next_state_id, codon_index, None, offset))
                 continue
 
+            next_codon_index = codon_index + 1
             child_start = offset
             push = []
 
@@ -650,6 +661,7 @@ class CodonGraphView:
             for result, child_start in reversed(push):
                 stack.append((
                     result.next_state_id,
-                    prefix + result.choice,
+                    next_codon_index,
+                    result.choice,
                     child_start,
                 ))
