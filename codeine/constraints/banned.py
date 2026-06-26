@@ -1,15 +1,13 @@
-from dataclasses import dataclass
 from typing import Dict, FrozenSet, List, NamedTuple, Optional, Sequence, Tuple
 
 from codeine.graph.base import CodonGraph
-from codeine.graph.nodes import Node, CodonNode
+from codeine.graph.nodes import CodonNode
 
 # A step is a decision in the codon graph, i.e. (graph pos, choice)
 Step = Tuple[int, str]
 
 
-@dataclass(frozen=True)
-class SubPath:
+class SubPath(NamedTuple):
     """
     A subpath in the codon graph, indicating a sequence that can be obtained
     by following a specified sequence of steps, starting at a given offset.
@@ -122,15 +120,7 @@ class BannedSequenceTracker:
         paths = []
 
         for sequence in self.banned_sequences:
-            for parts, offset in _find_matching_subpaths(self.graph, sequence):
-                steps = tuple(
-                    (node.pos, choice)
-                    for node, choice in parts
-                )
-
-                paths.append(
-                    SubPath(sequence=sequence, steps=steps, offset=offset)
-                )
+            paths.extend(_find_matching_subpaths(self.graph, sequence))
 
         return tuple(paths)
 
@@ -266,42 +256,45 @@ class BannedSequenceTracker:
         return AdvanceResult(banned=False, state=frozenset(next_state))
 
 
-MatchedPath = Tuple[Tuple[Node, str], ...]
-MatchedSubPath = Tuple[MatchedPath, int]
-
-
-def _find_matching_subpaths(graph: CodonGraph, sequence: str) \
-        -> List[MatchedSubPath]:
+def _find_matching_subpaths(
+        graph: CodonGraph,
+        sequence: str,
+) -> List[SubPath]:
     """
-    For a given sequence, find subpaths in the graph that match that sequence.
-    Return each found subpath in the following format:
-
-        (
-            [
-                (node1, choice_1),
-                (node2, choice_2),
-                ...
-            ]
-            offset,  # Where the path starts relative to first node's codon choice.
-        )
+    Find all graph subpaths that can emit a given banned sequence.
 
     Parameters
     ----------
+    graph
+        The codon graph to search.
     sequence
-        The sequence to search for.
+        The banned sequence to search for.
 
     Returns
     -------
-    A list of matched subpaths, each with the path steps and start offset.
+    Matching subpaths as a list of SubPath objects.
     """
-
     sequence = sequence.upper()
 
     if len(sequence) == 0:
         raise ValueError('Sequence cannot be empty.')
 
-    matches: List[MatchedSubPath] = []
+    matches: List[SubPath] = []
     candidate_matches = []
+
+    def add_match(partial_path, offset):
+        steps = tuple(
+            (node.pos, choice)
+            for node, choice in partial_path
+        )
+
+        matches.append(
+            SubPath(
+                sequence=sequence,
+                steps=steps,
+                offset=offset,
+            )
+        )
 
     # First, check which nodes we can start at.
     for node in graph.nodes:
@@ -314,7 +307,7 @@ def _find_matching_subpaths(graph: CodonGraph, sequence: str) \
 
                 if choice_subsequence.startswith(sequence):
                     # Bingo!
-                    matches.append((((node, choice),), offset))
+                    add_match(((node, choice),), offset)
 
                 elif sequence.startswith(choice_subsequence):
                     # Maybe bingo! Maygo!
@@ -334,9 +327,8 @@ def _find_matching_subpaths(graph: CodonGraph, sequence: str) \
             remaining_sequence = sequence[seen_length:]
 
             if remaining_sequence == '':
-
                 # Fantastic!
-                matches.append((partial_path, offset))
+                add_match(partial_path, offset)
                 continue
 
             if node is graph.end_node:
@@ -380,10 +372,10 @@ def _find_matching_subpaths(graph: CodonGraph, sequence: str) \
 
                     if choice.startswith(remaining_sequence):
                         # Wahoo!
-                        matches.append((
+                        add_match(
                             partial_path + ((node, choice),),
                             offset,
-                        ))
+                        )
 
                     else:
                         # Hard luck this time.

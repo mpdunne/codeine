@@ -1,7 +1,6 @@
 import pytest
 
 from codeine.graph.base import CodonGraph
-from codeine.graph.nodes import ContextNode, CodonNode
 from codeine.translation.tables import TranslationTable
 from codeine.constraints.banned import BannedSequenceTracker, AdvanceResult, _find_matching_subpaths
 
@@ -436,9 +435,11 @@ def test_find_matching_subpaths_single_nt():
 
     matches = _find_matching_subpaths(graph, 'T')
     assert matches
-    for path, offset in matches:
+    for match in matches:
+        path = match.steps
+        offset = match.offset
         assert len(path) == 1
-        node, codon = path[0]
+        _pos, codon = path[0]
         assert codon[offset] == 'T'
 
 
@@ -463,18 +464,15 @@ def test_find_matching_subpaths_offset_correct():
 
     matches = _find_matching_subpaths(graph, 'ATGATAAAGGAATAC')
     assert len(matches) == 1
-    path, offset = matches[0]
-    assert offset == 0
+    assert matches[0].offset == 0
 
     matches = _find_matching_subpaths(graph, 'TGATAAAGGAATAC')
     assert len(matches) == 1
-    path, offset = matches[0]
-    assert offset == 1
+    assert matches[0].offset == 1
 
     matches = _find_matching_subpaths(graph, 'GATAAAGGAATAC')
     assert len(matches) == 1
-    path, offset = matches[0]
-    assert offset == 2
+    assert matches[0].offset == 2
 
 
 def test_find_matching_subpaths_fully_in_contexts():
@@ -490,17 +488,19 @@ def test_find_matching_subpaths_overlapping_contexts():
     matches = _find_matching_subpaths(graph, 'GGAAGGAAGG' + 'ATG')
     assert matches
     assert len(matches) == 1
-    path, offset = matches[0]
-    assert isinstance(path[0][0], ContextNode)
-    assert isinstance(path[1][0], CodonNode)
+    match = matches[0]
+    assert match.offset == 6
+    assert ''.join(choice for _pos, choice in match.steps)[match.offset:] \
+        .startswith(match.sequence)
 
     graph = CodonGraph('MIKEY', context_r='AATTAATTAATTAATT')
     matches = _find_matching_subpaths(graph, 'TAC' + 'AATTAATTAA')
     assert matches
     assert len(matches) == 1
-    path, offset = matches[0]
-    assert isinstance(path[0][0], CodonNode)
-    assert isinstance(path[1][0], ContextNode)
+    match = matches[0]
+    assert match.offset == 0
+    assert ''.join(choice for _pos, choice in match.steps)[match.offset:] \
+        .startswith(match.sequence)
 
 
 def test_find_matching_subpaths_matches_entire_left_context_plus_cds():
@@ -509,10 +509,9 @@ def test_find_matching_subpaths_matches_entire_left_context_plus_cds():
     matches = _find_matching_subpaths(graph, 'AAGGATG')
     assert len(matches) == 1
 
-    path, offset = matches[0]
-    assert offset == 0
-    assert isinstance(path[0][0], ContextNode)
-    assert isinstance(path[1][0], CodonNode)
+    match = matches[0]
+    assert match.offset == 0
+    assert ''.join(choice for _pos, choice in match.steps).startswith('AAGGATG')
 
 
 def test_find_matching_subpaths_matches_cds_plus_entire_right_context():
@@ -521,10 +520,9 @@ def test_find_matching_subpaths_matches_cds_plus_entire_right_context():
     matches = _find_matching_subpaths(graph, 'TACAAGG')
     assert len(matches) == 1
 
-    path, offset = matches[0]
-    assert offset == 0
-    assert isinstance(path[-2][0], CodonNode)
-    assert isinstance(path[-1][0], ContextNode)
+    match = matches[0]
+    assert match.offset == 0
+    assert ''.join(choice for _pos, choice in match.steps).startswith('TACAAGG')
 
 
 def test_find_matching_subpaths_multiple_matches():
@@ -533,10 +531,10 @@ def test_find_matching_subpaths_multiple_matches():
     matches = _find_matching_subpaths(graph, 'ATGATG')
     assert len(matches) == 3
 
-    for path, offset in matches:
-        assert offset == 0
-        assert len(path) == 2
-        assert ''.join(codon for node, codon in path) == 'ATGATG'
+    for match in matches:
+        assert match.offset == 0
+        assert len(match.steps) == 2
+        assert ''.join(codon for _pos, codon in match.steps) == 'ATGATG'
 
 
 def test_find_matching_subpaths_single_codon_multiple_matches():
@@ -557,9 +555,8 @@ def test_find_matching_subpaths_ends_inside_codon():
 
     matches = _find_matching_subpaths(graph, 'ATTAAGG')
     for match in matches:
-        path, offset = match
-        assert offset == 0
-        codons = [codon for node, codon in path]
+        assert match.offset == 0
+        codons = [codon for _pos, codon in match.steps]
         assert ''.join(codons).startswith('ATTAAGG')
 
 
@@ -610,17 +607,14 @@ def test_find_matching_subpaths_full_sequences(aa_seq, context_l, context_r):
 
         # Only one path matches any given full sequence.
         assert len(matches) == 1
-        path, offset = matches[0]
+        match = matches[0]
 
         # It should start at the beginning.
-        assert offset == 0
-
-        # All codon nodes please :)
-        assert all(isinstance(node, CodonNode) for node, codon in path)
+        assert match.offset == 0
 
         # And the positions should be logical...
-        positions = [node.pos for node, codon in path]
+        positions = [pos for pos, _codon in match.steps]
         assert positions == [*range(1, 1 + (len(seq) // 3))]
 
-        codons = [codon.upper() for node, codon in path]
+        codons = [codon.upper() for _pos, codon in match.steps]
         assert seq.upper() == ''.join(codons)
