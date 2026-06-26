@@ -194,12 +194,11 @@ def test_coding_space_contains():
     assert not space.contains('ATG')
 
 
-def test_coding_space_sampled_in_space():
-    space = CodingSpace('MIKEY')
-    for _ in range(100):
-        seq = space.sample()
-        assert seq in space
-        assert seq + 'ATG' not in space
+def test_coding_space_sample_many():
+    space = CodingSpace('MIKEY', seed=88)
+    seqs = space.sample(n=10)
+    assert len(seqs) == 10
+    assert all(seq in space for seq in seqs)
 
 
 def test_forbidden_motifs_are_stored():

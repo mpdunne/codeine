@@ -195,15 +195,20 @@ class CodingSpace:
 
         return '\n'.join(lines)
 
-    def sample(self) -> str:
+    def sample(self, n: Optional[int] = None) -> str:
         """
-        Sample a sequence from this coding space.
+        Sample one or more variants from this coding space.
+
+        Parameters
+        ----------
+        n
+            Number of sequences to sample. If omitted, return a single sequence.
 
         Returns
         -------
-        A sampled sequence. By default, only the coding sequence is returned.
+        A sampled string sequence from this coding space.
         """
-        return self.view.sample()
+        return self.view.sample(n=n)
 
     def enumerate(self) -> Generator[str, None, None]:
         """

@@ -196,13 +196,19 @@ class CodonGraphView:
 
         return True
 
-    def sample(self) -> str:
+    def sample(self, n: Optional[int] = None) -> Union[str, List[str]]:
         """
-        Sample a coding sequence from this graph view.
+        Sample one or more coding sequences from this graph view.
+
+        Parameters
+        ----------
+        n
+            Number of sequences to sample. If omitted, return a single sequence.
 
         Returns
         -------
-        A random valid coding sequence that satisfies the provided constraints.
+        str or list of str
+            One sampled coding sequence, or a list of sampled coding sequences.
         """
         if self._requires_compile:
             self.compile()
@@ -210,17 +216,13 @@ class CodonGraphView:
         if self.n_valid_sequences == 0:
             raise ValueError('Cannot sample from an empty coding space.')
 
-        state_id = self.initial_state_id
-        sequence = []
-        samplers = self.samplers_by_state_id
+        if n is None:
+            return self._sample()
 
-        while state_id is not None:
-            choice, is_coding, state_id = samplers[state_id].sample()
+        if n < 0:
+            raise ValueError('n must be non-negative.')
 
-            if is_coding:
-                sequence.append(choice)
-
-        return ''.join(sequence)
+        return [self._sample() for _ in range(n)]
 
     def enumerate(self) -> Generator[str, None, None]:
         """
@@ -532,6 +534,26 @@ class CodonGraphView:
             normalised.append(sequence)
 
         return sorted(set(normalised))
+
+    def _sample(self) -> str:
+        """
+        Sample one coding sequence from an already-compiled graph view.
+
+        Returns
+        -------
+        A sampled sequence.
+        """
+        state_id = self.initial_state_id
+        sequence = []
+        samplers = self.samplers_by_state_id
+
+        while state_id is not None:
+            choice, is_coding, state_id = samplers[state_id].sample()
+
+            if is_coding:
+                sequence.append(choice)
+
+        return ''.join(sequence)
 
     def _sequence_at(self, index: int) -> str:
         """
