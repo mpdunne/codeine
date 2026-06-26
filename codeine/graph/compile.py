@@ -89,6 +89,7 @@ class ViewCompiler:
         # state -> (descendant count, descendant log mass)
         # Avoids repeatedly recomputing subtree sizes and probability masses.
         self.totals_by_state: Dict[TraversalState, Tuple[int, float]] = {}
+        self.totals_by_state_id: List[Optional[Tuple[int, float]]] = []
 
         # Banned-sequence tracker transitions:
         # (node, tracker state, choice) -> tracker result
@@ -183,6 +184,7 @@ class ViewCompiler:
             state_id = len(self.states)
             self.state_ids[state] = state_id
             self.states.append(state)
+            self.totals_by_state_id.append(None)
 
         return state_id
 
@@ -230,7 +232,9 @@ class ViewCompiler:
 
             _ = self._get_or_register_state_id(state)
 
-            if state in self.totals_by_state:
+            state_id = self.state_ids[state]
+
+            if self.totals_by_state_id[state_id] is not None:
                 continue
 
             if node is self.graph.final_node:
@@ -262,11 +266,15 @@ class ViewCompiler:
         state
             Terminal traversal state being compiled.
         """
-        if not self.has_path_constraint or self.path_constraint.is_satisfied(state.constraint_state):
-            self.totals_by_state[state] = (1, 0.0)
-        else:
-            self.totals_by_state[state] = (0, -math.inf)
+        state_id = self.state_ids[state]
 
+        if not self.has_path_constraint or self.path_constraint.is_satisfied(state.constraint_state):
+            total = (1, 0.0)
+        else:
+            total = (0, -math.inf)
+
+        self.totals_by_state[state] = total
+        self.totals_by_state_id[state_id] = total
         self.choices_by_state[state] = {}
 
     def _compile_state(self, state: TraversalState) -> None:
@@ -295,7 +303,13 @@ class ViewCompiler:
                 continue
 
             child = child_state.node
-            child_count, subtree_log_mass = self.totals_by_state[child_state]
+            child_id = self.state_ids[child_state]
+            child_total = self.totals_by_state_id[child_id]
+
+            if child_total is None:
+                continue
+
+            child_count, subtree_log_mass = child_total
 
             if child_count == 0:
                 continue
@@ -320,8 +334,12 @@ class ViewCompiler:
 
         descendant_log_mass = self._sum_log_masses(descendant_log_masses)
 
+        state_id = self.state_ids[state]
+        total = (descendant_count, descendant_log_mass)
+
         self.choices_by_state[state] = choice_results
-        self.totals_by_state[state] = (descendant_count, descendant_log_mass)
+        self.totals_by_state[state] = total
+        self.totals_by_state_id[state_id] = total
 
     def _uncompiled_children(self, state: TraversalState) -> List[Tuple[TraversalState, bool]]:
         """
@@ -363,10 +381,10 @@ class ViewCompiler:
                 next_constraint_state = ()
 
             child_state = TraversalState(child, advance.state, next_constraint_state)
-            _ = self._get_or_register_state_id(child_state)
+            child_id = self._get_or_register_state_id(child_state)
             self.child_state_by_state_choice[(state, choice)] = child_state
 
-            if child_state not in self.totals_by_state:
+            if self.totals_by_state_id[child_id] is None:
                 children.append((child_state, False))
 
         return children
