@@ -339,14 +339,16 @@ def test_path_steps_are_never_empty():
 def test_starts_only_reference_real_paths():
     tracker = BannedSequenceTracker(CodonGraph('MIKEY'), ['A', 'ATG', 'TCAAA'])
 
-    for result in tracker.starts.values():
-        if result.banned:
-            continue
+    for starts in tracker.starts.values():
+        for watch in starts:
+            if watch is None:
+                continue
 
-        for path_ix, matched_length in result.state:
+            path_ix, matched_length = watch
+
             assert 0 <= path_ix < len(tracker.paths)
             assert matched_length > 0
-
+            
 
 def test_all_start_keys_are_real_first_steps():
     tracker = BannedSequenceTracker(CodonGraph('MIKEY'), ['A', 'ATG', 'TCAAA'])

@@ -70,7 +70,7 @@ class ViewCompiler:
     def __init__(self, view: 'CodonGraphView') -> None:
         self.view = view
         self.graph = view.graph
-        
+
         self.banned_tracker = view.banned_tracker
         self.has_banned_tracker = not self.banned_tracker.is_trivial
 
@@ -91,9 +91,9 @@ class ViewCompiler:
         self.banned_advance_cache: Dict[Tuple[Node, BannedTrackerState, str], AdvanceResult] = {}
 
         # Traversal transition table:
-        # (state ID, choice) -> child state ID
+        # state ID -> [(choice, child state ID), ...]
         # Avoids rediscovering successor states during compilation.
-        self.child_id_by_state_id_choice: Dict[Tuple[int, str], int] = {}
+        self.child_results_by_state_id: List[Optional[List[Tuple[str, int]]]] = []
 
         # Compiled graph choices (lookup):
         # state ID -> choice -> ChoiceResult
@@ -162,6 +162,7 @@ class ViewCompiler:
             self.states.append(state)
             self.totals_by_state_id.append(None)
             self.choices_by_state_id.append(None)
+            self.child_results_by_state_id.append(None)
 
         return state_id
 
@@ -182,7 +183,7 @@ class ViewCompiler:
         else:
             constraint_state = ()
 
-        if self.view.banned_sequences:
+        if self.has_banned_tracker:
             banned_tracker_state = self.banned_tracker.initial_state
         else:
             banned_tracker_state = frozenset()
@@ -269,13 +270,9 @@ class ViewCompiler:
         descendant_count = 0
         descendant_log_masses = []
         is_coding = isinstance(node, CodonNode)
+        child_results = self.child_results_by_state_id[state_id] or ()
 
-        for choice in self.choices_by_node[node]:
-            child_id = self.child_id_by_state_id_choice.get((state_id, choice))
-
-            if child_id is None:
-                continue
-
+        for choice, child_id in child_results:
             child_state = self.states[child_id]
             child = child_state.node
             child_total = self.totals_by_state_id[child_id]
@@ -331,6 +328,8 @@ class ViewCompiler:
             Stack entries for child state IDs still needing compilation.
         """
         children = []
+        child_results = []
+
         state = self.states[state_id]
         node = state.node
 
@@ -355,10 +354,12 @@ class ViewCompiler:
 
             child_state = TraversalState(child, advance.state, next_constraint_state)
             child_id = self._get_or_register_state_id(child_state)
-            self.child_id_by_state_id_choice[(state_id, choice)] = child_id
+            child_results.append((choice, child_id))
 
             if self.totals_by_state_id[child_id] is None:
                 children.append((child_id, False))
+
+        self.child_results_by_state_id[state_id] = child_results
 
         return children
 
@@ -488,7 +489,6 @@ class ViewCompiler:
 
         max_log_mass = max(log_masses)
 
-        total_relative_mass = sum(math.exp(log_mass - max_log_mass)for log_mass in log_masses)
+        total_relative_mass = sum(math.exp(log_mass - max_log_mass) for log_mass in log_masses)
 
         return max_log_mass + math.log(total_relative_mass)
-

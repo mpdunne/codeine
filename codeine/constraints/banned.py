@@ -72,7 +72,7 @@ class BannedSequenceTracker:
 
     Transitions are precomputed:
 
-        (path_ix, matched_length), choice -> banned | next watch | dead
+        choice -> (path_ix, matched_length) -> banned | next watch | dead
     """
 
     def __init__(self, graph: CodonGraph, banned_sequences: Sequence[str]) -> None:
@@ -136,8 +136,8 @@ class BannedSequenceTracker:
             for key, results in starts.items()
         }
 
-    def _build_transitions(self) -> Dict[Tuple[Watch, str], TransitionValue]:
-        transitions = {}
+    def _build_transitions(self) -> Dict[str, Dict[Watch, TransitionValue]]:
+        transitions: Dict[str, Dict[Watch, TransitionValue]] = {}
 
         for path_ix, path in enumerate(self.paths):
             matched_length = min(
@@ -153,12 +153,12 @@ class BannedSequenceTracker:
                 remaining = path.sequence[matched_length:]
 
                 if choice.startswith(remaining):
-                    transitions[(watch, choice)] = None
+                    transitions.setdefault(choice, {})[watch] = None
                     break
 
                 if remaining.startswith(choice):
                     matched_length += len(choice)
-                    transitions[(watch, choice)] = (path_ix, matched_length)
+                    transitions.setdefault(choice, {})[watch] = (path_ix, matched_length)
                     continue
 
                 break
@@ -192,6 +192,7 @@ class BannedSequenceTracker:
             return CLEAR_ADVANCE_RESULT
 
         _pos, choice = step
+        transitions = self.transitions.get(choice)
         next_state = set()
 
         if starts is not None:
@@ -201,16 +202,17 @@ class BannedSequenceTracker:
 
                 next_state.add(watch)
 
-        for watch in state:
-            next_watch = self.transitions.get((watch, choice), NO_TRANSITION)
+        if transitions is not None:
+            for watch in state:
+                next_watch = transitions.get(watch, NO_TRANSITION)
 
-            if next_watch is NO_TRANSITION:
-                continue
+                if next_watch is NO_TRANSITION:
+                    continue
 
-            if next_watch is None:
-                return BANNED_ADVANCE_RESULT
+                if next_watch is None:
+                    return BANNED_ADVANCE_RESULT
 
-            next_state.add(next_watch)
+                next_state.add(next_watch)
 
         if not next_state:
             return CLEAR_ADVANCE_RESULT
