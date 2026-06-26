@@ -30,8 +30,6 @@ BannedTrackerState = FrozenSet[Watch]
 #   Watch  -> continue watching this path
 TransitionValue = Optional[Watch]
 
-NO_TRANSITION = object()
-
 
 class AdvanceResult(NamedTuple):
     """
@@ -164,7 +162,7 @@ class BannedSequenceTracker:
         Build transitions between tracker states.
 
         For each emitted graph choice, records how every active watch should
-        advance. A transition value of ``None`` indicates that the banned sequence
+        advance. A transition value of None indicates that the banned sequence
         has been completed.
 
         Returns
@@ -240,10 +238,10 @@ class BannedSequenceTracker:
 
         if transitions is not None:
             for watch in state:
-                next_watch = transitions.get(watch, NO_TRANSITION)
-
-                if next_watch is NO_TRANSITION:
+                if watch not in transitions:
                     continue
+
+                next_watch = transitions[watch]
 
                 if next_watch is None:
                     return BANNED_ADVANCE_RESULT
