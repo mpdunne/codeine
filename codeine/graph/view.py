@@ -57,15 +57,9 @@ class CodonGraphView:
         self._compiled = None
         self._requires_compile = True
 
-        self.initial_state = None
-        self.choices_by_state = {}
-        self.choice_results_by_state = {}
-
         self.initial_state_id = None
         self.choices_by_state_id = ()
         self.choice_results_by_state_id = ()
-
-        self.samplers = {}
         self.samplers_by_state_id = ()
 
     def __getitem__(self, index: Union[int, slice]) -> Union[str, List[str]]:
@@ -350,15 +344,9 @@ class CodonGraphView:
         view._compiled = self._compiled
         view._requires_compile = self._requires_compile
 
-        view.initial_state = self.initial_state
-        view.choices_by_state = self.choices_by_state
-        view.choice_results_by_state = self.choice_results_by_state
-
         view.initial_state_id = self.initial_state_id
         view.choices_by_state_id = self.choices_by_state_id
         view.choice_results_by_state_id = self.choice_results_by_state_id
-
-        view.samplers = self.samplers
         view.samplers_by_state_id = self.samplers_by_state_id
 
         return view
@@ -376,15 +364,9 @@ class CodonGraphView:
         self._compiled = compiled
         self._requires_compile = False
 
-        self.initial_state = compiled.initial_state
-        self.choices_by_state = compiled.choices_by_state
-        self.choice_results_by_state = compiled.choice_results_by_state
-
         self.initial_state_id = compiled.initial_state_id
         self.choices_by_state_id = compiled.choices_by_state_id
         self.choice_results_by_state_id = compiled.choice_results_by_state_id
-
-        self.samplers = compiled.samplers
         self.samplers_by_state_id = compiled.samplers_by_state_id
 
     def pin_codons(self, pinned_codons: Dict[int, CodonRestriction]) -> None:

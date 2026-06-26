@@ -54,19 +54,16 @@ class CompiledView:
     states: Tuple[TraversalState, ...]
 
     # Compiled graph choices (lookup):
-    # state/ID -> choice -> ChoiceResult
+    # state ID -> choice -> ChoiceResult
     # Used for fast sequence validation and graph traversal in the graph view.
-    choices_by_state: Dict[TraversalState, Dict[str, ChoiceResult]]
     choices_by_state_id: Tuple[Dict[str, ChoiceResult], ...]
 
     # Compiled graph choices (iteration):
-    # state/ID -> ChoiceResults in graph order
+    # state ID -> ChoiceResults in graph order
     # Used for fast sampling and sequence enumeration in the graph view.
-    choice_results_by_state: Dict[TraversalState, Tuple[ChoiceResult, ...]]
     choice_results_by_state_id: Tuple[Tuple[ChoiceResult, ...], ...]
 
     n_valid_sequences: int
-    samplers: dict
     samplers_by_state_id: tuple
 
 
@@ -143,17 +140,7 @@ class ViewCompiler:
             for choices in self.choices_by_state_id
         )
 
-        choices_by_state = {
-            state: choices_by_state_id[state_id]
-            for state_id, state in enumerate(self.states)
-        }
-
-        choice_results_by_state = {
-            state: choice_results_by_state_id[state_id]
-            for state_id, state in enumerate(self.states)
-        }
-
-        samplers, samplers_by_state_id = self._make_samplers(choice_results_by_state_id)
+        samplers_by_state_id = self._make_samplers(choice_results_by_state_id)
 
         initial_total = self.totals_by_state_id[initial_state_id]
         assert initial_total is not None
@@ -163,11 +150,8 @@ class ViewCompiler:
             initial_state_id=initial_state_id,
             states=tuple(self.states),
             n_valid_sequences=initial_total[0],
-            choices_by_state=choices_by_state,
-            choice_results_by_state=choice_results_by_state,
             choices_by_state_id=choices_by_state_id,
             choice_results_by_state_id=choice_results_by_state_id,
-            samplers=samplers,
             samplers_by_state_id=samplers_by_state_id,
         )
 
@@ -386,7 +370,7 @@ class ViewCompiler:
     def _make_samplers(
             self,
             choice_results_by_state_id: Tuple[Tuple[ChoiceResult, ...], ...],
-    ) -> Tuple[dict, tuple]:
+    ) -> Tuple:
         """
         Build weighted samplers for every compiled traversal state.
 
@@ -396,9 +380,8 @@ class ViewCompiler:
         Returns
         -------
         tuple
-            Mapping from traversal state to sampler, plus samplers in state-ID order.
+            Samplers in state-ID order.
         """
-        samplers = {}
         samplers_by_state_id = []
 
         for state_id, choice_results in enumerate(choice_results_by_state_id):
@@ -419,12 +402,11 @@ class ViewCompiler:
             if runtime_items:
                 runtime_weights = self._convert_log_masses_to_sampler_weights(runtime_log_masses)
                 sampler = Sampler(runtime_items, runtime_weights, rng=self.view._rng)
-                samplers[state] = sampler
                 samplers_by_state_id.append(sampler)
             else:
                 samplers_by_state_id.append(None)
 
-        return samplers, tuple(samplers_by_state_id)
+        return tuple(samplers_by_state_id)
 
     def _get_choices_for_node(self, node: Node) -> List[str]:
         """
