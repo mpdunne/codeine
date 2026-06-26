@@ -97,9 +97,9 @@ class ViewCompiler:
         self.banned_advance_cache: Dict[Tuple[Node, BannedTrackerState, str], AdvanceResult] = {}
 
         # Traversal transition table:
-        # (state, choice) -> child state
+        # (state, choice) -> child state ID
         # Avoids rediscovering successor states during compilation.
-        self.child_state_by_state_choice: Dict[Tuple[TraversalState, str], TraversalState] = {}
+        self.child_id_by_state_choice: Dict[Tuple[TraversalState, str], int] = {}
 
         # Compiled graph choices (lookup):
         # state -> choice -> ChoiceResult
@@ -297,13 +297,13 @@ class ViewCompiler:
         is_coding = isinstance(node, CodonNode)
 
         for choice in self.choices_by_node[node]:
-            child_state = self.child_state_by_state_choice.get((state, choice))
+            child_id = self.child_id_by_state_choice.get((state, choice))
 
-            if child_state is None:
+            if child_id is None:
                 continue
 
+            child_state = self.states[child_id]
             child = child_state.node
-            child_id = self.state_ids[child_state]
             child_total = self.totals_by_state_id[child_id]
 
             if child_total is None:
@@ -324,7 +324,7 @@ class ViewCompiler:
                 descendant_count=child_count,
                 descendant_log_mass=choice_log_mass,
                 next_state=None if child is self.graph.final_node else child_state,
-                next_state_id=None if child is self.graph.final_node else self.state_ids[child_state],
+                next_state_id=None if child is self.graph.final_node else child_id,
                 is_coding=is_coding,
             )
 
@@ -382,7 +382,7 @@ class ViewCompiler:
 
             child_state = TraversalState(child, advance.state, next_constraint_state)
             child_id = self._get_or_register_state_id(child_state)
-            self.child_state_by_state_choice[(state, choice)] = child_state
+            self.child_id_by_state_choice[(state, choice)] = child_id
 
             if self.totals_by_state_id[child_id] is None:
                 children.append((child_state, False))
