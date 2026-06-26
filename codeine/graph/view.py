@@ -178,11 +178,13 @@ class CodonGraphView:
         if len(seq) != len(self.graph.aa_seq) * 3:
             return False
 
-        state = self.initial_state
-        choices_by_state = self.choices_by_state
+        state_id = self.initial_state_id
+        choices_by_state_id = self.choices_by_state_id
+        states = self._compiled.states
 
-        while state is not None:
+        while state_id is not None:
 
+            state = states[state_id]
             node = state.node
 
             if isinstance(node, CodonNode):
@@ -191,12 +193,12 @@ class CodonGraphView:
             else:
                 choice = node.sequence
 
-            result = choices_by_state[state].get(choice)
+            result = choices_by_state_id[state_id].get(choice)
 
             if result is None:
                 return False
 
-            state = result.next_state
+            state_id = result.next_state_id
 
         return True
 
