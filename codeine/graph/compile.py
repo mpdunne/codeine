@@ -1,18 +1,29 @@
 import math
 
 from dataclasses import dataclass
-from typing import Dict, Tuple, List, Optional, TYPE_CHECKING
+from typing import Dict, NamedTuple, Tuple, List, Optional, TYPE_CHECKING
 
-from codeine.constraints.banned import TrackerState, AdvanceResult
+from codeine.constraints.banned import BannedTrackerState, AdvanceResult
 from codeine.constraints.base import ConstraintState
-from codeine.graph.nodes import CodonNode, Node
+from codeine.graph.nodes import CodonNode, Node, ContextNode
 from codeine.utils.sampling import Sampler
 
 if TYPE_CHECKING:
     from codeine.graph.view import CodonGraphView
 
 
-NodeState = Tuple[Node, TrackerState, ConstraintState]
+class TraversalState(NamedTuple):
+    """
+    The traversal state consists of the current node, plus a summary of the relevant
+    parts of how we got there. For example, it tracks whether we have seen parts of
+    banned sequences, and can track nucleotide or codon properties.
+
+    Different graph traversal histories that produce the same traversal state are
+    collapsed and are equivalent under this framework.
+    """
+    node: Node
+    banned_tracker_state: BannedTrackerState
+    constraint_state: ConstraintState
 
 
 @dataclass(frozen=True)
@@ -22,28 +33,34 @@ class ChoiceResult:
     "choice" is the graph edge label, i.e. a codon or a context sequence.
 
     Each ChoiceResult is specific to its location in the graph. The descendant
-    counts and weight mass are calculated iteratively by summing the values of
+    counts and log mass are calculated iteratively by summing the values of
     downstream nodes.
     """
     choice: str
     descendant_count: int
-    descendant_weight_mass: float
-    next_state: Optional[NodeState]
+    descendant_log_mass: float
+    next_state: Optional[TraversalState]
     is_coding: bool
 
 
-@dataclass
+@dataclass(frozen=True)
 class CompiledView:
     """
     Cached data for a compiled CodonGraphView, to speed up sampling and enumeration.
     """
-    initial_state: NodeState
+    initial_state: TraversalState
+
+    # Compiled graph choices (lookup):
+    # state -> choice -> ChoiceResult
+    # Used for fast sequence validation and graph traversal in the graph view.
+    choices_by_state: Dict[TraversalState, Dict[str, ChoiceResult]]
+
+    # Compiled graph choices (iteration):
+    # state -> ChoiceResults in graph order
+    # Used for fast sampling and sequence enumeration in the graph view.
+    choice_results_by_state: Dict[TraversalState, Tuple[ChoiceResult, ...]]
+
     n_valid_sequences: int
-    choices_by_state: Dict[NodeState, Dict[str, ChoiceResult]]
-    choice_start_by_state: Dict[NodeState, int]
-    choice_results_by_state: Dict[NodeState, Tuple[ChoiceResult, ...]]
-    codon_pos_by_state: Dict[NodeState, int]
-    fixed_choice_by_state: Dict[NodeState, str]
     samplers: dict
 
 
@@ -55,18 +72,43 @@ class ViewCompiler:
     def __init__(self, view: 'CodonGraphView') -> None:
         self.view = view
         self.graph = view.graph
-        self.tracker = view._banned_tracker
-        self.advance_cache = view._advance_cache
+        self.banned_tracker = view.banned_tracker
         self.path_constraint = view.path_constraint
         self.has_path_constraint = self.path_constraint is not None
 
-        self.totals_by_state: Dict[NodeState, Tuple[int, float]] = {}
-        self.choices_by_state: Dict[NodeState, Dict[str, ChoiceResult]] = {}
-        self.choice_start_by_state: Dict[NodeState, int] = {}
-        self.choice_results_by_state: Dict[NodeState, Tuple[ChoiceResult, ...]] = {}
-        self.codon_pos_by_state: Dict[NodeState, int] = {}
-        self.fixed_choice_by_state: Dict[NodeState, str] = {}
+        # Dynamic-programming totals:
+        # state -> (descendant count, descendant log mass)
+        # Avoids repeatedly recomputing subtree sizes and probability masses.
+        self.totals_by_state: Dict[TraversalState, Tuple[int, float]] = {}
 
+        # Banned-sequence tracker transitions:
+        # (node, tracker state, choice) -> tracker result
+        # Avoids recomputing tracker advances during compilation.
+        self.banned_advance_cache: Dict[Tuple[Node, BannedTrackerState, str], AdvanceResult] = {}
+
+        # Traversal transition table:
+        # (state, choice) -> child state
+        # Avoids rediscovering successor states during compilation.
+        self.child_state_by_state_choice: Dict[Tuple[TraversalState, str], TraversalState] = {}
+
+        # Compiled graph choices (lookup):
+        # state -> choice -> ChoiceResult
+        # Used for fast sequence validation and graph traversal in the graph view.
+        self.choices_by_state: Dict[TraversalState, Dict[str, ChoiceResult]] = {}
+
+        # Compiled graph choices (iteration):
+        # state -> ChoiceResults in graph order
+        # Used for fast sampling and sequence enumeration in the graph view.
+        self.choice_results_by_state: Dict[TraversalState, Tuple[ChoiceResult, ...]] = {}
+
+        # The cached log-ified codon weights, to avoid repeated log calculations
+        self.log_codon_weights = {
+            codon: math.log(weight)
+            for codon, weight in self.graph.cw.weights.items()
+            if weight > 0
+        }
+
+        # Cached version of the choices available at each node, taking into account fixed codons & pins
         self.choices_by_node = {
             node: tuple(self._get_choices_for_node(node))
             for node in self.graph.nodes
@@ -76,12 +118,20 @@ class ViewCompiler:
     def compile(self) -> CompiledView:
         """
         Compile descendant counts, graph choices, and samplers.
+
+        Returns
+        -------
+        CompiledView
+            A compiled view.
         """
         initial_state = self._initial_state()
         self._compile_from(initial_state)
 
-        self._compile_choice_result_tuples()
-        self._compile_choice_starts()
+        self.choice_results_by_state = {
+            state: tuple(choice_results.values())
+            for state, choice_results in self.choices_by_state.items()
+        }
+
         samplers = self._make_samplers()
 
         return CompiledView(
@@ -89,171 +139,162 @@ class ViewCompiler:
             n_valid_sequences=self.totals_by_state[initial_state][0],
             choices_by_state=self.choices_by_state,
             choice_results_by_state=self.choice_results_by_state,
-            choice_start_by_state=self.choice_start_by_state,
-            codon_pos_by_state=self.codon_pos_by_state,
-            fixed_choice_by_state=self.fixed_choice_by_state,
             samplers=samplers,
         )
 
-    def _compile_from(self, initial_state: NodeState) -> None:
+    def _initial_state(self) -> TraversalState:
         """
-        Walk the reachable graph states and compile each one after its children.
+        Return the starting traversal state.
+
+        The initial state starts at the graph's initial node, with fresh banned-
+        sequence and path-constraint states if those systems are active.
+
+        Returns
+        -------
+        TraversalState
+            Starting state for graph compilation.
         """
-        initial_node, initial_tracker_state, initial_constraint_state = initial_state
-        stack = [(initial_node, initial_tracker_state, initial_constraint_state, False)]
+        if self.has_path_constraint:
+            constraint_state = self.path_constraint.initial_state
+        else:
+            constraint_state = ()
+
+        if self.view.banned_sequences:
+            banned_tracker_state = self.banned_tracker.initial_state
+        else:
+            banned_tracker_state = frozenset()
+
+        return TraversalState(self.graph.initial_node, banned_tracker_state, constraint_state)
+
+    def _compile_from(self, initial_state: TraversalState) -> None:
+        """
+        Compile every reachable traversal state starting from an initial state.
+
+        Uses an explicit depth-first stack so that each non-final state is compiled
+        only after its child states have been compiled.
+
+        Parameters
+        ----------
+        initial_state
+            State from which graph compilation should begin.
+        """
+        stack = [(initial_state, False)]
 
         while stack:
-            node, tracker_state, constraint_state, expanded = stack.pop()
-            state = self._state(node, tracker_state, constraint_state)
+            state, expanded = stack.pop()
+            node = state.node
 
             if state in self.totals_by_state:
                 continue
 
             if node is self.graph.final_node:
-                self._compile_final_state(state, constraint_state)
+                self._compile_final_state(state)
                 continue
 
             if not expanded:
-                stack.append((node, tracker_state, constraint_state, True))
-                stack.extend(self._uncompiled_children(node, tracker_state, constraint_state))
+                stack.append((state, True))
+                stack.extend(self._uncompiled_children(state))
                 continue
 
-            self._compile_state(node, tracker_state, constraint_state)
+            self._compile_state(state)
 
-    def _compile_final_state(self, state: NodeState, constraint_state: ConstraintState) -> None:
+    def _compile_final_state(self, state: TraversalState) -> None:
         """
-        Compile the final graph state.
+        Compile a terminal traversal state.
+
+        By the time a terminal state is reached, all graph choices have already
+        been processed, including the right context. Choices rejected by the
+        banned-sequence tracker or path constraint would not have reached this
+        state.
+
+        The only remaining decision is whether the final path-constraint state is
+        acceptable. If so, this terminal state contributes one complete sequence
+        with log mass 0.0. Otherwise, it contributes no sequences.
+
+        Parameters
+        ----------
+        state
+            Terminal traversal state being compiled.
         """
-        if (
-            not self.has_path_constraint
-            or self.path_constraint.is_satisfied(constraint_state)
-        ):
+        if not self.has_path_constraint or self.path_constraint.is_satisfied(state.constraint_state):
             self.totals_by_state[state] = (1, 0.0)
         else:
             self.totals_by_state[state] = (0, -math.inf)
 
         self.choices_by_state[state] = {}
 
-    def _compile_state(
-        self,
-        node,
-        tracker_state: TrackerState,
-        constraint_state: ConstraintState,
-    ) -> None:
+    def _compile_state(self, state: TraversalState) -> None:
         """
-        Compile one non-final graph state after all valid children have been compiled.
+        Compile one non-final traversal state.
+
+        For each outgoing graph choice, combine the previously compiled child state
+        with the contribution from the current node to produce a ChoiceResult.
+        The total descendant count and log mass are then cached for the current state.
+
+        Parameters
+        ----------
+        state
+            Traversal state being compiled.
         """
-        state = self._state(node, tracker_state, constraint_state)
-        raw_results = []
-
-        self._record_state_kind(state, node)
-
-        for choice in self.choices_by_node[node]:
-            result = self._choice_result(node, tracker_state, constraint_state, choice)
-
-            if result is None:
-                continue
-
-            raw_results.append(result)
-
-        results = raw_results
-
+        node = state.node
         choice_results = {}
         descendant_count = 0
-        descendant_weight_masses = []
+        descendant_log_masses = []
+        is_coding = isinstance(node, CodonNode)
 
-        for result in results:
-            choice_results[result.choice] = result
-            descendant_count += result.descendant_count
-            descendant_weight_masses.append(result.descendant_weight_mass)
+        for choice in self.choices_by_node[node]:
+            child_state = self.child_state_by_state_choice.get((state, choice))
 
-        descendant_weight_mass = self._sum_weight_masses(descendant_weight_masses)
+            if child_state is None:
+                continue
 
-        self.choices_by_state[state] = choice_results
-        self.totals_by_state[state] = (descendant_count, descendant_weight_mass)
+            child = child_state.node
+            child_count, subtree_log_mass = self.totals_by_state[child_state]
 
-    def _compile_choice_result_tuples(self) -> None:
-        """
-        Store each state's choice results as tuples for fast indexed traversal.
-        """
-        self.choice_results_by_state = {
-            state: tuple(choice_results.values())
-            for state, choice_results in self.choices_by_state.items()
-        }
+            if child_count == 0:
+                continue
 
-    def _get_choices_for_node(self, node) -> List[str]:
-        """
-        Return choices available to this node in this view.
-        """
-        if isinstance(node, CodonNode):
-            if node.pos in self.view.pinned_codons:
-                return self.view.pinned_codons[node.pos]
+            choice_log_mass = self._accumulate_log_mass(node, choice, subtree_log_mass)
 
-            return node.codons
+            if choice_log_mass == -math.inf:
+                continue
 
-        return [node.sequence]
-
-    def _choice_result(
-        self,
-        node,
-        tracker_state: TrackerState,
-        constraint_state: ConstraintState,
-        choice: str,
-    ) -> Optional[ChoiceResult]:
-        """
-        Compile the result of taking one outgoing choice from a graph node.
-        """
-        child = node.transitions.get(choice)
-
-        if child is None:
-            return None
-
-        advance = self._advance_tracker(tracker_state, node, choice)
-
-        if advance.banned:
-            return None
-
-        if self.has_path_constraint:
-            next_constraint_state = self.path_constraint.advance(
-                constraint_state,
-                node.pos,
-                choice,
+            result = ChoiceResult(
+                choice=choice,
+                descendant_count=child_count,
+                descendant_log_mass=choice_log_mass,
+                next_state=None if child is self.graph.final_node else child_state,
+                is_coding=is_coding,
             )
 
-            if next_constraint_state is None:
-                return None
-        else:
-            next_constraint_state = ()
+            choice_results[choice] = result
+            descendant_count += child_count
+            descendant_log_masses.append(choice_log_mass)
 
-        child_state = self._state(child, advance.state, next_constraint_state)
-        child_count, child_weight_mass = self.totals_by_state[child_state]
+        descendant_log_mass = self._sum_log_masses(descendant_log_masses)
 
-        if child_count == 0:
-            return None
+        self.choices_by_state[state] = choice_results
+        self.totals_by_state[state] = (descendant_count, descendant_log_mass)
 
-        descendant_weight_mass = self._choice_weight_mass(node, choice, child_weight_mass)
-
-        if descendant_weight_mass == -math.inf:
-            return None
-
-        return ChoiceResult(
-            choice=choice,
-            descendant_count=child_count,
-            descendant_weight_mass=descendant_weight_mass,
-            next_state=None if child is self.graph.final_node else child_state,
-            is_coding=isinstance(node, CodonNode),
-        )
-
-    def _uncompiled_children(
-        self,
-        node,
-        tracker_state: TrackerState,
-        constraint_state: ConstraintState,
-    ) -> List[Tuple[object, TrackerState, ConstraintState, bool]]:
+    def _uncompiled_children(self, state: TraversalState) -> List[Tuple[TraversalState, bool]]:
         """
-        Return uncompiled child states reachable from a graph state.
+        Return child states reached by taking each outgoing graph choice.
+
+        Choices rejected by the banned-sequence tracker or path constraint are skipped.
+        Only child states that have not yet been compiled are returned.
+
+        Parameters
+        ----------
+        state
+            Traversal state whose children should be discovered.
+
+        Returns
+        -------
+        list of tuple
+            Stack entries for child states still needing compilation.
         """
         children = []
+        node = state.node
 
         for choice in self.choices_by_node[node]:
             child = node.transitions.get(choice)
@@ -261,189 +302,217 @@ class ViewCompiler:
             if child is None:
                 continue
 
-            advance = self._advance_tracker(tracker_state, node, choice)
+            advance = self._advance_banned_tracker(state.banned_tracker_state, node, choice)
 
             if advance.banned:
                 continue
 
             if self.has_path_constraint:
-                next_constraint_state = self.path_constraint.advance(
-                    constraint_state,
-                    node.pos,
-                    choice,
-                )
+                next_constraint_state = self.path_constraint.advance(state.constraint_state, node.pos, choice)
 
                 if next_constraint_state is None:
                     continue
             else:
                 next_constraint_state = ()
 
-            child_state = self._state(child, advance.state, next_constraint_state)
+            child_state = TraversalState(child, advance.state, next_constraint_state)
+            self.child_state_by_state_choice[(state, choice)] = child_state
 
             if child_state not in self.totals_by_state:
-                children.append((child, advance.state, next_constraint_state, False))
+                children.append((child_state, False))
 
         return children
 
-    def _normalise_choice_results(self, results: List[ChoiceResult]) -> List[ChoiceResult]:
-        """
-        Rescale descendant weight masses within one state.
-
-        Only relative weights matter for sampling, so this prevents long paths
-        from underflowing toward zero.
-        """
-        max_mass = max((result.descendant_weight_mass for result in results), default=0.0)
-
-        if max_mass <= 0:
-            return results
-
-        return [
-            ChoiceResult(
-                choice=result.choice,
-                descendant_count=result.descendant_count,
-                descendant_weight_mass=result.descendant_weight_mass / max_mass,
-                next_state=result.next_state,
-                is_coding=result.is_coding,
-            )
-            for result in results
-        ]
-
-    def _normalise_weights(self, weights: List[float]) -> List[float]:
-        """
-        Rescale sampler weights defensively.
-        """
-        if not weights:
-            return weights
-
-        max_weight = max(weights)
-
-        if max_weight == -math.inf:
-            return [1.0] * len(weights)
-
-        return [math.exp(weight - max_weight) for weight in weights]
-
     def _make_samplers(self) -> dict:
         """
-        Make samplers for each reachable graph state.
+        Build weighted samplers for every compiled traversal state.
+
+        Each sampler chooses between the state's valid outgoing choices with
+        probabilities proportional to their descendant probability masses.
+
+        Returns
+        -------
+        dict
+            Mapping from traversal state to a sampler over its outgoing choices.
         """
         samplers = {}
 
         for state, choice_results in self.choice_results_by_state.items():
-            node, _, _ = state
+            node = state.node
 
             if node is self.graph.final_node:
                 continue
 
             runtime_items = []
-            runtime_weights = []
+            runtime_log_masses = []
 
             for result in choice_results:
                 runtime_items.append((result.choice, result.is_coding, result.next_state))
-                runtime_weights.append(result.descendant_weight_mass)
+                runtime_log_masses.append(result.descendant_log_mass)
 
             if runtime_items:
-                runtime_weights = self._normalise_weights(runtime_weights)
+                runtime_weights = self._convert_log_masses_to_sampler_weights(runtime_log_masses)
                 samplers[state] = Sampler(runtime_items, runtime_weights, rng=self.view._rng)
 
         return samplers
 
-    def _record_state_kind(self, state: NodeState, node) -> None:
+    def _get_choices_for_node(self, node: Node) -> List[str]:
         """
-        Record whether a graph state consumes a codon from the user sequence
-        or follows a fixed context sequence.
+        Return the graph choices available from a node in this view.
+
+        Codon nodes respect any pinned codons defined by the view. Context nodes
+        always have a single fixed sequence.
+
+        Parameters
+        ----------
+        node
+            Graph node whose available choices are required.
+
+        Returns
+        -------
+        list of str
+            The choices that may be taken from this node in the current view.
         """
         if isinstance(node, CodonNode):
-            self.codon_pos_by_state[state] = node.pos
-        else:
-            self.fixed_choice_by_state[state] = node.sequence
+            if node.pos in self.view.pinned_codons:
+                return self.view.pinned_codons[node.pos]
+            else:
+                return node.codons
 
-    def _choice_weight_mass(self, node, choice: str, child_weight_mass: float) -> float:
+        elif isinstance(node, ContextNode):
+            return [node.sequence]
+
+    def _advance_banned_tracker(
+            self,
+            banned_tracker_state: BannedTrackerState,
+            node: Node,
+            choice: str,
+    ) -> AdvanceResult:
         """
-        Return the weighted mass for a choice.
+        Advance the banned-sequence tracker after taking one graph choice.
+
+        Results are cached because the same tracker transition may be encountered
+        from many traversal states during compilation.
+
+        Parameters
+        ----------
+        banned_tracker_state
+            Current banned-sequence tracker state.
+        node
+            Current graph node.
+        choice
+            Graph choice taken from the current node.
+
+        Returns
+        -------
+        AdvanceResult
+            Whether the choice enters a banned state and the resulting tracker
+            state.
         """
-        if isinstance(node, CodonNode):
-            weight = self.graph.cw[choice]
+        key = (node, banned_tracker_state, choice)
 
-            if weight <= 0:
-                return -math.inf
+        if key in self.banned_advance_cache:
+            return self.banned_advance_cache[key]
 
-            return math.log(weight) + child_weight_mass
-
-        return child_weight_mass
-
-    def _sum_weight_masses(self, weights: List[float]) -> float:
-        """
-        Sum weight masses defensively.
-        """
-        weights = [weight for weight in weights if weight != -math.inf]
-
-        if not weights:
-            return -math.inf
-
-        max_weight = max(weights)
-
-        return max_weight + math.log(
-            sum(math.exp(weight - max_weight) for weight in weights)
-        )
-
-    def _initial_state(self) -> NodeState:
-        """
-        Return the initial compiled graph state.
-        """
-        if self.has_path_constraint:
-            constraint_state = self.path_constraint.initial_state
-        else:
-            constraint_state = ()
-
-        return self._state(
-            self.graph.initial_node,
-            self._initial_tracker_state(),
-            constraint_state,
-        )
-
-    def _initial_tracker_state(self) -> TrackerState:
-        """
-        Return the initial banned-sequence tracker state.
-        """
-        if not self.view.banned_sequences:
-            return frozenset()
-
-        return self.tracker.initial_state
-
-    def _compile_choice_starts(self) -> None:
-        """
-        Store sequence slice starts for coding states.
-        """
-        self.choice_start_by_state = {
-            state: (pos - 1) * 3
-            for state, pos in self.codon_pos_by_state.items()
-        }
-
-    def _advance_tracker(self, tracker_state: TrackerState, node: Node, choice: str) -> AdvanceResult:
-        """
-        Advance banned-sequence tracking after taking a graph step. Results are cached.
-        """
-        key = (node, tracker_state, choice)
-
-        if key in self.advance_cache:
-            return self.advance_cache[key]
-
-        if self.tracker.is_trivial:
-            result = AdvanceResult(banned=False, state=tracker_state)
+        if self.banned_tracker.is_trivial:
+            result = AdvanceResult(banned=False, state=banned_tracker_state)
         else:
             step = (node.pos, choice)
-            result = self.tracker.advance(step, tracker_state)
+            result = self.banned_tracker.advance(step, banned_tracker_state)
 
-        self.advance_cache[key] = result
+        self.banned_advance_cache[key] = result
         return result
 
-    def _state(
+    def _accumulate_log_mass(
             self,
-            node,
-            tracker_state: TrackerState = frozenset(),
-            constraint_state: ConstraintState = (),
-    ) -> NodeState:
+            node: Node,
+            choice: str,
+            subtree_log_mass: float,
+    ) -> float:
         """
-        Return the compiled state for a graph node plus tracker states.
+        Accumulate the log probability mass contributed by one graph choice.
+
+        The subtree log mass has already been computed for the child state. Codon
+        nodes contribute the log of their codon weight, whereas context nodes
+        contribute no additional mass.
+
+        Parameters
+        ----------
+        node
+            The graph node from which the choice is taken.
+        choice
+            The outgoing graph choice.
+        subtree_log_mass
+            The total log mass reachable from the child state.
+
+        Returns
+        -------
+        float
+            The total log mass reachable after taking this choice.
         """
-        return node, tracker_state, constraint_state
+        if isinstance(node, CodonNode):
+            codon_log_weight = self.log_codon_weights.get(choice)
+
+            if codon_log_weight is None:
+                return -math.inf
+
+            return codon_log_weight + subtree_log_mass
+
+        return subtree_log_mass
+
+    def _sum_log_masses(self, log_masses: List[float]) -> float:
+        """
+        Combine several subtree log masses into a single log mass.
+
+        The calculation is performed using the log-sum-exp trick to avoid numerical
+        underflow when the subtree probabilities are extremely small.
+
+        Parameters
+        ----------
+        log_masses
+            Log-space masses to sum.
+
+        Returns
+        -------
+        float
+            The log of the summed masses, or -inf if no finite masses exist.
+        """
+        log_masses = [m for m in log_masses if m != -math.inf]
+
+        if not log_masses:
+            return -math.inf
+
+        # Use the max value to keep exp(log_mass - max_log_mass) numerically stable.
+        max_log_mass = max(log_masses)
+
+        total_relative_mass = sum(math.exp(log_mass - max_log_mass) for log_mass in log_masses)
+
+        return max_log_mass + math.log(total_relative_mass)
+
+    def _convert_log_masses_to_sampler_weights(self, log_masses: List[float]) -> List[float]:
+        """
+        Convert subtree log masses into relative weights for sampling.
+
+        The returned weights are proportional to the true subtree probabilities but
+        are rescaled to avoid numerical underflow. Only the relative values matter
+        for weighted sampling.
+
+        Parameters
+        ----------
+        log_masses
+            Choice masses represented in log space.
+
+        Returns
+        -------
+        list of float
+            Relative non-log weights suitable for weighted sampling.
+        """
+        if not log_masses:
+            return log_masses
+
+        max_log_mass = max(log_masses)
+
+        if max_log_mass == -math.inf:
+            return [1.0] * len(log_masses)
+
+        return [math.exp(log_mass - max_log_mass) for log_mass in log_masses]

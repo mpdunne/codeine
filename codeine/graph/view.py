@@ -1,12 +1,12 @@
 import random
 
 from itertools import islice
-from typing import Dict, Generator, List, Optional, Sequence, Tuple, Union
+from typing import Dict, Generator, List, Optional, Sequence, Union
 
 from codeine.constraints.base import PathConstraint
-from codeine.constraints.banned import AdvanceResult, BannedSequenceTracker, TrackerState
+from codeine.constraints.banned import BannedSequenceTracker
 from codeine.graph.base import CodonGraph, CodonRestriction
-from codeine.graph.nodes import Node
+from codeine.graph.nodes import CodonNode
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
 from codeine.utils.display import format_forbidden_motifs, format_count, format_restrictions
@@ -52,18 +52,15 @@ class CodonGraphView:
         self.banned_sequences: List[str] = self._validate_banned_sequences(banned_sequences)
         self.path_constraint: Optional[PathConstraint] = None
 
-        self._banned_tracker = BannedSequenceTracker(self.graph, self.banned_sequences)
-        self._advance_cache: Dict[Tuple[Node, TrackerState, str], AdvanceResult] = {}
+        self.banned_tracker = BannedSequenceTracker(self.graph, self.banned_sequences)
 
         self._compiled = None
         self._requires_compile = True
 
         self.initial_state = None
         self.choices_by_state = {}
-        self.choice_start_by_state = {}
         self.choice_results_by_state = {}
-        self.codon_pos_by_state = {}
-        self.fixed_choice_by_state = {}
+
         self.samplers = {}
 
     def __getitem__(self, index: Union[int, slice]) -> Union[str, List[str]]:
@@ -178,16 +175,16 @@ class CodonGraphView:
 
         state = self.initial_state
         choices_by_state = self.choices_by_state
-        choice_start_by_state = self.choice_start_by_state
-        fixed_choice_by_state = self.fixed_choice_by_state
 
         while state is not None:
-            start = choice_start_by_state.get(state)
 
-            if start is None:
-                choice = fixed_choice_by_state[state]
-            else:
+            node = state.node
+
+            if isinstance(node, CodonNode):
+                start = (node.pos - 1) * 3
                 choice = seq[start:start + 3]
+            else:
+                choice = node.sequence
 
             result = choices_by_state[state].get(choice)
 
@@ -341,18 +338,15 @@ class CodonGraphView:
         view.pinned_codons = self.pinned_codons.copy()
         view.banned_sequences = self.banned_sequences.copy()
         view.path_constraint = self.path_constraint
-        view._banned_tracker = self._banned_tracker
-        view._advance_cache = self._advance_cache.copy()
+        view.banned_tracker = self.banned_tracker
 
         view._compiled = self._compiled
         view._requires_compile = self._requires_compile
 
         view.initial_state = self.initial_state
         view.choices_by_state = self.choices_by_state
-        view.choice_start_by_state = self.choice_start_by_state
         view.choice_results_by_state = self.choice_results_by_state
-        view.codon_pos_by_state = self.codon_pos_by_state
-        view.fixed_choice_by_state = self.fixed_choice_by_state
+
         view.samplers = self.samplers
 
         return view
@@ -373,9 +367,7 @@ class CodonGraphView:
         self.initial_state = compiled.initial_state
         self.choices_by_state = compiled.choices_by_state
         self.choice_results_by_state = compiled.choice_results_by_state
-        self.choice_start_by_state = compiled.choice_start_by_state
-        self.codon_pos_by_state = compiled.codon_pos_by_state
-        self.fixed_choice_by_state = compiled.fixed_choice_by_state
+
         self.samplers = compiled.samplers
 
     def pin_codons(self, pinned_codons: Dict[int, CodonRestriction]) -> None:
@@ -436,8 +428,7 @@ class CodonGraphView:
         not on temporary pins, so it is rebuilt only when the banned list changes.
         """
         self.banned_sequences = self._validate_banned_sequences(banned_sequences)
-        self._banned_tracker = BannedSequenceTracker(self.graph, self.banned_sequences)
-        self._advance_cache.clear()
+        self.banned_tracker = BannedSequenceTracker(self.graph, self.banned_sequences)
         self._requires_compile = True
 
     def clear_banned_sequences(self) -> None:
@@ -559,7 +550,6 @@ class CodonGraphView:
         #       coding sequence constructed so far,
         # )
         choice_results_by_state = self.choice_results_by_state
-        codon_pos_by_state = self.codon_pos_by_state
 
         stack = [(self.initial_state, '')]
 
@@ -575,7 +565,7 @@ class CodonGraphView:
             if not results:
                 continue
 
-            if state not in codon_pos_by_state:
+            if not isinstance(state.node, CodonNode):
                 stack.append((results[0].next_state, prefix))
                 continue
 
@@ -609,7 +599,6 @@ class CodonGraphView:
         #       0-based index of the first sequence reachable from that state.
         # )
         choice_results_by_state = self.choice_results_by_state
-        codon_pos_by_state = self.codon_pos_by_state
 
         stack = [(self.initial_state, '', 0)]
 
@@ -626,7 +615,7 @@ class CodonGraphView:
             if not results:
                 continue
 
-            if state not in codon_pos_by_state:
+            if not isinstance(state.node, CodonNode):
                 stack.append((results[0].next_state, prefix, offset))
                 continue
 

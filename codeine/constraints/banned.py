@@ -25,7 +25,7 @@ Watch = Tuple[int, int]
 
 # The tracker state is a set of watches. We update the
 # watches every time we make a choice.
-TrackerState = FrozenSet[Watch]
+BannedTrackerState = FrozenSet[Watch]
 
 
 @dataclass(frozen=True)
@@ -35,7 +35,7 @@ class AdvanceResult:
     currently in a disallowed state, and if not, what the new state is.
     """
     banned: bool
-    state: TrackerState = frozenset()
+    state: BannedTrackerState = frozenset()
 
 
 class BannedSequenceTracker:
@@ -78,7 +78,7 @@ class BannedSequenceTracker:
         """
         self.graph = graph
         self.banned_sequences = tuple(sequence.upper() for sequence in banned_sequences)
-        self.initial_state: TrackerState = frozenset()
+        self.initial_state: BannedTrackerState = frozenset()
 
         self.paths = self._find_banned_paths()
         self.starts = self._build_starts()
@@ -160,7 +160,7 @@ class BannedSequenceTracker:
     def advance(
         self,
         step: Step,
-        state: TrackerState,
+        state: BannedTrackerState,
     ) -> AdvanceResult:
         """
         Move the tracker state forward after taking a graph step.
