@@ -13,6 +13,14 @@ if TYPE_CHECKING:
 
 
 class TraversalState(NamedTuple):
+    """
+    The traversal state consists of the current node, plus a summary of the relevant
+    parts of how we got there. For example, it tracks whether we have seen parts of
+    banned sequences, and can track nucleotide or codon properties.
+
+    Different graph traversal histories that produce the same traversal state are
+    collapsed and are equivalent under this framework.
+    """
     node: Node
     banned_tracker_state: BannedTrackerState
     constraint_state: ConstraintState
@@ -41,11 +49,18 @@ class CompiledView:
     Cached data for a compiled CodonGraphView, to speed up sampling and enumeration.
     """
     initial_state: TraversalState
-    n_valid_sequences: int
 
+    # Compiled graph choices (lookup):
+    # state -> choice -> ChoiceResult
+    # Used for fast sequence validation and graph traversal in the graph view.
     choices_by_state: Dict[TraversalState, Dict[str, ChoiceResult]]
+
+    # Compiled graph choices (iteration):
+    # state -> ChoiceResults in graph order
+    # Used for fast sampling and sequence enumeration in the graph view.
     choice_results_by_state: Dict[TraversalState, Tuple[ChoiceResult, ...]]
 
+    n_valid_sequences: int
     samplers: dict
 
 
@@ -61,18 +76,39 @@ class ViewCompiler:
         self.path_constraint = view.path_constraint
         self.has_path_constraint = self.path_constraint is not None
 
-        self.banned_advance_cache: Dict[Tuple[Node, BannedTrackerState, str], AdvanceResult] = {}
+        # Dynamic-programming totals:
+        # state -> (descendant count, descendant log mass)
+        # Avoids repeatedly recomputing subtree sizes and probability masses.
         self.totals_by_state: Dict[TraversalState, Tuple[int, float]] = {}
-        self.choices_by_state: Dict[TraversalState, Dict[str, ChoiceResult]] = {}
-        self.choice_results_by_state: Dict[TraversalState, Tuple[ChoiceResult, ...]] = {}
+
+        # Banned-sequence tracker transitions:
+        # (node, tracker state, choice) -> tracker result
+        # Avoids recomputing tracker advances during compilation.
+        self.banned_advance_cache: Dict[Tuple[Node, BannedTrackerState, str], AdvanceResult] = {}
+
+        # Traversal transition table:
+        # (state, choice) -> child state
+        # Avoids rediscovering successor states during compilation.
         self.child_state_by_state_choice: Dict[Tuple[TraversalState, str], TraversalState] = {}
 
+        # Compiled graph choices (lookup):
+        # state -> choice -> ChoiceResult
+        # Used for fast sequence validation and graph traversal in the graph view.
+        self.choices_by_state: Dict[TraversalState, Dict[str, ChoiceResult]] = {}
+
+        # Compiled graph choices (iteration):
+        # state -> ChoiceResults in graph order
+        # Used for fast sampling and sequence enumeration in the graph view.
+        self.choice_results_by_state: Dict[TraversalState, Tuple[ChoiceResult, ...]] = {}
+
+        # The cached log-ified codon weights, to avoid repeated log calculations
         self.log_codon_weights = {
             codon: math.log(weight)
             for codon, weight in self.graph.cw.weights.items()
             if weight > 0
         }
 
+        # Cached version of the choices available at each node, taking into account fixed codons & pins
         self.choices_by_node = {
             node: tuple(self._get_choices_for_node(node))
             for node in self.graph.nodes
@@ -266,21 +302,13 @@ class ViewCompiler:
             if child is None:
                 continue
 
-            advance = self._advance_banned_tracker(
-                state.banned_tracker_state,
-                node,
-                choice,
-            )
+            advance = self._advance_banned_tracker(state.banned_tracker_state, node, choice)
 
             if advance.banned:
                 continue
 
             if self.has_path_constraint:
-                next_constraint_state = self.path_constraint.advance(
-                    state.constraint_state,
-                    node.pos,
-                    choice,
-                )
+                next_constraint_state = self.path_constraint.advance(state.constraint_state, node.pos, choice)
 
                 if next_constraint_state is None:
                     continue
