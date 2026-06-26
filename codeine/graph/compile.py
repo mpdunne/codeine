@@ -135,61 +135,59 @@ class ViewCompiler:
         Compile every reachable traversal state starting from an initial state.
 
         Uses an explicit depth-first stack so that each non-final state is compiled
-        only after its valid child states have been compiled.
+        only after its child states have been compiled.
 
         Parameters
         ----------
         initial_state
             State from which graph compilation should begin.
         """
-        initial_node, initial_banned_tracker_state, initial_constraint_state = initial_state
-        stack = [(initial_node, initial_banned_tracker_state, initial_constraint_state, False)]
+        stack = [(initial_state, False)]
 
         while stack:
-            node, banned_tracker_state, constraint_state, expanded = stack.pop()
-            state = TraversalState(node, banned_tracker_state, constraint_state)
+            state, expanded = stack.pop()
+            node = state.node
 
             if state in self.totals_by_state:
                 continue
 
             if node is self.graph.final_node:
-                self._compile_final_state(state, constraint_state)
+                self._compile_final_state(state)
                 continue
 
             if not expanded:
-                stack.append((node, banned_tracker_state, constraint_state, True))
-                stack.extend(self._uncompiled_children(state, node, banned_tracker_state, constraint_state))
+                stack.append((state, True))
+                stack.extend(self._uncompiled_children(state))
                 continue
 
-            self._compile_state(node, banned_tracker_state, constraint_state)
+            self._compile_state(state)
 
-    def _compile_final_state(self, state: TraversalState, constraint_state: ConstraintState) -> None:
+    def _compile_final_state(self, state: TraversalState) -> None:
         """
-        Compile a final graph state.
+        Compile a terminal traversal state.
 
-        A final state contributes one valid sequence with log mass 0.0 if the path
-        constraint is satisfied. Otherwise, it contributes no valid sequences.
+        By the time a terminal state is reached, all graph choices have already
+        been processed, including the right context. Choices rejected by the
+        banned-sequence tracker or path constraint would not have reached this
+        state.
+
+        The only remaining decision is whether the final path-constraint state is
+        acceptable. If so, this terminal state contributes one complete sequence
+        with log mass 0.0. Otherwise, it contributes no sequences.
 
         Parameters
         ----------
         state
-            Final traversal state being compiled.
-        constraint_state
-            Path-constraint state associated with the final traversal state.
+            Terminal traversal state being compiled.
         """
-        if not self.has_path_constraint or self.path_constraint.is_satisfied(constraint_state):
+        if not self.has_path_constraint or self.path_constraint.is_satisfied(state.constraint_state):
             self.totals_by_state[state] = (1, 0.0)
         else:
             self.totals_by_state[state] = (0, -math.inf)
 
         self.choices_by_state[state] = {}
 
-    def _compile_state(
-            self,
-            node: Node,
-            banned_tracker_state: BannedTrackerState,
-            constraint_state: ConstraintState,
-    ) -> None:
+    def _compile_state(self, state: TraversalState) -> None:
         """
         Compile one non-final traversal state.
 
@@ -199,14 +197,10 @@ class ViewCompiler:
 
         Parameters
         ----------
-        node
-            Graph node being compiled.
-        banned_tracker_state
-            Banned-sequence tracker state at this node.
-        constraint_state
-            Path-constraint state at this node.
+        state
+            Traversal state being compiled.
         """
-        state = TraversalState(node, banned_tracker_state, constraint_state)
+        node = state.node
         choice_results = {}
         descendant_count = 0
         descendant_log_masses = []
@@ -246,13 +240,7 @@ class ViewCompiler:
         self.choices_by_state[state] = choice_results
         self.totals_by_state[state] = (descendant_count, descendant_log_mass)
 
-    def _uncompiled_children(
-            self,
-            state: TraversalState,
-            node,
-            banned_tracker_state: BannedTrackerState,
-            constraint_state: ConstraintState,
-    ) -> List[Tuple[Node, BannedTrackerState, ConstraintState, bool]]:
+    def _uncompiled_children(self, state: TraversalState) -> List[Tuple[TraversalState, bool]]:
         """
         Return child states reached by taking each outgoing graph choice.
 
@@ -262,13 +250,7 @@ class ViewCompiler:
         Parameters
         ----------
         state
-            Current traversal state.
-        node
-            Current graph node.
-        banned_tracker_state
-            Banned-sequence tracker state at this node.
-        constraint_state
-            Path-constraint state at this node.
+            Traversal state whose children should be discovered.
 
         Returns
         -------
@@ -276,6 +258,7 @@ class ViewCompiler:
             Stack entries for child states still needing compilation.
         """
         children = []
+        node = state.node
 
         for choice in self.choices_by_node[node]:
             child = node.transitions.get(choice)
@@ -283,14 +266,18 @@ class ViewCompiler:
             if child is None:
                 continue
 
-            advance = self._advance_banned_tracker(banned_tracker_state, node, choice)
+            advance = self._advance_banned_tracker(
+                state.banned_tracker_state,
+                node,
+                choice,
+            )
 
             if advance.banned:
                 continue
 
             if self.has_path_constraint:
                 next_constraint_state = self.path_constraint.advance(
-                    constraint_state,
+                    state.constraint_state,
                     node.pos,
                     choice,
                 )
@@ -304,7 +291,7 @@ class ViewCompiler:
             self.child_state_by_state_choice[(state, choice)] = child_state
 
             if child_state not in self.totals_by_state:
-                children.append((child, advance.state, next_constraint_state, False))
+                children.append((child_state, False))
 
         return children
 
