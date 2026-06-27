@@ -247,7 +247,7 @@ class CodingSpace:
 
     def mutants(
             self,
-            seq: str,
+            cds: str,
             free_positions: Optional[Sequence[int]] = None,
             min_nts: Optional[int] = None,
             max_nts: Optional[int] = None,
@@ -260,7 +260,7 @@ class CodingSpace:
 
         Parameters
         ----------
-        seq
+        cds
             The sequence to mutate.
         free_positions
             The positions that are allowed to vary.
@@ -273,7 +273,7 @@ class CodingSpace:
         max_codons
             The max number of changed codons relative to the reference sequence.
         """
-        cds = self.translation_table.normalise_sequence(seq)
+        cds = self.translation_table.normalise_sequence(cds)
 
         if not self.contains(cds):
             raise ValueError('CDS is not contained in this coding space.')
