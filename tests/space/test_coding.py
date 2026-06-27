@@ -6,6 +6,7 @@ import pytest
 from Bio.Seq import Seq
 
 from codeine.translation.weights import CodonWeights
+from codeine.translation.tables import TranslationTable
 from codeine.space.coding import CodingSpace
 from codeine.motifs.restriction import RestrictionSite
 
@@ -467,3 +468,77 @@ def test_coding_space_forbidden_motifs_and_max_homopolymer_combine():
 
     space.clear_max_homopolymer()
     assert set(space.view.banned_sequences) == set()
+
+
+def test_resolve_tables_defaults_to_dna():
+    tt, cw = CodingSpace._resolve_tables(None, None, None)
+
+    assert tt.rna is False
+    assert cw.rna is False
+
+
+def test_resolve_tables_uses_rna_flag():
+    tt, cw = CodingSpace._resolve_tables(None, None, True)
+
+    assert tt.rna is True
+    assert cw.rna is True
+
+
+def test_resolve_tables_builds_weights_from_table():
+    tt_in = TranslationTable(rna=True)
+
+    tt, cw = CodingSpace._resolve_tables(tt_in, None, None)
+
+    assert tt is tt_in
+    assert cw.rna is True
+
+
+def test_resolve_tables_builds_table_from_weights():
+    tt_in = TranslationTable(rna=True)
+    cw_in = CodonWeights.uniform(table=tt_in)
+
+    tt, cw = CodingSpace._resolve_tables(None, cw_in, None)
+
+    assert tt.rna is True
+    assert cw is cw_in
+
+
+def test_resolve_tables_rejects_table_weights_molecule_mismatch():
+    dna_tt = TranslationTable(rna=False)
+    rna_tt = TranslationTable(rna=True)
+    rna_cw = CodonWeights.uniform(table=rna_tt)
+
+    with pytest.raises(ValueError, match='same molecule type'):
+        CodingSpace._resolve_tables(dna_tt, rna_cw, None)
+
+
+def test_resolve_tables_rejects_rna_flag_table_mismatch():
+    tt = TranslationTable(rna=False)
+
+    with pytest.raises(ValueError, match='translation table'):
+        CodingSpace._resolve_tables(tt, None, True)
+
+
+def test_resolve_tables_rejects_rna_flag_weights_mismatch():
+    tt = TranslationTable(rna=False)
+    cw = CodonWeights.uniform(table=tt)
+
+    with pytest.raises(ValueError, match='codon weights'):
+        CodingSpace._resolve_tables(None, cw, True)
+
+
+def test_coding_space_rna_flag_creates_rna_space():
+    space = CodingSpace('MKT', rna=True)
+
+    assert space.translation_table.rna is True
+    assert space.codon_weights.rna is True
+    assert 'U' in space.sample()
+    assert 'T' not in space.sample()
+
+
+def test_coding_space_rna_flag_normalises_inputs_to_rna():
+    space = CodingSpace('M', codon_restrictions={1: 'ATG'}, context_l='TTT', context_r='TAA', rna=True)
+
+    assert space.codon_restrictions == {1: ['AUG']}
+    assert space.context_l == 'UUU'
+    assert space.context_r == 'UAA'

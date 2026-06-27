@@ -29,6 +29,7 @@ class CodingSpace:
         max_homopolymer: Optional[int] = None,
         translation_table: Optional[TranslationTable] = None,
         codon_weights: Optional[CodonWeights] = None,
+        rna: Optional[bool] = None,
         context_l: str = '',
         context_r: str = '',
         seed: Optional[Seedable] = None,
@@ -47,6 +48,8 @@ class CodingSpace:
             The translation table to use. Leave blank to use standard table.
         codon_weights
             The codon weights to use. Leave blank to sample uniformly.
+        rna
+            Whether to use RNA. If false, use DNA.
         context_l
             The context sequence to the left of the coding sequence.
         context_r
@@ -56,8 +59,11 @@ class CodingSpace:
         rng
             Random number generator used by the view for sampling.
         """
+
         self.forbidden_motifs = forbidden_motifs
         self.max_homopolymer = max_homopolymer
+
+        translation_table, codon_weights = self._resolve_tables(translation_table, codon_weights, rna)
 
         graph = CodonGraph(
             aa_seq,
@@ -424,3 +430,40 @@ class CodingSpace:
             rna=self.translation_table.rna,
         )
         self.view.set_banned_sequences(forbidden_sequences)
+
+    @staticmethod
+    def _resolve_tables(
+            translation_table: Optional[TranslationTable],
+            codon_weights: Optional[CodonWeights],
+            rna: Optional[bool],
+    ) -> Tuple[TranslationTable, CodonWeights]:
+        """
+        Resolve user-submited (or not) translation table, codon weights, and RNA flag.
+        """
+
+        if rna is None:
+            if translation_table is not None and codon_weights is not None \
+                    and translation_table.rna != codon_weights.rna:
+                raise ValueError('Provided translation table and codon weights must have the same molecule type.')
+
+            if translation_table is not None:
+                rna = translation_table.rna
+            elif codon_weights is not None:
+                rna = codon_weights.rna
+            else:
+                rna = False
+
+        else:
+            if translation_table is not None and translation_table.rna != rna:
+                raise ValueError('Value for rna is inconsistent with the provided translation table.')
+
+            if codon_weights is not None and codon_weights.rna != rna:
+                raise ValueError('Value for rna is inconsistent with the provided codon weights.')
+
+        if translation_table is None:
+            translation_table = TranslationTable(table_id=1, rna=rna)
+
+        if codon_weights is None:
+            codon_weights = CodonWeights.uniform(table=translation_table)
+
+        return translation_table, codon_weights
