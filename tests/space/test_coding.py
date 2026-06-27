@@ -6,6 +6,7 @@ import pytest
 from Bio.Seq import Seq
 
 from codeine.translation.weights import CodonWeights
+from codeine.translation.tables import TranslationTable
 from codeine.space.coding import CodingSpace
 from codeine.motifs.restriction import RestrictionSite
 
@@ -123,6 +124,15 @@ def test_coding_space_mutants_raises_if_seq_is_invalid():
 
     with pytest.raises(ValueError):
         _ = space.mutants('ATGATTAAAGAATATATG', [1, 2])
+
+
+def test_mutants_normalises_dna_reference_for_rna_space():
+    space = CodingSpace('M', rna=True)
+
+    mutants = space.mutants('ATG')
+
+    assert mutants.cds == 'AUG'
+    assert mutants.contains('AUG')
 
 
 def test_coding_space_mutants_returns_mutation_space():
@@ -467,3 +477,104 @@ def test_coding_space_forbidden_motifs_and_max_homopolymer_combine():
 
     space.clear_max_homopolymer()
     assert set(space.view.banned_sequences) == set()
+
+
+def test_resolve_tables_defaults_to_dna():
+    tt, cw = CodingSpace._resolve_tables(None, None, None)
+
+    assert tt.rna is False
+    assert cw.rna is False
+
+
+def test_resolve_tables_uses_rna_flag():
+    tt, cw = CodingSpace._resolve_tables(None, None, True)
+
+    assert tt.rna is True
+    assert cw.rna is True
+
+
+def test_resolve_tables_builds_weights_from_table():
+    tt_in = TranslationTable(rna=True)
+
+    tt, cw = CodingSpace._resolve_tables(tt_in, None, None)
+
+    assert tt is tt_in
+    assert cw.rna is True
+
+
+def test_resolve_tables_builds_table_from_weights():
+    tt_in = TranslationTable(rna=True)
+    cw_in = CodonWeights.uniform(table=tt_in)
+
+    tt, cw = CodingSpace._resolve_tables(None, cw_in, None)
+
+    assert tt.rna is True
+    assert cw is cw_in
+
+
+def test_resolve_tables_rejects_table_weights_molecule_mismatch():
+    dna_tt = TranslationTable(rna=False)
+    rna_tt = TranslationTable(rna=True)
+    rna_cw = CodonWeights.uniform(table=rna_tt)
+
+    with pytest.raises(ValueError, match='same molecule type'):
+        CodingSpace._resolve_tables(dna_tt, rna_cw, None)
+
+
+def test_resolve_tables_rejects_rna_flag_table_mismatch():
+    tt = TranslationTable(rna=False)
+
+    with pytest.raises(ValueError, match='translation table'):
+        CodingSpace._resolve_tables(tt, None, True)
+
+
+def test_resolve_tables_rejects_rna_flag_weights_mismatch():
+    tt = TranslationTable(rna=False)
+    cw = CodonWeights.uniform(table=tt)
+
+    with pytest.raises(ValueError, match='codon weights'):
+        CodingSpace._resolve_tables(None, cw, True)
+
+
+def test_coding_space_rna_flag_creates_rna_space():
+    space = CodingSpace('MKT', rna=True)
+
+    assert space.translation_table.rna is True
+    assert space.codon_weights.rna is True
+    assert 'U' in space.sample()
+    assert 'T' not in space.sample()
+
+
+def test_coding_space_rna_flag_normalises_inputs_to_rna():
+    space = CodingSpace('M', codon_restrictions={1: 'ATG'}, context_l='TTT', context_r='TAA', rna=True)
+
+    assert space.codon_restrictions == {1: ['AUG']}
+    assert space.context_l == 'UUU'
+    assert space.context_r == 'UAA'
+
+
+def test_coding_space_normalises_string_forbidden_motif_to_rna():
+    space = CodingSpace('M', forbidden_motifs='ATG', rna=True)
+    assert space.forbidden_motifs == 'AUG'
+
+
+def test_coding_space_normalises_list_forbidden_motifs_to_rna():
+    space = CodingSpace('M', forbidden_motifs=['ATG', 'TTT'], rna=True)
+    assert space.forbidden_motifs == ['AUG', 'UUU']
+
+
+def test_coding_space_leaves_restriction_sites_unexpanded():
+    space = CodingSpace('M', forbidden_motifs=RestrictionSite.EcoRI, rna=True)
+    assert space.forbidden_motifs is RestrictionSite.EcoRI
+
+
+def test_set_forbidden_motifs_normalises_to_space_molecule_type():
+    space = CodingSpace('M', rna=True)
+    space.set_forbidden_motifs(['ATG', 'TAA'])
+    assert space.forbidden_motifs == ['AUG', 'UAA']
+
+
+def test_contains_normalises_dna_input_for_rna_space():
+    space = CodingSpace('M', rna=True)
+    assert space.contains('ATG')
+    assert 'ATG' in space

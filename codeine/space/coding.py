@@ -29,6 +29,7 @@ class CodingSpace:
         max_homopolymer: Optional[int] = None,
         translation_table: Optional[TranslationTable] = None,
         codon_weights: Optional[CodonWeights] = None,
+        rna: Optional[bool] = None,
         context_l: str = '',
         context_r: str = '',
         seed: Optional[Seedable] = None,
@@ -47,6 +48,8 @@ class CodingSpace:
             The translation table to use. Leave blank to use standard table.
         codon_weights
             The codon weights to use. Leave blank to sample uniformly.
+        rna
+            Whether to use RNA. If false, use DNA.
         context_l
             The context sequence to the left of the coding sequence.
         context_r
@@ -56,8 +59,8 @@ class CodingSpace:
         rng
             Random number generator used by the view for sampling.
         """
-        self.forbidden_motifs = forbidden_motifs
-        self.max_homopolymer = max_homopolymer
+
+        translation_table, codon_weights = self._resolve_tables(translation_table, codon_weights, rna)
 
         graph = CodonGraph(
             aa_seq,
@@ -74,6 +77,10 @@ class CodingSpace:
         )
 
         self.view = view
+
+        self.forbidden_motifs = self._normalise_forbidden_motifs(forbidden_motifs)
+        self.max_homopolymer = max_homopolymer
+
         self._update_forbidden_sequences()
 
     @classmethod
@@ -240,7 +247,7 @@ class CodingSpace:
 
     def mutants(
             self,
-            seq: str,
+            cds: str,
             free_positions: Optional[Sequence[int]] = None,
             min_nts: Optional[int] = None,
             max_nts: Optional[int] = None,
@@ -253,7 +260,7 @@ class CodingSpace:
 
         Parameters
         ----------
-        seq
+        cds
             The sequence to mutate.
         free_positions
             The positions that are allowed to vary.
@@ -266,7 +273,7 @@ class CodingSpace:
         max_codons
             The max number of changed codons relative to the reference sequence.
         """
-        cds = seq.upper()
+        cds = self.translation_table.normalise_sequence(cds)
 
         if not self.contains(cds):
             raise ValueError('CDS is not contained in this coding space.')
@@ -331,7 +338,7 @@ class CodingSpace:
         forbidden_motifs
             Motifs that should be forbidden in generated sequences.
         """
-        self.forbidden_motifs = forbidden_motifs
+        self.forbidden_motifs = self._normalise_forbidden_motifs(forbidden_motifs)
         self._update_forbidden_sequences()
 
     def clear_forbidden_motifs(self) -> None:
@@ -424,3 +431,64 @@ class CodingSpace:
             rna=self.translation_table.rna,
         )
         self.view.set_banned_sequences(forbidden_sequences)
+
+    @staticmethod
+    def _resolve_tables(
+            translation_table: Optional[TranslationTable],
+            codon_weights: Optional[CodonWeights],
+            rna: Optional[bool],
+    ) -> Tuple[TranslationTable, CodonWeights]:
+        """
+        Resolve user-submited (or not) translation table, codon weights, and RNA flag.
+        """
+
+        if rna is None:
+            if translation_table is not None and codon_weights is not None \
+                    and translation_table.rna != codon_weights.rna:
+                raise ValueError('Provided translation table and codon weights must have the same molecule type.')
+
+            if translation_table is not None:
+                rna = translation_table.rna
+            elif codon_weights is not None:
+                rna = codon_weights.rna
+            else:
+                rna = False
+
+        else:
+            if translation_table is not None and translation_table.rna != rna:
+                raise ValueError('Value for rna is inconsistent with the provided translation table.')
+
+            if codon_weights is not None and codon_weights.rna != rna:
+                raise ValueError('Value for rna is inconsistent with the provided codon weights.')
+
+        if translation_table is None:
+            translation_table = TranslationTable(table_id=1, rna=rna)
+
+        if codon_weights is None:
+            codon_weights = CodonWeights.uniform(table=translation_table)
+
+        return translation_table, codon_weights
+
+    def _normalise_forbidden_motifs(
+            self,
+            forbidden_motifs: Optional[ForbiddenMotifs],
+    ) -> Optional[ForbiddenMotifs]:
+        """
+        Normalise string forbidden motifs to the molecule type used by this coding
+        space. RestrictionSite objects are left unchanged.
+        """
+        if forbidden_motifs is None:
+            return None
+
+        if isinstance(forbidden_motifs, str):
+            return self.translation_table.normalise_sequence(forbidden_motifs)
+
+        if isinstance(forbidden_motifs, RestrictionSite):
+            return forbidden_motifs
+
+        return [
+            self.translation_table.normalise_sequence(motif)
+            if isinstance(motif, str)
+            else motif
+            for motif in forbidden_motifs
+        ]

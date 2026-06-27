@@ -168,7 +168,7 @@ class CodonGraphView:
         if self._requires_compile:
             self.compile()
 
-        seq = seq.upper()
+        seq = self.translation_table.normalise_sequence(seq)
 
         if len(seq) != len(self.graph.aa_seq) * 3:
             return False
