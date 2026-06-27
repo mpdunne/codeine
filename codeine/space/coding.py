@@ -60,9 +60,6 @@ class CodingSpace:
             Random number generator used by the view for sampling.
         """
 
-        self.forbidden_motifs = forbidden_motifs
-        self.max_homopolymer = max_homopolymer
-
         translation_table, codon_weights = self._resolve_tables(translation_table, codon_weights, rna)
 
         graph = CodonGraph(
@@ -80,6 +77,10 @@ class CodingSpace:
         )
 
         self.view = view
+
+        self.forbidden_motifs = self._normalise_forbidden_motifs(forbidden_motifs)
+        self.max_homopolymer = max_homopolymer
+
         self._update_forbidden_sequences()
 
     @classmethod
@@ -272,7 +273,7 @@ class CodingSpace:
         max_codons
             The max number of changed codons relative to the reference sequence.
         """
-        cds = seq.upper()
+        cds = self.translation_table.normalise_sequence(seq)
 
         if not self.contains(cds):
             raise ValueError('CDS is not contained in this coding space.')
@@ -337,7 +338,7 @@ class CodingSpace:
         forbidden_motifs
             Motifs that should be forbidden in generated sequences.
         """
-        self.forbidden_motifs = forbidden_motifs
+        self.forbidden_motifs = self._normalise_forbidden_motifs(forbidden_motifs)
         self._update_forbidden_sequences()
 
     def clear_forbidden_motifs(self) -> None:
@@ -467,3 +468,27 @@ class CodingSpace:
             codon_weights = CodonWeights.uniform(table=translation_table)
 
         return translation_table, codon_weights
+
+    def _normalise_forbidden_motifs(
+            self,
+            forbidden_motifs: Optional[ForbiddenMotifs],
+    ) -> Optional[ForbiddenMotifs]:
+        """
+        Normalise string forbidden motifs to the molecule type used by this coding
+        space. RestrictionSite objects are left unchanged.
+        """
+        if forbidden_motifs is None:
+            return None
+
+        if isinstance(forbidden_motifs, str):
+            return self.translation_table.normalise_sequence(forbidden_motifs)
+
+        if isinstance(forbidden_motifs, RestrictionSite):
+            return forbidden_motifs
+
+        return [
+            self.translation_table.normalise_sequence(motif)
+            if isinstance(motif, str)
+            else motif
+            for motif in forbidden_motifs
+        ]
