@@ -563,3 +563,9 @@ def test_set_forbidden_motifs_normalises_to_space_molecule_type():
     space = CodingSpace('M', rna=True)
     space.set_forbidden_motifs(['ATG', 'TAA'])
     assert space.forbidden_motifs == ['AUG', 'UAA']
+
+
+def test_contains_normalises_dna_input_for_rna_space():
+    space = CodingSpace('M', rna=True)
+    assert space.contains('ATG')
+    assert 'ATG' in space
