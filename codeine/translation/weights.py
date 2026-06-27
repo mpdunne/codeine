@@ -175,17 +175,17 @@ class CodonWeights:
         A uniform CodonWeights object.
         """
         if table is None:
-            table = TranslationTable(rna=bool(rna))
+            table = TranslationTable(rna=False if rna is None else rna)
 
-        elif rna is None:
-            rna = table.rna
+        elif rna is not None and table.rna != rna:
+            raise ValueError('table and rna specify inconsistent molecule types.')
 
         uniform_weights: WeightDict = {
             aa: {codon: 1.0 for codon in codons}
             for aa, codons in table.aa_to_codons.items()
         }
 
-        return cls(uniform_weights, rna=rna)
+        return cls(uniform_weights, rna=table.rna)
 
     @classmethod
     def ecoli(cls, rna: bool = False) -> 'CodonWeights':
