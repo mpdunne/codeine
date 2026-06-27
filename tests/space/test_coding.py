@@ -126,6 +126,15 @@ def test_coding_space_mutants_raises_if_seq_is_invalid():
         _ = space.mutants('ATGATTAAAGAATATATG', [1, 2])
 
 
+def test_mutants_normalises_dna_reference_for_rna_space():
+    space = CodingSpace('M', rna=True)
+
+    mutants = space.mutants('ATG')
+
+    assert mutants.cds == 'AUG'
+    assert mutants.contains('AUG')
+
+
 def test_coding_space_mutants_returns_mutation_space():
     space = CodingSpace('MIKEY')
     muts = space.mutants('ATGATTAAAGAATAT', free_positions=[2])
