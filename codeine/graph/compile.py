@@ -36,7 +36,6 @@ class ChoiceResult(NamedTuple):
     choice: str
     descendant_count: int
     descendant_log_mass: float
-    next_state: Optional[TraversalState]
     next_state_id: Optional[int]
     is_coding: bool
 
@@ -294,7 +293,6 @@ class ViewCompiler:
                 choice=choice,
                 descendant_count=child_count,
                 descendant_log_mass=choice_log_mass,
-                next_state=None if child is self.graph.final_node else child_state,
                 next_state_id=None if child is self.graph.final_node else child_id,
                 is_coding=is_coding,
             )
