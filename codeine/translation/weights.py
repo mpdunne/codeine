@@ -34,7 +34,8 @@ class CodonWeights:
     def __init__(
         self,
         weights: WeightDict,
-        rna: bool = False,
+        rna: Optional[bool] = None,
+        table: Optional[TranslationTable] = None,
     ) -> None:
         """
             Constructor for the CodonWeights class.
@@ -58,7 +59,11 @@ class CodonWeights:
             """
         self._locked = False
 
-        table = TranslationTable(rna=rna)
+        if table is None:
+            table = TranslationTable(rna=False if rna is None else rna)
+
+        elif rna is not None and table.rna != rna:
+            raise ValueError('table and rna specify inconsistent molecule types.')
 
         expected_aa = set(table.aa_to_codons)
         observed_aa = {aa.upper() for aa in weights}
@@ -107,7 +112,7 @@ class CodonWeights:
 
             aa_to_codons[aa] = tuple(codons)
 
-        self.rna = rna
+        self.rna = table.rna
         self.aa_to_codons = FrozenDict(aa_to_codons)
         self.weights = FrozenDict(weights_flat)
 
@@ -185,10 +190,10 @@ class CodonWeights:
             for aa, codons in table.aa_to_codons.items()
         }
 
-        return cls(uniform_weights, rna=table.rna)
+        return cls(uniform_weights, table=table)
 
     @classmethod
-    def ecoli(cls, rna: bool = False) -> 'CodonWeights':
+    def ecoli(cls, rna: Optional[bool] = None) -> 'CodonWeights':
         """
         Construct a CodonWeights object with codon probabilities corresponding to E. coli.
 
@@ -207,7 +212,7 @@ class CodonWeights:
         return cls(ECOLI_WEIGHTS, rna=rna)
 
     @classmethod
-    def yeast(cls, rna: bool = False) -> 'CodonWeights':
+    def yeast(cls, rna: Optional[bool] = None) -> 'CodonWeights':
         """
         Construct a CodonWeights object with codon probabilities corresponding to 'yeast'.
 
@@ -226,7 +231,7 @@ class CodonWeights:
         return cls(YEAST_WEIGHTS, rna=rna)
 
     @classmethod
-    def human(cls, rna: bool = False) -> 'CodonWeights':
+    def human(cls, rna: Optional[bool] = None) -> 'CodonWeights':
         """
         Construct a CodonWeights object with codon probabilities corresponding to Human.
 
@@ -245,7 +250,7 @@ class CodonWeights:
         return cls(HUMAN_WEIGHTS, rna=rna)
 
     @classmethod
-    def mouse(cls, rna: bool = False) -> 'CodonWeights':
+    def mouse(cls, rna: Optional[bool] = None) -> 'CodonWeights':
         """
         Construct a CodonWeights object with codon probabilities corresponding to Mouse.
 
@@ -264,7 +269,7 @@ class CodonWeights:
         return cls(MOUSE_WEIGHTS, rna=rna)
 
     @classmethod
-    def arabidopsis(cls, rna: bool = False) -> 'CodonWeights':
+    def arabidopsis(cls, rna: Optional[bool] = None) -> 'CodonWeights':
         """
         Construct a CodonWeights object with codon probabilities corresponding to A. thaliana.
 
@@ -283,7 +288,7 @@ class CodonWeights:
         return cls(ARABIDOPSIS_WEIGHTS, rna=rna)
 
     @classmethod
-    def drosophila(cls, rna: bool = False) -> 'CodonWeights':
+    def drosophila(cls, rna: Optional[bool] = None) -> 'CodonWeights':
         """
         Construct a CodonWeights object with codon probabilities corresponding to D. melanogaster.
 

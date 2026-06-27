@@ -564,7 +564,7 @@ def test_coding_space_normalises_list_forbidden_motifs_to_rna():
 
 
 def test_coding_space_leaves_restriction_sites_unexpanded():
-    space = CodingSpace('M', forbidden_motifs=RestrictionSite.ECORI, rna=True)
+    space = CodingSpace('M', forbidden_motifs=RestrictionSite.EcoRI, rna=True)
     assert space.forbidden_motifs is RestrictionSite.ECORI
 
 

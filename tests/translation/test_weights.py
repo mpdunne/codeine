@@ -90,17 +90,89 @@ def test_uniform_can_use_rna_flag_without_table():
 def test_uniform_uses_table_dna_if_rna_is_not_given():
     table = TranslationTable(rna=True)
     weights = CodonWeights.uniform(table)
+
     assert weights.rna
     assert 'GCU' in weights.weights
     assert 'GCT' not in weights.weights
 
 
-def test_uniform_rna_flag_can_override_table_molecule_type():
+def test_uniform_defaults_to_dna():
+    weights = CodonWeights.uniform()
+
+    assert not weights.rna
+    assert 'ATG' in weights.weights
+    assert 'AUG' not in weights.weights
+
+
+def test_uniform_accepts_rna_flag():
+    weights = CodonWeights.uniform(rna=True)
+
+    assert weights.rna
+    assert 'AUG' in weights.weights
+    assert 'ATG' not in weights.weights
+
+
+def test_uniform_uses_table_when_rna_unspecified():
+    table = TranslationTable(rna=True)
+    weights = CodonWeights.uniform(table=table)
+
+    assert weights.rna
+    assert 'AUG' in weights.weights
+    assert 'ATG' not in weights.weights
+
+
+def test_uniform_rejects_table_rna_mismatch():
+    table = TranslationTable(rna=True)
+
+    with pytest.raises(ValueError, match='inconsistent molecule types'):
+        CodonWeights.uniform(table=table, rna=False)
+
+
+def test_constructor_defaults_to_dna():
+    weights = CodonWeights.uniform()
+    assert not weights.rna
+
+
+def test_constructor_accepts_rna_flag():
     table = TranslationTable(rna=False)
-    weights = CodonWeights.uniform(table, rna=True)
-    assert weights.rna is True
-    assert 'GCU' in weights.weights
-    assert 'GCT' not in weights.weights
+    dna_weights = make_weights_data(table)
+    weights = CodonWeights(dna_weights, rna=True)
+
+    assert weights.rna
+    assert 'AUG' in weights.weights
+    assert 'ATG' not in weights.weights
+
+
+def test_constructor_uses_table_when_rna_unspecified():
+    table = TranslationTable(rna=True)
+    dna_weights = make_weights_data(table)
+    weights = CodonWeights(dna_weights, table=table)
+
+    assert weights.rna
+    assert 'AUG' in weights.weights
+
+
+def test_constructor_rejects_table_rna_mismatch():
+    table = TranslationTable(rna=True)
+    dna_weights = make_weights_data(table)
+
+    with pytest.raises(ValueError, match='inconsistent molecule types'):
+        CodonWeights(dna_weights, table=table, rna=False)
+
+
+def test_species_weights_defaults_to_dna():
+    weights = CodonWeights.ecoli()
+    
+    assert not weights.rna
+    assert 'ATG' in weights.weights
+
+
+def test_species_weights_accepts_rna_flag():
+    weights = CodonWeights.ecoli(rna=True)
+
+    assert weights.rna
+    assert 'AUG' in weights.weights
+    assert 'ATG' not in weights.weights
 
 
 def test_negative_weight_raises_value_error():
