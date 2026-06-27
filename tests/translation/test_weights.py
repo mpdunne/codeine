@@ -162,7 +162,7 @@ def test_constructor_rejects_table_rna_mismatch():
 
 def test_species_weights_defaults_to_dna():
     weights = CodonWeights.ecoli()
-    
+
     assert not weights.rna
     assert 'ATG' in weights.weights
 
