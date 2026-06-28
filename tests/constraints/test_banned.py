@@ -2,7 +2,7 @@ import pytest
 
 from codeine.graph.base import CodonGraph
 from codeine.translation.tables import TranslationTable
-from codeine.constraints.banned import BannedSequenceTracker, AdvanceResult, _find_matching_subpaths
+from codeine.constraints.banned import BannedSequenceTracker, BannedTrackerAdvanceResult, _find_matching_subpaths
 
 
 def test_tracker_finds_ban_inside_left_context():
@@ -89,7 +89,7 @@ def test_safe_choice_returns_empty_state():
     pos, _choice = path.steps[0]
     result = tracker.advance((pos, 'ATG'), tracker.initial_state)
 
-    assert result == AdvanceResult(banned=False, state=frozenset())
+    assert result == BannedTrackerAdvanceResult(banned=False, state=frozenset())
 
 
 def test_choice_can_start_watch():
@@ -110,7 +110,7 @@ def test_choice_can_immediately_complete_banned_sequence():
 
     result = tracker.advance(path.steps[0], tracker.initial_state)
 
-    assert result == AdvanceResult(banned=True)
+    assert result == BannedTrackerAdvanceResult(banned=True)
 
 
 def test_existing_watch_can_complete_banned_sequence():
@@ -122,7 +122,7 @@ def test_existing_watch_can_complete_banned_sequence():
     result_2 = tracker.advance(path.steps[1], result_1.state)
 
     assert result_1.banned is False
-    assert result_2 == AdvanceResult(banned=True)
+    assert result_2 == BannedTrackerAdvanceResult(banned=True)
 
 
 def test_existing_watch_drops_if_choice_does_not_match():
@@ -137,7 +137,7 @@ def test_existing_watch_drops_if_choice_does_not_match():
 
     assert result_1.banned is False
     assert result_1.state
-    assert result_2 == AdvanceResult(banned=False, state=frozenset())
+    assert result_2 == BannedTrackerAdvanceResult(banned=False, state=frozenset())
 
 
 def test_multiple_watches_can_be_active():
@@ -162,7 +162,7 @@ def test_one_of_multiple_watches_can_complete_ban():
     result_2 = tracker.advance(path.steps[1], result_1.state)
 
     assert len(result_1.state) >= 2
-    assert result_2 == AdvanceResult(banned=True)
+    assert result_2 == BannedTrackerAdvanceResult(banned=True)
 
 
 def test_state_is_a_frozenset():
@@ -187,7 +187,7 @@ def test_left_context_can_immediately_complete_ban():
     path = helper_find_first_path_for(tracker, 'TCAATG')
     result = helper_walk_path(tracker, path)
 
-    assert result == AdvanceResult(banned=True)
+    assert result == BannedTrackerAdvanceResult(banned=True)
 
 
 def test_tracker_finds_banned_sequence_crossing_right_context():
@@ -206,7 +206,7 @@ def test_existing_watch_can_complete_in_right_context():
     path = helper_find_first_path_for(tracker, 'ATACAAA')
     result = helper_walk_path(tracker, path)
 
-    assert result == AdvanceResult(banned=True)
+    assert result == BannedTrackerAdvanceResult(banned=True)
 
 
 @pytest.mark.parametrize(
@@ -232,7 +232,7 @@ def test_found_paths_are_walkable(context_l, context_r, sequence):
     tracker = BannedSequenceTracker(graph, [sequence])
     path = helper_find_first_path_for(tracker, sequence)
 
-    assert helper_walk_path(tracker, path) == AdvanceResult(banned=True)
+    assert helper_walk_path(tracker, path) == BannedTrackerAdvanceResult(banned=True)
 
 
 @pytest.mark.parametrize(
@@ -264,7 +264,7 @@ def test_watch_survives_until_partial_final_codon_match():
 
     result = tracker.advance(path.steps[-1], state)
 
-    assert result == AdvanceResult(banned=True)
+    assert result == BannedTrackerAdvanceResult(banned=True)
 
 
 def test_ban_longer_than_choice_keeps_watch_alive():
@@ -287,7 +287,7 @@ def test_duplicate_banned_sequences_do_not_break_tracking():
     path = helper_find_first_path_for(tracker, 'TCAAA')
 
     result = helper_walk_path(tracker, path)
-    assert result == AdvanceResult(banned=True)
+    assert result == BannedTrackerAdvanceResult(banned=True)
 
 
 def test_different_bans_can_start_from_same_choice():
@@ -306,7 +306,7 @@ def test_shorter_ban_wins_when_multiple_bans_share_prefix():
     path = helper_find_first_path_for(tracker, 'ATGA')
 
     result = helper_walk_path(tracker, path)
-    assert result == AdvanceResult(banned=True)
+    assert result == BannedTrackerAdvanceResult(banned=True)
 
 
 def test_longer_ban_can_complete_after_shorter_related_ban_if_shorter_absent():
@@ -314,7 +314,7 @@ def test_longer_ban_can_complete_after_shorter_related_ban_if_shorter_absent():
     path = helper_find_first_path_for(tracker, 'ATGATA')
 
     result = helper_walk_path(tracker, path)
-    assert result == AdvanceResult(banned=True)
+    assert result == BannedTrackerAdvanceResult(banned=True)
 
 
 def test_unrelated_active_watch_does_not_prevent_new_watch_starting():
@@ -325,7 +325,7 @@ def test_unrelated_active_watch_does_not_prevent_new_watch_starting():
     result_1 = tracker.advance(path.steps[0], tracker.initial_state)
     result_2 = tracker.advance(path.steps[1], result_1.state)
 
-    assert result_2 == AdvanceResult(banned=True)
+    assert result_2 == BannedTrackerAdvanceResult(banned=True)
 
 
 def test_path_steps_are_never_empty():
@@ -372,7 +372,7 @@ def test_walking_every_found_path_completes_ban():
 
     for path in tracker.paths:
         result = helper_walk_path(tracker, path)
-        assert result == AdvanceResult(banned=True)
+        assert result == BannedTrackerAdvanceResult(banned=True)
 
 
 def test_safe_walk_drops_all_active_watches():
@@ -385,7 +385,7 @@ def test_safe_walk_drops_all_active_watches():
     result_2 = tracker.advance((pos_2, 'GAG'), result_1.state)
 
     assert result_1.state
-    assert result_2 == AdvanceResult(banned=False, state=frozenset())
+    assert result_2 == BannedTrackerAdvanceResult(banned=False, state=frozenset())
 
 
 def test_every_tracker_path_is_walkable_from_initial_state():
@@ -395,7 +395,7 @@ def test_every_tracker_path_is_walkable_from_initial_state():
 
     for path in tracker.paths:
         result = helper_walk_path(tracker, path)
-        assert result == AdvanceResult(banned=True)
+        assert result == BannedTrackerAdvanceResult(banned=True)
 
 
 def test_find_matching_subpaths_empty_sequence_raises():

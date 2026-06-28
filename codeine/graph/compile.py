@@ -2,7 +2,7 @@ import math
 
 from typing import Dict, NamedTuple, Tuple, List, Optional, TYPE_CHECKING
 
-from codeine.constraints.banned import BannedTrackerStateId, AdvanceResult
+from codeine.constraints.banned import BannedTrackerStateId, BannedTrackerAdvanceResult
 from codeine.constraints.base import ConstraintState
 from codeine.graph.nodes import CodonNode, Node, ContextNode
 
@@ -87,7 +87,7 @@ class ViewCompiler:
         # Banned-sequence tracker transitions:
         # (node, tracker state, choice) -> tracker result
         # Avoids recomputing tracker advances during compilation.
-        self.banned_advance_cache: Dict[Tuple[Node, BannedTrackerStateId, str], AdvanceResult] = {}
+        self.banned_advance_cache: Dict[Tuple[Node, BannedTrackerStateId, str], BannedTrackerAdvanceResult] = {}
 
         # Traversal transition table:
         # state ID -> [(choice, child state ID), ...]
@@ -182,10 +182,7 @@ class ViewCompiler:
         else:
             constraint_state = ()
 
-        if self.has_banned_tracker:
-            banned_tracker_state_id = 0
-        else:
-            banned_tracker_state_id = 0
+        banned_tracker_state_id = 0
 
         return TraversalState(self.graph.initial_node, banned_tracker_state_id, constraint_state)
 
@@ -392,7 +389,7 @@ class ViewCompiler:
             banned_tracker_state_id: BannedTrackerStateId,
             node: Node,
             choice: str,
-    ) -> AdvanceResult:
+    ) -> BannedTrackerAdvanceResult:
         """
         Advance the banned-sequence tracker after taking one graph choice.
 
@@ -410,7 +407,7 @@ class ViewCompiler:
 
         Returns
         -------
-        AdvanceResult
+        BannedTrackerAdvanceResult
             Whether the choice enters a banned state and the resulting tracker
             state.
         """
@@ -420,7 +417,7 @@ class ViewCompiler:
             return self.banned_advance_cache[key]
 
         if not self.has_banned_tracker:
-            result = AdvanceResult(banned=False, state_id=banned_tracker_state_id)
+            result = BannedTrackerAdvanceResult(banned=False, banned_tracker_state_id=banned_tracker_state_id)
         else:
             step = (node.pos, choice)
             result = self.banned_tracker.advance(step, banned_tracker_state_id)
