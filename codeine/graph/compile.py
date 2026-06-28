@@ -398,7 +398,7 @@ class ViewCompiler:
 
         Parameters
         ----------
-        banned_tracker_state
+        banned_tracker_state_id
             Current banned-sequence tracker state.
         node
             Current graph node.
