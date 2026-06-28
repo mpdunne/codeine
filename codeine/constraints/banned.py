@@ -30,6 +30,9 @@ BannedTrackerState = FrozenSet[Watch]
 #   Watch  -> continue watching this path
 TransitionValue = Optional[Watch]
 
+# Integerised version of a banned state
+BannedTrackerStateId = int
+
 
 class AdvanceResult(NamedTuple):
     """
@@ -40,8 +43,20 @@ class AdvanceResult(NamedTuple):
     state: BannedTrackerState = frozenset()
 
 
+class AdvanceIdResult(NamedTuple):
+    """
+    The result of moving the tracker state forward, indicating whether we are
+    currently in a disallowed state, and if not, what the new state is.
+    """
+    banned: bool
+    state_id: BannedTrackerState = 0
+
+
 CLEAR_ADVANCE_RESULT = AdvanceResult(banned=False)
 BANNED_ADVANCE_RESULT = AdvanceResult(banned=True)
+
+CLEAR_ADVANCE_ID_RESULT = AdvanceIdResult(banned=False, state_id=0)
+BANNED_ADVANCE_ID_RESULT = AdvanceIdResult(banned=True, state_id=0)
 
 
 class BannedSequenceTracker:
@@ -85,6 +100,9 @@ class BannedSequenceTracker:
         self.graph = graph
         self.banned_sequences = tuple(sequence.upper() for sequence in banned_sequences)
         self.initial_state: BannedTrackerState = frozenset()
+
+        self.state_ids: Dict[BannedTrackerState, BannedTrackerStateId] = {self.initial_state: 0}
+        self.states: List[BannedTrackerState] = [self.initial_state]
 
         self.paths = self._find_banned_paths()
         self.starts = self._build_starts()
@@ -252,6 +270,38 @@ class BannedSequenceTracker:
             return CLEAR_ADVANCE_RESULT
 
         return AdvanceResult(banned=False, state=frozenset(next_state))
+
+    def _get_or_register_state_id(
+            self,
+            state: BannedTrackerState,
+    ) -> BannedTrackerStateId:
+        state_id = self.state_ids.get(state)
+
+        if state_id is None:
+            state_id = len(self.states)
+            self.state_ids[state] = state_id
+            self.states.append(state)
+
+        return state_id
+
+    def advance_id(
+            self,
+            step: Step,
+            state_id: BannedTrackerStateId,
+    ) -> AdvanceIdResult:
+        state = self.states[state_id]
+        result = self.advance(step, state)
+
+        if result.banned:
+            return BANNED_ADVANCE_ID_RESULT
+
+        if not result.state:
+            return CLEAR_ADVANCE_ID_RESULT
+
+        return AdvanceIdResult(
+            banned=False,
+            state_id=self._get_or_register_state_id(result.state),
+        )
 
 
 def _find_matching_subpaths(
