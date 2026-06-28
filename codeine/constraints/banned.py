@@ -49,7 +49,7 @@ class AdvanceIdResult(NamedTuple):
     currently in a disallowed state, and if not, what the new state is.
     """
     banned: bool
-    state_id: BannedTrackerState = 0
+    state_id: BannedTrackerStateId = 0
 
 
 CLEAR_ADVANCE_RESULT = AdvanceResult(banned=False)
@@ -298,20 +298,48 @@ class BannedSequenceTracker:
             return cached
 
         state = self.states[state_id]
-        result = self.advance(step, state)
+        starts = self.starts.get(step)
 
-        if result.banned:
-            advance_result = BANNED_ADVANCE_ID_RESULT
-        elif not result.state:
-            advance_result = CLEAR_ADVANCE_ID_RESULT
-        else:
-            advance_result = AdvanceIdResult(
-                banned=False,
-                state_id=self._get_or_register_state_id(result.state),
-            )
+        if starts is None and not state:
+            self.advance_id_cache[key] = CLEAR_ADVANCE_ID_RESULT
+            return CLEAR_ADVANCE_ID_RESULT
 
-        self.advance_id_cache[key] = advance_result
-        return advance_result
+        _pos, choice = step
+        transitions = self.transitions.get(choice)
+        next_state = set()
+
+        if starts is not None:
+            for watch in starts:
+                if watch is None:
+                    self.advance_id_cache[key] = BANNED_ADVANCE_ID_RESULT
+                    return BANNED_ADVANCE_ID_RESULT
+
+                next_state.add(watch)
+
+        if transitions is not None:
+            for watch in state:
+                next_watch = transitions.get(watch)
+
+                if next_watch is None:
+                    if watch in transitions:
+                        self.advance_id_cache[key] = BANNED_ADVANCE_ID_RESULT
+                        return BANNED_ADVANCE_ID_RESULT
+
+                    continue
+
+                next_state.add(next_watch)
+
+        if not next_state:
+            self.advance_id_cache[key] = CLEAR_ADVANCE_ID_RESULT
+            return CLEAR_ADVANCE_ID_RESULT
+
+        result = AdvanceIdResult(
+            banned=False,
+            state_id=self._get_or_register_state_id(frozenset(next_state)),
+        )
+
+        self.advance_id_cache[key] = result
+        return result
 
 
 def _find_matching_subpaths(
