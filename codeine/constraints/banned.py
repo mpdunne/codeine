@@ -104,6 +104,8 @@ class BannedSequenceTracker:
         self.state_ids: Dict[BannedTrackerState, BannedTrackerStateId] = {self.initial_state: 0}
         self.states: List[BannedTrackerState] = [self.initial_state]
 
+        self.advance_id_cache: Dict[Tuple[Step, BannedTrackerStateId], AdvanceIdResult] = {}
+
         self.paths = self._find_banned_paths()
         self.starts = self._build_starts()
         self.transitions = self._build_transitions()
@@ -289,19 +291,27 @@ class BannedSequenceTracker:
             step: Step,
             state_id: BannedTrackerStateId,
     ) -> AdvanceIdResult:
+        key = (step, state_id)
+
+        cached = self.advance_id_cache.get(key)
+        if cached is not None:
+            return cached
+
         state = self.states[state_id]
         result = self.advance(step, state)
 
         if result.banned:
-            return BANNED_ADVANCE_ID_RESULT
+            advance_result = BANNED_ADVANCE_ID_RESULT
+        elif not result.state:
+            advance_result = CLEAR_ADVANCE_ID_RESULT
+        else:
+            advance_result = AdvanceIdResult(
+                banned=False,
+                state_id=self._get_or_register_state_id(result.state),
+            )
 
-        if not result.state:
-            return CLEAR_ADVANCE_ID_RESULT
-
-        return AdvanceIdResult(
-            banned=False,
-            state_id=self._get_or_register_state_id(result.state),
-        )
+        self.advance_id_cache[key] = advance_result
+        return advance_result
 
 
 def _find_matching_subpaths(
