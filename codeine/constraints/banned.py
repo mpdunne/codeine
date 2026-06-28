@@ -34,7 +34,7 @@ BannedTrackerStateId = int
 TransitionValue = Optional[Watch]
 
 
-class AdvanceIdResult(NamedTuple):
+class AdvanceResult(NamedTuple):
     """
     Result of advancing a registered banned-tracker state.
 
@@ -46,8 +46,8 @@ class AdvanceIdResult(NamedTuple):
     state_id: BannedTrackerStateId = 0
 
 
-CLEAR_ADVANCE_ID_RESULT = AdvanceIdResult(banned=False, state_id=0)
-BANNED_ADVANCE_ID_RESULT = AdvanceIdResult(banned=True, state_id=0)
+CLEAR_ADVANCE_RESULT = AdvanceResult(banned=False, state_id=0)
+BANNED_ADVANCE_RESULT = AdvanceResult(banned=True, state_id=0)
 
 
 class BannedSequenceTracker:
@@ -98,7 +98,7 @@ class BannedSequenceTracker:
         }
         self.states: List[BannedTrackerState] = [self.initial_state]
 
-        self.advance_id_cache: Dict[Tuple[Step, BannedTrackerStateId], AdvanceIdResult] = {}
+        self.advance_cache: Dict[Tuple[Step, BannedTrackerStateId], AdvanceResult] = {}
 
         self.paths = self._find_banned_paths()
         self.starts = self._build_starts()
@@ -239,11 +239,11 @@ class BannedSequenceTracker:
 
         return state_id
 
-    def advance_id(
+    def advance(
             self,
             step: Step,
             state_id: BannedTrackerStateId,
-    ) -> AdvanceIdResult:
+    ) -> AdvanceResult:
         """
         Advance a registered tracker state after taking one graph step.
 
@@ -256,13 +256,13 @@ class BannedSequenceTracker:
 
         Returns
         -------
-        AdvanceIdResult
+        AdvanceResult
             Whether the step completed a banned sequence, and otherwise the
             integer ID of the updated tracker state.
         """
         key = (step, state_id)
 
-        cached = self.advance_id_cache.get(key)
+        cached = self.advance_cache.get(key)
         if cached is not None:
             return cached
 
@@ -270,8 +270,8 @@ class BannedSequenceTracker:
         starts = self.starts.get(step)
 
         if starts is None and not state:
-            self.advance_id_cache[key] = CLEAR_ADVANCE_ID_RESULT
-            return CLEAR_ADVANCE_ID_RESULT
+            self.advance_cache[key] = CLEAR_ADVANCE_RESULT
+            return CLEAR_ADVANCE_RESULT
 
         _pos, choice = step
         transitions = self.transitions.get(choice)
@@ -280,8 +280,8 @@ class BannedSequenceTracker:
         if starts is not None:
             for watch in starts:
                 if watch is None:
-                    self.advance_id_cache[key] = BANNED_ADVANCE_ID_RESULT
-                    return BANNED_ADVANCE_ID_RESULT
+                    self.advance_cache[key] = BANNED_ADVANCE_RESULT
+                    return BANNED_ADVANCE_RESULT
 
                 next_state.add(watch)
 
@@ -291,23 +291,23 @@ class BannedSequenceTracker:
 
                 if next_watch is None:
                     if watch in transitions:
-                        self.advance_id_cache[key] = BANNED_ADVANCE_ID_RESULT
-                        return BANNED_ADVANCE_ID_RESULT
+                        self.advance_cache[key] = BANNED_ADVANCE_RESULT
+                        return BANNED_ADVANCE_RESULT
 
                     continue
 
                 next_state.add(next_watch)
 
         if not next_state:
-            self.advance_id_cache[key] = CLEAR_ADVANCE_ID_RESULT
-            return CLEAR_ADVANCE_ID_RESULT
+            self.advance_cache[key] = CLEAR_ADVANCE_RESULT
+            return CLEAR_ADVANCE_RESULT
 
-        result = AdvanceIdResult(
+        result = AdvanceResult(
             banned=False,
             state_id=self._get_or_register_state_id(frozenset(next_state)),
         )
 
-        self.advance_id_cache[key] = result
+        self.advance_cache[key] = result
         return result
 
 
