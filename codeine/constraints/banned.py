@@ -273,19 +273,6 @@ class BannedSequenceTracker:
 
         return AdvanceResult(banned=False, state=frozenset(next_state))
 
-    def _get_or_register_state_id(
-            self,
-            state: BannedTrackerState,
-    ) -> BannedTrackerStateId:
-        state_id = self.state_ids.get(state)
-
-        if state_id is None:
-            state_id = len(self.states)
-            self.state_ids[state] = state_id
-            self.states.append(state)
-
-        return state_id
-
     def advance_id(
             self,
             step: Step,
@@ -340,6 +327,19 @@ class BannedSequenceTracker:
 
         self.advance_id_cache[key] = result
         return result
+
+    def _get_or_register_state_id(
+            self,
+            state: BannedTrackerState,
+    ) -> BannedTrackerStateId:
+        state_id = self.state_ids.get(state)
+
+        if state_id is None:
+            state_id = len(self.states)
+            self.state_ids[state] = state_id
+            self.states.append(state)
+
+        return state_id
 
 
 def _find_matching_subpaths(
