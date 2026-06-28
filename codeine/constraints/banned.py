@@ -25,48 +25,55 @@ Watch = Tuple[int, int]
 # watches every time we make a choice.
 BannedTrackerState = FrozenSet[Watch]
 
+# Integer ID for a registered banned tracker state.
+BannedTrackerStateId = int
+
 # Internal transition value:
 #   None   -> banned sequence completed
 #   Watch  -> continue watching this path
 TransitionValue = Optional[Watch]
 
 
-class AdvanceResult(NamedTuple):
+class BannedTrackerAdvanceResult(NamedTuple):
     """
-    The result of moving the tracker state forward, indicating whether we are
-    currently in a disallowed state, and if not, what the new state is.
+    Result of advancing a registered banned-tracker state.
+
+    If banned is True, the graph step has completed a banned sequence and the
+    candidate path should be rejected. Otherwise, state_id gives the registered
+    tracker state reached after taking the step.
     """
     banned: bool
-    state: BannedTrackerState = frozenset()
+    state_id: BannedTrackerStateId = 0
 
 
-CLEAR_ADVANCE_RESULT = AdvanceResult(banned=False)
-BANNED_ADVANCE_RESULT = AdvanceResult(banned=True)
+CLEAR_ADVANCE_RESULT = BannedTrackerAdvanceResult(banned=False, state_id=0)
+BANNED_ADVANCE_RESULT = BannedTrackerAdvanceResult(banned=True, state_id=0)
 
 
 class BannedSequenceTracker:
     """
-    Tracks progress along concrete "banned" graph subpaths.
+    Tracks progress along concrete banned graph subpaths.
 
     A SubPath stores:
 
         sequence
-            The sequence being tracked.
+            The banned sequence being tracked.
 
         steps
             Concrete graph emissions as (pos, choice) pairs.
 
         offset
-            Where `sequence` starts inside the first choice.
+            Where sequence starts inside the first choice.
 
-    State is a frozenset of watches:
+    Internally, a tracker state is a frozenset of watches:
 
         (path_ix, matched_length)
 
-    meaning that `matched_length` bases of paths[path_ix].sequence
-    have already matched.
+    meaning that matched_length bases of paths[path_ix].sequence have already
+    matched. States are registered and exposed to the compiler as integer IDs,
+    so traversal states remain compact and cheap to hash.
 
-    Transitions are precomputed:
+    Transitions are precomputed as:
 
         choice -> (path_ix, matched_length) -> banned | next watch | dead
     """
@@ -80,11 +87,18 @@ class BannedSequenceTracker:
         graph
             The codon graph on which to operate.
         banned_sequences
-            A collection of "banned" sequences that we need to watch out for.
+            A collection of sequences that must not occur in generated paths.
         """
         self.graph = graph
         self.banned_sequences = tuple(sequence.upper() for sequence in banned_sequences)
+
         self.initial_state: BannedTrackerState = frozenset()
+        self.initial_state_id: int = 0
+
+        self.state_ids: Dict[BannedTrackerState, BannedTrackerStateId] = {self.initial_state: self.initial_state_id}
+        self.states: List[BannedTrackerState] = [self.initial_state]
+
+        self.advance_cache: Dict[Tuple[Step, BannedTrackerStateId], BannedTrackerAdvanceResult] = {}
 
         self.paths = self._find_banned_paths()
         self.starts = self._build_starts()
@@ -159,7 +173,7 @@ class BannedSequenceTracker:
 
     def _build_transitions(self) -> Dict[str, Dict[Watch, TransitionValue]]:
         """
-        Build transitions between tracker states.
+        Build transitions between active watches.
 
         For each emitted graph choice, records how every active watch should
         advance. A transition value of None indicates that the banned sequence
@@ -199,30 +213,64 @@ class BannedSequenceTracker:
 
         return transitions
 
+    def _get_or_register_state_id(
+            self,
+            state: BannedTrackerState,
+    ) -> BannedTrackerStateId:
+        """
+        Return the integer ID for a banned-tracker state, creating one if needed.
+
+        Parameters
+        ----------
+        state
+            The concrete frozenset-of-watches tracker state.
+
+        Returns
+        -------
+        BannedTrackerStateId
+            Stable integer ID for the given tracker state.
+        """
+        state_id = self.state_ids.get(state)
+
+        if state_id is None:
+            state_id = len(self.states)
+            self.state_ids[state] = state_id
+            self.states.append(state)
+
+        return state_id
+
     def advance(
             self,
             step: Step,
-            state: BannedTrackerState,
-    ) -> AdvanceResult:
+            state_id: BannedTrackerStateId,
+    ) -> BannedTrackerAdvanceResult:
         """
-        Move the tracker state forward after taking a graph step.
+        Advance a registered tracker state after taking one graph step.
 
         Parameters
         ----------
         step
             The graph step just taken, as (graph pos, choice).
-        state
-            The current tracker state.
+        state_id
+            Integer ID of the current banned-tracker state.
 
         Returns
         -------
-        AdvanceResult
+        BannedTrackerAdvanceResult
             Whether the step completed a banned sequence, and otherwise the
-            updated tracker state.
+            integer ID of the updated tracker state.
         """
+        key = (step, state_id)
+
+        cached = self.advance_cache.get(key)
+        if cached is not None:
+            return cached
+
+        state = self.states[state_id]
         starts = self.starts.get(step)
 
         if starts is None and not state:
+            self.advance_cache[key] = CLEAR_ADVANCE_RESULT
             return CLEAR_ADVANCE_RESULT
 
         _pos, choice = step
@@ -232,26 +280,35 @@ class BannedSequenceTracker:
         if starts is not None:
             for watch in starts:
                 if watch is None:
+                    self.advance_cache[key] = BANNED_ADVANCE_RESULT
                     return BANNED_ADVANCE_RESULT
 
                 next_state.add(watch)
 
         if transitions is not None:
             for watch in state:
-                if watch not in transitions:
-                    continue
-
-                next_watch = transitions[watch]
+                next_watch = transitions.get(watch)
 
                 if next_watch is None:
-                    return BANNED_ADVANCE_RESULT
+                    if watch in transitions:
+                        self.advance_cache[key] = BANNED_ADVANCE_RESULT
+                        return BANNED_ADVANCE_RESULT
+
+                    continue
 
                 next_state.add(next_watch)
 
         if not next_state:
+            self.advance_cache[key] = CLEAR_ADVANCE_RESULT
             return CLEAR_ADVANCE_RESULT
 
-        return AdvanceResult(banned=False, state=frozenset(next_state))
+        result = BannedTrackerAdvanceResult(
+            banned=False,
+            state_id=self._get_or_register_state_id(frozenset(next_state)),
+        )
+
+        self.advance_cache[key] = result
+        return result
 
 
 def _find_matching_subpaths(
