@@ -33,7 +33,6 @@ class CodingSpace:
         context_l: str = '',
         context_r: str = '',
         seed: Optional[Seedable] = None,
-        rng: Optional[random.Random] = None
     ) -> None:
         """
         Constructor for the CodingSpace class.
@@ -56,8 +55,6 @@ class CodingSpace:
             The context sequence to the right of the coding sequence.
         seed
             Seed used to initialise the view's random number generator.
-        rng
-            Random number generator used by the view for sampling.
         """
 
         translation_table, codon_weights = self._resolve_tables(translation_table, codon_weights, rna)
@@ -71,11 +68,7 @@ class CodingSpace:
             context_r=context_r,
         )
 
-        view = graph.view(
-            seed=seed,
-            rng=rng,
-        )
-
+        view = graph.view(seed=seed,)
         self.view = view
 
         self.forbidden_motifs = self._normalise_forbidden_motifs(forbidden_motifs)

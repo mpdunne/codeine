@@ -252,28 +252,11 @@ def test_max_homopolymer_repr():
     assert '4' in text
 
 
-def test_coding_space_seed_and_rng_cannot_both_be_provided():
-    with pytest.raises(ValueError):
-        CodingSpace('MIKEY', seed=420, rng=random.Random(69))
-
-
 def test_coding_space_seed_consistent():
     samples_by_rep = []
 
     for _ in range(10):
         space = CodingSpace('MIKEY', seed=8675309)
-        samples = [space.sample() for _ in range(100)]
-        samples_by_rep.append(samples)
-
-    assert all(samples == samples_by_rep[0] for samples in samples_by_rep)
-
-
-def test_coding_space_rng_consistent():
-    samples_by_rep = []
-
-    for _ in range(10):
-        rng = random.Random(8675309)
-        space = CodingSpace('MIKEY', rng=rng)
         samples = [space.sample() for _ in range(100)]
         samples_by_rep.append(samples)
 

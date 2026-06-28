@@ -471,28 +471,6 @@ def test_view_seed_survives_recompile():
     assert after == expected_after
 
 
-def test_view_seed_and_rng_cannot_both_be_provided():
-    import random
-
-    with pytest.raises(ValueError):
-        CodonGraph('MIKEY').view(seed=123, rng=random.Random(123))
-
-
-def test_view_rng_is_used():
-    import random
-
-    rng = random.Random(8675309)
-    view = CodonGraph('MIKEY').view(rng=rng)
-
-    samples = [view.sample() for _ in range(100)]
-
-    control_rng = random.Random(8675309)
-    control_view = CodonGraph('MIKEY').view(rng=control_rng)
-    expected = [control_view.sample() for _ in range(100)]
-
-    assert samples == expected
-
-
 def test_view_copy_copies_pins():
     view = CodonGraph('MIKEY').view(seed=8675309)
     view.pin_codons({2: 'ATC'})
