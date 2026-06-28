@@ -27,7 +27,6 @@ class CodonGraphView:
                  graph: CodonGraph,
                  banned_sequences: Optional[Sequence[str]] = None,
                  seed: Seedable = None,
-                 rng: Optional[random.Random] = None,
                  ) -> None:
         """
         Constructor for the CodonGraphView
@@ -40,13 +39,8 @@ class CodonGraphView:
             Nucleotide sequences that are forbidden in this view.
         seed
             Seed used to initialise a random number generator, if not providing an RNG.
-        rng
-            Random number generator used by the view for sampling.
         """
-        if seed is not None and rng is not None:
-            raise ValueError('Provide either seed or rng, not both.')
-
-        self._rng = rng if rng is not None else random.Random(seed)
+        self._rng = random.Random(seed)
 
         self.graph = graph
         self.pinned_codons: Dict[int, List[str]] = {}

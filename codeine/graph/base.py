@@ -252,9 +252,7 @@ class CodonGraph:
             self.end_node,
         )
 
-    def view(self,
-             seed: Optional[Seedable] = None,
-             rng: Optional[random.Random] = None) -> 'CodonGraphView':
+    def view(self, seed: Optional[Seedable] = None) -> 'CodonGraphView':
         """
         Return a constrained view over this graph.
 
@@ -266,4 +264,4 @@ class CodonGraph:
             Random number generator used by the view for sampling.
         """
         from codeine.graph.view import CodonGraphView
-        return CodonGraphView(self, seed=seed, rng=rng)
+        return CodonGraphView(self, seed=seed)
