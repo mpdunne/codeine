@@ -1,11 +1,10 @@
 from dataclasses import dataclass
-from typing import Dict, Optional, Tuple
+from typing import Optional, Tuple
 
 from codeine.constraints.base import PathConstraint
 
 # nt_diffs, codon_diffs
 MutationDistanceState = Tuple[Optional[int], Optional[int]]
-MutationDiffCache = Dict[Tuple[int, str], Tuple[int, int]]
 
 
 @dataclass
@@ -29,8 +28,13 @@ class MutationDistanceConstraint(PathConstraint):
         ref_codons = [self.reference_cds[i:i + 3] for i in range(0, len(self.reference_cds), 3)]
         self._ref_codons = tuple(ref_codons)
 
-        # Cache distance calculations for repeated (position, codon) choices.
-        self._diff_cache: MutationDiffCache = {}
+        self._tracks_nts = self.min_nts is not None or self.max_nts is not None
+        self._tracks_codons = self.min_codons is not None or self.max_codons is not None
+
+        self._initial_state = (
+            0 if self._tracks_nts else None,
+            0 if self._tracks_codons else None,
+        )
 
         self.first_pos = 1
         self.last_pos = len(self._ref_codons)
@@ -40,23 +44,21 @@ class MutationDistanceConstraint(PathConstraint):
         """
         Whether nucleotide differences are constrained.
         """
-        return self.min_nts is not None or self.max_nts is not None
+        return self._tracks_nts
 
     @property
     def tracks_codons(self) -> bool:
         """
         Whether codon differences are constrained.
         """
-        return self.min_codons is not None or self.max_codons is not None
+        return self._tracks_codons
 
     @property
     def initial_state(self) -> MutationDistanceState:
         """
         Initial mutation-distance state.
         """
-        nt_diffs = 0 if self.tracks_nts else None
-        codon_diffs = 0 if self.tracks_codons else None
-        return nt_diffs, codon_diffs
+        return self._initial_state
 
     def advance(
         self,
@@ -71,30 +73,26 @@ class MutationDistanceConstraint(PathConstraint):
         Non-codon nodes do not affect distance. Codon nodes add the distance
         between the chosen codon and the reference codon at the same position.
         """
-        nt_diffs, codon_diffs = state
-        key = (pos, choice)
-
         if pos < self.first_pos or pos > self.last_pos:
             return state
 
-        cached_diff = self._diff_cache.get(key)
-        if cached_diff is None:
-            ref_codon = self._ref_codons[pos - 1]
-            cached_diff = (
-                sum(a != b for a, b in zip(ref_codon, choice)),
-                int(ref_codon != choice),
-            )
-            self._diff_cache[key] = cached_diff
+        nt_diffs, codon_diffs = state
+        ref_codon = self._ref_codons[pos - 1]
 
-        nt_diff, codon_diff = cached_diff
+        nt_diff = (
+            (ref_codon[0] != choice[0])
+            + (ref_codon[1] != choice[1])
+            + (ref_codon[2] != choice[2])
+        )
+        codon_diff = int(nt_diff != 0)
 
-        if self.tracks_nts:
+        if self._tracks_nts:
             nt_diffs += nt_diff
 
             if self.max_nts is not None and nt_diffs > self.max_nts:
                 return None
 
-        if self.tracks_codons:
+        if self._tracks_codons:
             codon_diffs += codon_diff
 
             if self.max_codons is not None and codon_diffs > self.max_codons:
