@@ -39,15 +39,15 @@ class BannedTrackerAdvanceResult(NamedTuple):
     Result of advancing a registered banned-tracker state.
 
     If banned is True, the graph step has completed a banned sequence and the
-    candidate path should be rejected. Otherwise, banned_tracker_state_id gives
-    the registered tracker state reached after taking the step.
+    candidate path should be rejected. Otherwise, state_id gives the registered
+    tracker state reached after taking the step.
     """
     banned: bool
-    banned_tracker_state_id: BannedTrackerStateId = 0
+    state_id: BannedTrackerStateId = 0
 
 
-CLEAR_ADVANCE_RESULT = BannedTrackerAdvanceResult(banned=False, banned_tracker_state_id=0)
-BANNED_ADVANCE_RESULT = BannedTrackerAdvanceResult(banned=True, banned_tracker_state_id=0)
+CLEAR_ADVANCE_RESULT = BannedTrackerAdvanceResult(banned=False, state_id=0)
+BANNED_ADVANCE_RESULT = BannedTrackerAdvanceResult(banned=True, state_id=0)
 
 
 class BannedSequenceTracker:
@@ -91,11 +91,11 @@ class BannedSequenceTracker:
         """
         self.graph = graph
         self.banned_sequences = tuple(sequence.upper() for sequence in banned_sequences)
-        self.initial_state: BannedTrackerState = frozenset()
 
-        self.state_ids: Dict[BannedTrackerState, BannedTrackerStateId] = {
-            self.initial_state: 0,
-        }
+        self.initial_state: BannedTrackerState = frozenset()
+        self.initial_state_id: int = 0
+
+        self.state_ids: Dict[BannedTrackerState, BannedTrackerStateId] = {self.initial_state: self.initial_state_id}
         self.states: List[BannedTrackerState] = [self.initial_state]
 
         self.advance_cache: Dict[Tuple[Step, BannedTrackerStateId], BannedTrackerAdvanceResult] = {}
@@ -242,7 +242,7 @@ class BannedSequenceTracker:
     def advance(
             self,
             step: Step,
-            banned_tracker_state_id: BannedTrackerStateId,
+            state_id: BannedTrackerStateId,
     ) -> BannedTrackerAdvanceResult:
         """
         Advance a registered tracker state after taking one graph step.
@@ -251,7 +251,7 @@ class BannedSequenceTracker:
         ----------
         step
             The graph step just taken, as (graph pos, choice).
-        banned_tracker_state_id
+        state_id
             Integer ID of the current banned-tracker state.
 
         Returns
@@ -260,13 +260,13 @@ class BannedSequenceTracker:
             Whether the step completed a banned sequence, and otherwise the
             integer ID of the updated tracker state.
         """
-        key = (step, banned_tracker_state_id)
+        key = (step, state_id)
 
         cached = self.advance_cache.get(key)
         if cached is not None:
             return cached
 
-        state = self.states[banned_tracker_state_id]
+        state = self.states[state_id]
         starts = self.starts.get(step)
 
         if starts is None and not state:
@@ -304,7 +304,7 @@ class BannedSequenceTracker:
 
         result = BannedTrackerAdvanceResult(
             banned=False,
-            banned_tracker_state_id=self._get_or_register_state_id(frozenset(next_state)),
+            state_id=self._get_or_register_state_id(frozenset(next_state)),
         )
 
         self.advance_cache[key] = result

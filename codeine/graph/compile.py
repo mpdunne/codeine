@@ -417,7 +417,7 @@ class ViewCompiler:
             return self.banned_advance_cache[key]
 
         if not self.has_banned_tracker:
-            result = BannedTrackerAdvanceResult(banned=False, banned_tracker_state_id=banned_tracker_state_id)
+            result = BannedTrackerAdvanceResult(banned=False, state_id=banned_tracker_state_id)
         else:
             step = (node.pos, choice)
             result = self.banned_tracker.advance(step, banned_tracker_state_id)
