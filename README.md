@@ -52,6 +52,7 @@ Count valid sequences:
 from codeine import CodingSpace
 
 space = CodingSpace('MKTLEFQNGSCPRYKKL')
+
 print(space.n_valid_sequences)
 ```
 

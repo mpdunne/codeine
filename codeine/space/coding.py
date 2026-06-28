@@ -54,7 +54,7 @@ class CodingSpace:
         context_r
             The context sequence to the right of the coding sequence.
         seed
-            Seed used to initialise the view's random number generator.
+            Seed used to initialise the random number generator for sampling.
         """
 
         translation_table, codon_weights = self._resolve_tables(translation_table, codon_weights, rna)
@@ -68,7 +68,7 @@ class CodingSpace:
             context_r=context_r,
         )
 
-        view = graph.view(seed=seed,)
+        view = graph.view(seed=seed)
         self.view = view
 
         self.forbidden_motifs = self._normalise_forbidden_motifs(forbidden_motifs)
