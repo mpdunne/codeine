@@ -28,6 +28,7 @@ class MutationSpace:
     def __init__(self,
                  space: CodingSpace,
                  cds: str,
+                 *,
                  free_positions: Optional[Collection[int]] = None,
                  min_nts: Optional[int] = None,
                  max_nts: Optional[int] = None,
