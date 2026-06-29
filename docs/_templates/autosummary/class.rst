@@ -8,7 +8,9 @@
 
 {% if attributes %}
 
-.. rubric:: Properties
+
+Properties
+~~~~~~~~~~
 
 .. autosummary::
 
@@ -19,7 +21,18 @@
 
 {% if methods %}
 
-.. rubric:: Methods
+
+Methods
+~~~~~~~~~~
+
+.. autosummary::
+
+{% for item in methods %}
+{% if item != "__init__" %}
+   ~{{ name }}.{{ item }}
+{% endif %}
+{% endfor %}
+
 
 {% for item in methods %}
 {% if item != "__init__" %}

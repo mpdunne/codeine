@@ -6,6 +6,5 @@ API Reference
 
    codeine.CodingSpace
    codeine.MutationSpace
-   codeine.RestrictionSite
    codeine.TranslationTable
    codeine.CodonWeights
