@@ -208,7 +208,7 @@ class CodonWeights:
         -------
         A CodonWeights object corresponding to E. Coli
         """
-        from codeine.translation.data import ECOLI_WEIGHTS
+        from codeine.translation.data.weights import ECOLI_WEIGHTS
         return cls(ECOLI_WEIGHTS, rna=rna)
 
     @classmethod
@@ -227,7 +227,7 @@ class CodonWeights:
         -------
         A CodonWeights object corresponding to S. cerevisiea
         """
-        from codeine.translation.data import YEAST_WEIGHTS
+        from codeine.translation.data.weights import YEAST_WEIGHTS
         return cls(YEAST_WEIGHTS, rna=rna)
 
     @classmethod
@@ -246,7 +246,7 @@ class CodonWeights:
         -------
         A CodonWeights object corresponding to Human.
         """
-        from codeine.translation.data import HUMAN_WEIGHTS
+        from codeine.translation.data.weights import HUMAN_WEIGHTS
         return cls(HUMAN_WEIGHTS, rna=rna)
 
     @classmethod
@@ -265,7 +265,7 @@ class CodonWeights:
         -------
         A CodonWeights object corresponding to Mouse.
         """
-        from codeine.translation.data import MOUSE_WEIGHTS
+        from codeine.translation.data.weights import MOUSE_WEIGHTS
         return cls(MOUSE_WEIGHTS, rna=rna)
 
     @classmethod
@@ -284,7 +284,7 @@ class CodonWeights:
         -------
         A CodonWeights object corresponding to Arabidopsis thaliana.
         """
-        from codeine.translation.data import ARABIDOPSIS_WEIGHTS
+        from codeine.translation.data.weights import ARABIDOPSIS_WEIGHTS
         return cls(ARABIDOPSIS_WEIGHTS, rna=rna)
 
     @classmethod
@@ -303,5 +303,5 @@ class CodonWeights:
         -------
         A CodonWeights object corresponding to Drosophila melanogaster.
         """
-        from codeine.translation.data import DROSOPHILA_WEIGHTS
+        from codeine.translation.data.weights import DROSOPHILA_WEIGHTS
         return cls(DROSOPHILA_WEIGHTS, rna=rna)

@@ -13,8 +13,10 @@ authors = [
 ]
 requires-python = ">=3.8"
 dependencies = [
-  "biopython",
 ]
 
 [tool.setuptools.packages.find]
 include = ["codeine", "codeine.*"]
+
+[tool.setuptools.package-data]
+codeine = ["data/*.json"]

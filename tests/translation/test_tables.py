@@ -140,17 +140,27 @@ def test_getitem_bad_key_raises():
     tt = TranslationTable()
 
     with pytest.raises(KeyError):
-        _ = tt['ATt']
-
-    with pytest.raises(KeyError):
         _ = tt['x']
 
     with pytest.raises(KeyError):
-        _ = tt['AUG']
+        _ = tt['AT']
 
-    tt_rna = TranslationTable(rna=True)
     with pytest.raises(KeyError):
-        _ = tt_rna['ATG']
+        _ = tt['BAT']
+
+    with pytest.raises(KeyError):
+        _ = tt['M']
+
+    with pytest.raises(KeyError):
+        _ = tt['atgatg']
+
+    with pytest.raises(KeyError):
+        _ = tt[0]
+
+
+def test_getitem_normalises_before_lookup():
+    tt = TranslationTable()
+    assert tt['aug'] == 'M'
 
 
 def test_translation_table_pickle():
@@ -234,3 +244,149 @@ def test_translate_rejects_sequences_of_bad_length():
 
     with pytest.raises(ValueError):
         tt.translate('ATGG')
+
+
+def test_custom_translation_table_translates_sequence():
+    table = TranslationTable.custom({
+        'ATG': 'M',
+        'TAA': '*',
+    })
+
+    assert table.translate('ATGTAA') == 'M*'
+
+
+def test_custom_translation_table_accepts_rna():
+    table = TranslationTable.custom({
+        'AUG': 'M',
+        'UAA': '*',
+    }, rna=True)
+
+    assert table['AUG'] == 'M'
+    assert table.translate('AUGUAA') == 'M*'
+    assert table.codons_to_aa == {
+        'AUG': 'M',
+        'UAA': '*',
+    }
+
+
+def test_custom_translation_table_normalises_to_dna_by_default():
+    table = TranslationTable.custom({
+        'aug': 'M',
+        'uaa': '*',
+    })
+
+    assert table['ATG'] == 'M'
+    assert table['TAA'] == '*'
+    assert table.translate('AUGUAA') == 'M*'
+
+
+def test_custom_translation_table_normalises_to_rna():
+    table = TranslationTable.custom({
+        'ATG': 'M',
+        'TAA': '*',
+    }, rna=True)
+
+    assert table['AUG'] == 'M'
+    assert table['UAA'] == '*'
+    assert table.translate('AUGUAA') == 'M*'
+
+
+def test_custom_translation_table_sets_metadata():
+    table = TranslationTable.custom(
+        {'ATG': 'M', 'TAA': '*'},
+        name='Nice table',
+    )
+
+    assert table.name == 'Nice table'
+    assert table.names == ('Nice table',)
+    assert table.table_id is None
+    assert table.rna is False
+
+
+def test_custom_translation_table_builds_reverse_mapping():
+    table = TranslationTable.custom({
+        'TTT': 'F',
+        'TTC': 'F',
+        'ATG': 'M',
+        'TAA': '*',
+    })
+
+    assert table.aa_to_codons['F'] == ('TTT', 'TTC')
+    assert table.aa_to_codons['M'] == ('ATG',)
+    assert table.aa_to_codons['*'] == ('TAA',)
+
+
+def test_custom_translation_table_sets_stop_codons():
+    table = TranslationTable.custom({
+        'ATG': 'M',
+        'TAA': '*',
+        'TAG': '*',
+    })
+
+    assert table.stop_codons == ('TAA', 'TAG')
+
+
+def test_custom_translation_table_allows_nonstandard_amino_acids():
+    table = TranslationTable.custom({
+        'TGC': 'U',
+        'TAG': 'X',
+        'TAA': '*',
+    })
+
+    assert table['TGC'] == 'U'
+    assert table['TAG'] == 'X'
+    assert table['TAA'] == '*'
+
+
+def test_custom_translation_table_allows_partial_tables():
+    table = TranslationTable.custom({
+        'ATG': 'M',
+    })
+
+    assert table.translate('ATG') == 'M'
+
+    with pytest.raises(KeyError):
+        table.translate('ATGTAA')
+
+
+def test_custom_translation_table_is_immutable():
+    table = TranslationTable.custom({'ATG': 'M'})
+
+    with pytest.raises(AttributeError):
+        table.name = 'Changed'
+
+
+def test_custom_translation_table_rejects_invalid_dna_codons():
+    with pytest.raises(ValueError, match='nucleotide sequence'):
+        TranslationTable.custom({
+            'ATX': 'M',
+        })
+
+
+def test_custom_translation_table_rejects_invalid_rna_codons():
+    with pytest.raises(ValueError, match='nucleotide sequence'):
+        TranslationTable.custom({
+            'AUX': 'M',
+        }, rna=True)
+
+
+def test_custom_translation_table_rejects_non_triplet_codons():
+    with pytest.raises(ValueError, match='length 3'):
+        TranslationTable.custom({
+            'AT': 'M',
+        })
+
+
+def test_custom_translation_table_rejects_empty_codons():
+    with pytest.raises(ValueError, match='length 3'):
+        TranslationTable.custom({
+            '': 'M',
+        })
+
+
+def test_custom_translation_table_getitem_normalises_input():
+    table = TranslationTable.custom({
+        'ATG': 'M',
+    })
+
+    assert table['aug'] == 'M'

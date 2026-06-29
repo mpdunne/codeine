@@ -98,8 +98,10 @@ def test_view_rejects_pin_outside_codon_restrictions():
 
 def test_view_getitem():
     view = CodonGraph('MF').view()
-    assert view[0] == 'ATGTTT'
-    assert view[1] == 'ATGTTC'
+    seqs = [*view.enumerate()]
+
+    for i in range(len(seqs)):
+        assert view[i] == seqs[i]
 
 
 def test_getitem_works_for_very_large_sequences():
