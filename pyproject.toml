@@ -18,4 +18,4 @@ dependencies = [
 include = ["codeine", "codeine.*"]
 
 [tool.setuptools.package-data]
-codeine = ["data/*.json"]
+codeine = ["translation/data/*.json"]
