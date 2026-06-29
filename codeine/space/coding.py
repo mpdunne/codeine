@@ -24,14 +24,15 @@ class CodingSpace:
     def __init__(
         self,
         aa_seq: str,
+        *,
+        translation_table: Optional[TranslationTable] = None,
+        rna: Optional[bool] = None,
         codon_restrictions: Optional[Dict[int, CodonRestriction]] = None,
         forbidden_motifs: Optional[ForbiddenMotifs] = None,
         max_homopolymer: Optional[int] = None,
-        translation_table: Optional[TranslationTable] = None,
-        codon_weights: Optional[CodonWeights] = None,
-        rna: Optional[bool] = None,
         context_l: str = '',
         context_r: str = '',
+        codon_weights: Optional[CodonWeights] = None,
         seed: Optional[Seedable] = None,
     ) -> None:
         """
@@ -39,18 +40,22 @@ class CodingSpace:
         ----------
         aa_seq
             The amino acid sequence.
-        codon_restrictions
-            Any codon restrictions in the format e.g. {4: 'TCC'} or {5: ['AGT', 'AGC']}.
         translation_table
             The translation table to use. Leave blank to use standard table.
-        codon_weights
-            The codon weights to use. Leave blank to sample uniformly.
         rna
             Whether to use RNA. If false, use DNA.
+        codon_restrictions
+            Any codon restrictions in the format e.g. {4: 'TCC'} or {5: ['AGT', 'AGC']}.
+        forbidden_motifs
+            Forbidden motifs, either as strings or as codeine.RestrictionSite.
+        max_homopolymer
+            The maximum allowed length of nucleotide homopolymer
         context_l
             The context sequence to the left of the coding sequence.
         context_r
             The context sequence to the right of the coding sequence.
+        codon_weights
+            The codon weights to use. Leave blank to sample uniformly.
         seed
             Seed used to initialise the random number generator for sampling.
         """
