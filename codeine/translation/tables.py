@@ -1,6 +1,7 @@
+import json
 import re
 
-from Bio.Data import CodonTable
+from pathlib import Path
 from typing import Any
 
 from codeine.utils.dict import FrozenDict
@@ -29,15 +30,27 @@ class TranslationTable:
         self.table_id = table_id
         self.rna = rna
 
+        tables = self._load_tables()
+
         try:
-            biopython_table = CodonTable.unambiguous_dna_by_id[table_id]
+            table = tables[str(table_id)]
         except KeyError:
             raise ValueError(f'Unknown NCBI translation table ID: {table_id}.')
 
-        self.name = biopython_table.names[0]
+        self.name = table['name']
+        self.names = tuple(table.get('names', (self.name,)))
 
-        dna_to_aa = biopython_table.forward_table
-        dna_to_aa = {**dna_to_aa, **{stop: '*' for stop in biopython_table.stop_codons}}
+        self.start_codons = tuple(
+            self.normalise_sequence(codon)
+            for codon in table['start_codons']
+        )
+
+        self.stop_codons = tuple(
+            self.normalise_sequence(codon)
+            for codon in table['stop_codons']
+        )
+
+        dna_to_aa = table['codon_to_aa']
 
         aa_to_dna = {}
         for codon, aa in dna_to_aa.items():
@@ -70,7 +83,7 @@ class TranslationTable:
         molecule = 'RNA' if self.rna else 'DNA'
 
         lines = [
-            f'TranslationTable',
+            'TranslationTable',
             f'Table ID: {self.table_id} ({self.name})',
             f'Molecule type: {molecule}',
             '',
@@ -84,7 +97,7 @@ class TranslationTable:
         return '\n'.join(lines)
 
     def __getitem__(self, codon: str) -> str:
-        return self.codons_to_aa[codon]
+        return self.codons_to_aa[self.normalise_sequence(codon)]
 
     def normalise_sequence(self, seq: str) -> str:
         """
@@ -118,3 +131,12 @@ class TranslationTable:
         seq = self.normalise_sequence(seq)
 
         return ''.join(self.codons_to_aa[seq[i:i + 3]] for i in range(0, len(seq), 3))
+
+    @staticmethod
+    def _load_tables() -> dict:
+        """
+        Load tables from stored JSON entries.
+        """
+        path = Path(__file__).parent / 'data' / 'tables.json'
+        with path.open() as f:
+            return json.load(f)

@@ -140,9 +140,6 @@ def test_getitem_bad_key_raises():
     tt = TranslationTable()
 
     with pytest.raises(KeyError):
-        _ = tt['ATt']
-
-    with pytest.raises(KeyError):
         _ = tt['x']
 
     with pytest.raises(KeyError):
