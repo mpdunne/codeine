@@ -1,14 +1,9 @@
 # 🧬 Codeine
 
-**Codeine** is a Python library for exploring and generating synonymous protein-coding sequences under biological constraints.
+**Codeine** is a Python library for generating synonymous protein-coding sequences under biological constraints.
 
-## Installation
 
-```bash
-pip install .
-```
-
-<!--## Installation & documentation
+## Installation & documentation
 
 **Codeine** is available on PyPI:
 
@@ -16,7 +11,7 @@ pip install .
 pip install codeine
 ```
 
-Full documentation: **https://codeine.readthedocs.io/**.-->
+Full documentation: **https://codeine.readthedocs.io/**.
 
 ## Quick start
 

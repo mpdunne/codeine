@@ -4,12 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "codeine"
-version = "0.0.0"
+version = "0.1.0"
 description = ""
 readme = "README.md"
 authors = [
   { name = "Michael Peter Dunne" },
-
 ]
 requires-python = ">=3.8"
 dependencies = [
@@ -19,4 +18,4 @@ dependencies = [
 include = ["codeine", "codeine.*"]
 
 [tool.setuptools.package-data]
-codeine = ["data/*.json"]
+codeine = ["translation/data/*.json"]

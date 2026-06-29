@@ -1,11 +1,14 @@
 Codeine
 =======
 
-Codeine is a Python library for representing and exploring constrained coding sequence spaces.
+Codeine is a Python library for exploring constrained protein coding
+sequence spaces.
 
-Installation
-------------
+.. toctree::
+   :maxdepth: 2
+   :caption: Contents:
+   :includehidden:
 
-.. code-block:: bash
-
-   pip install codeine
+   installation
+   quickstart
+   api

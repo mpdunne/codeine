@@ -12,12 +12,12 @@ from codeine.utils.display import format_forbidden_motifs, format_forbidden_moti
 
 class MutationSpace:
     """
-    Represents the set of valid coding sequences that can be reached by
-    mutating a reference CDS in a given CodingSpace, subject to constraints.
+    Represents the subset of valid coding sequences reachable from a reference CDS
+    by mutation under constraints.
 
-    A MutationSpace is defined by:
+    A ``MutationSpace`` is defined by:
 
-    - A CodingSpace containing the global sequence constraints.
+    - A ``CodingSpace`` containing the global sequence constraints.
     - A reference CDS.
     - A set of codon positions that are free to mutate.
 
@@ -35,12 +35,10 @@ class MutationSpace:
                  max_codons: Optional[int] = None,
                  ):
         """
-        Constructor for the MutationSpace class.
-
         Parameters
         ----------
         space
-            The CodingSpace object to which this given sequence should belong.
+            The ``CodingSpace`` object to which this given sequence should belong.
         cds
             The parent/reference CDS.
         free_positions
@@ -293,7 +291,9 @@ class MutationSpace:
         """
         Set mutation distance constraints.
 
-        Distances are measured from the reference CDS.
+        Distances are measured from the reference CDS and can be either nucleotide (Hammming)
+        distances, i.e. the number of nucleotides that are different from the reference CDS,
+        or codon distances, i.e. the number of codons that are different.
         """
 
         self._validate_distance('min_nts', min_nts)
