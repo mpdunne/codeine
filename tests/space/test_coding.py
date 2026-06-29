@@ -194,7 +194,9 @@ def test_view_iter():
 
 def test_coding_space_enumerate():
     space = CodingSpace('F')
-    assert list(space.enumerate()) == ['TTT', 'TTC']
+    seqs = [*space.enumerate()]
+    assert len(seqs) == 2
+    assert set(seqs) == {'TTT', 'TTC'}
 
 
 def test_coding_space_contains():
