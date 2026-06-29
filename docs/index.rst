@@ -11,3 +11,4 @@ sequence spaces.
 
    installation
    quickstart
+   api
