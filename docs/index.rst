@@ -11,4 +11,5 @@ sequence spaces.
 
    installation
    quickstart
+   tutorial/index
    api

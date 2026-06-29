@@ -1,10 +1,13 @@
-from importlib.metadata import version as get_version
+from importlib.metadata import PackageNotFoundError, version as get_version
 
 project = 'Codeine'
 author = 'Michael Dunne'
 html_title = 'Codeine documentation'
 
-release = version = get_version('codeine')
+try:
+    release = version = get_version('codeine')
+except PackageNotFoundError:
+    release = version = 'x.x.x'
 
 html_title = 'Codeine documentation'
 
