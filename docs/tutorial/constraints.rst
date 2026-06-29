@@ -1,7 +1,9 @@
 Adding constraints
 ==================
 
-Constraints reduce the space of valid coding sequences for a given amino acid sequence. Currently **Codeine** handles:
+Sequence constraints are central to **Codeine**'s design philosophy, allowing you to easily narrow the space of valid coding sequences to match your requirements.
+
+Currently **Codeine** handles:
 
 * `Forbidden motifs`_
 * `Max homopolymer length`_
@@ -14,7 +16,9 @@ As well as arbitrary `combinations of the above`_. Let's go through these!
 Forbidden motifs
 ----------------
 
-In biotechnology it is common to exclude DNA sequence motifs that interfere with cloning, synthesis, or downstream applications. **Codeine** can exclude such sequences automatically.
+In biotechnology we often wish to exclude sequence motifs that interfere with cloning, synthesis, or downstream applications.
+
+**Codeine** can exclude such sequences via ``forbidden_motifs``:
 
 .. code-block:: python
 
@@ -90,31 +94,22 @@ The recognition sequences for these were taken from the
 Max homopolymer
 ---------------
 
-The ``max_homopolymer`` constraint limits runs of identical nucleotides.
+Long homopolymer runs can be difficult to work with because they increase the risk of polymerase slippage and sequencing errors. In **Codeine**, runs of identical nucleotides can be avoided using the The ``max_homopolymer`` constraint.
 
-For example, consider the amino acid sequence ``FFFFF``. In the standard
-genetic code, phenylalanine is encoded by either ``TTT`` or ``TTC``. Without
-constraints, some coding sequences contain long runs of thymine:
+For example, setting ``max_homopolymer=5`` excludes any coding sequence
+containing six or more consecutive identical nucleotides.
 
-.. code-block:: text
-
-   TTT TTT TTT TTT TTT
-
-Setting ``max_homopolymer=5`` excludes any coding sequence containing six or
-more consecutive identical nucleotides.
 
 .. code-block:: python
 
    from codeine import CodingSpace
 
    space = CodingSpace(
-       'FFFFF',
+       aa_seq,
        max_homopolymer=5,
    )
 
    print(space.n_valid_sequences)
-
-After applying the constraint, 13 of the 32 possible coding sequences remain valid.
 
 .. _Restricted codon choices:
 
@@ -145,7 +140,7 @@ Here, position 1 is restricted to ``TCG`` or ``TCA``, and position 2 is fixed to
 Combining constraints
 ---------------------
 
-Constraints can be combined freely.
+Constraints can be combined freely!
 
 .. code-block:: python
 
