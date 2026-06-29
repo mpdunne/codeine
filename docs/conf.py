@@ -1,5 +1,11 @@
+from importlib.metadata import version as get_version
+
 project = 'Codeine'
 author = 'Michael Dunne'
+html_title = 'Codeine documentation'
+
+release = version = get_version('codeine')
+
 html_title = 'Codeine documentation'
 
 extensions = [
