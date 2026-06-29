@@ -16,8 +16,6 @@ class TranslationTable:
 
     def __init__(self, table_id: int = 1, rna: bool = False) -> None:
         """
-        Constructor for the TranslationTable class.
-
         Parameters
         ----------
         table_id

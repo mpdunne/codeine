@@ -19,7 +19,7 @@ from codeine.utils.sampling import Seedable
 
 class CodingSpace:
     """
-    Class representing coding sequence space, for sampling and mutating CDS coding sequences.
+    Represents a space of valid coding sequences for a protein under constraints.
     """
     def __init__(
         self,
@@ -35,8 +35,6 @@ class CodingSpace:
         seed: Optional[Seedable] = None,
     ) -> None:
         """
-        Constructor for the CodingSpace class.
-
         Parameters
         ----------
         aa_seq

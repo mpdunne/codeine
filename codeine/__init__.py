@@ -6,4 +6,10 @@ from codeine.translation.weights import CodonWeights
 
 from codeine.motifs.restriction import RestrictionSite
 
-__all__ = ['CodingSpace', 'CodonWeights', 'MutationSpace', 'RestrictionSite', 'TranslationTable']
+__all__ = [
+    'CodingSpace',
+    'CodonWeights',
+    'MutationSpace',
+    'RestrictionSite',
+    'TranslationTable'
+]

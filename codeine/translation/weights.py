@@ -14,6 +14,8 @@ class CodonWeights:
 
     Input weights are grouped by amino acid:
 
+    .. code-block:: python
+
         {
             'A': {'GCT': 1.0, 'GCC': 1.0, ...},
             'R': {'CGT': 1.0, 'CGC': 1.0, ...},
@@ -21,6 +23,8 @@ class CodonWeights:
         }
 
     Stored weights are flat:
+
+    .. code-block:: python
 
         {
             'GCT': 0.25,
@@ -38,14 +42,14 @@ class CodonWeights:
         table: Optional[TranslationTable] = None,
     ) -> None:
         """
-            Constructor for the CodonWeights class.
-
             Parameters
             ----------
             weights
                 Codon weights grouped by amino acid, for codons in the TranslationTable.
 
                 Example:
+
+                .. code-block:: python
 
                     {
                         'A': {'GCT': 1.0, 'GCC': 1.0, 'GCA': 1.0, 'GCG': 1.0},
@@ -165,7 +169,7 @@ class CodonWeights:
     @classmethod
     def uniform(cls, table: Optional[TranslationTable] = None, rna: Optional[bool] = None) -> 'CodonWeights':
         """
-        Construct a CodonWeights object with uniform codon weights for a given translation table.
+        Construct a ``CodonWeights`` object with uniform codon weights for a given translation table.
 
         Parameters
         ----------
@@ -195,9 +199,11 @@ class CodonWeights:
     @classmethod
     def ecoli(cls, rna: Optional[bool] = None) -> 'CodonWeights':
         """
-        Construct a CodonWeights object with codon probabilities corresponding to E. coli.
+        Construct a ``CodonWeights`` object with codon probabilities corresponding to E. coli.
 
-        Weights are obtained from GenScript https://www.genscript.com/tools/codon-frequency-table
+        Weights are based on codon usage counts from GenScript:
+
+        https://www.genscript.com/tools/codon-frequency-table
 
         Parameters
         ----------
@@ -206,7 +212,7 @@ class CodonWeights:
 
         Returns
         -------
-        A CodonWeights object corresponding to E. Coli
+        A ``CodonWeights`` object corresponding to E. Coli
         """
         from codeine.translation.data.weights import ECOLI_WEIGHTS
         return cls(ECOLI_WEIGHTS, rna=rna)
@@ -214,9 +220,11 @@ class CodonWeights:
     @classmethod
     def yeast(cls, rna: Optional[bool] = None) -> 'CodonWeights':
         """
-        Construct a CodonWeights object with codon probabilities corresponding to 'yeast'.
+        Construct a ``CodonWeights`` object with codon probabilities corresponding to 'yeast'.
 
-        Weights are obtained from GenScript https://www.genscript.com/tools/codon-frequency-table
+        Weights are based on codon usage counts from GenScript:
+
+        https://www.genscript.com/tools/codon-frequency-table
 
         Parameters
         ----------
@@ -225,7 +233,7 @@ class CodonWeights:
 
         Returns
         -------
-        A CodonWeights object corresponding to S. cerevisiea
+        A ``CodonWeights`` object corresponding to S. cerevisiea
         """
         from codeine.translation.data.weights import YEAST_WEIGHTS
         return cls(YEAST_WEIGHTS, rna=rna)
@@ -233,9 +241,11 @@ class CodonWeights:
     @classmethod
     def human(cls, rna: Optional[bool] = None) -> 'CodonWeights':
         """
-        Construct a CodonWeights object with codon probabilities corresponding to Human.
+        Construct a ``CodonWeights`` object with codon probabilities corresponding to Human.
 
-        Weights are obtained from GenScript https://www.genscript.com/tools/codon-frequency-table
+        Weights are based on codon usage counts from GenScript:
+
+        https://www.genscript.com/tools/codon-frequency-table
 
         Parameters
         ----------
@@ -244,7 +254,7 @@ class CodonWeights:
 
         Returns
         -------
-        A CodonWeights object corresponding to Human.
+        A ``CodonWeights`` object corresponding to Human.
         """
         from codeine.translation.data.weights import HUMAN_WEIGHTS
         return cls(HUMAN_WEIGHTS, rna=rna)
@@ -252,9 +262,11 @@ class CodonWeights:
     @classmethod
     def mouse(cls, rna: Optional[bool] = None) -> 'CodonWeights':
         """
-        Construct a CodonWeights object with codon probabilities corresponding to Mouse.
+        Construct a ``CodonWeights`` object with codon probabilities corresponding to Mouse.
 
-        Weights are obtained from GenScript https://www.genscript.com/tools/codon-frequency-table
+        Weights are based on codon usage counts from GenScript:
+
+        https://www.genscript.com/tools/codon-frequency-table
 
         Parameters
         ----------
@@ -263,7 +275,7 @@ class CodonWeights:
 
         Returns
         -------
-        A CodonWeights object corresponding to Mouse.
+        A ``CodonWeights`` object corresponding to Mouse.
         """
         from codeine.translation.data.weights import MOUSE_WEIGHTS
         return cls(MOUSE_WEIGHTS, rna=rna)
@@ -271,9 +283,11 @@ class CodonWeights:
     @classmethod
     def arabidopsis(cls, rna: Optional[bool] = None) -> 'CodonWeights':
         """
-        Construct a CodonWeights object with codon probabilities corresponding to A. thaliana.
+        Construct a ``CodonWeights`` object with codon probabilities corresponding to A. thaliana.
 
-        Weights are obtained from GenScript https://www.genscript.com/tools/codon-frequency-table
+        Weights are based on codon usage counts from GenScript:
+
+        https://www.genscript.com/tools/codon-frequency-table
 
         Parameters
         ----------
@@ -282,7 +296,7 @@ class CodonWeights:
 
         Returns
         -------
-        A CodonWeights object corresponding to Arabidopsis thaliana.
+        A ``CodonWeights`` object corresponding to Arabidopsis thaliana.
         """
         from codeine.translation.data.weights import ARABIDOPSIS_WEIGHTS
         return cls(ARABIDOPSIS_WEIGHTS, rna=rna)
@@ -290,9 +304,11 @@ class CodonWeights:
     @classmethod
     def drosophila(cls, rna: Optional[bool] = None) -> 'CodonWeights':
         """
-        Construct a CodonWeights object with codon probabilities corresponding to D. melanogaster.
+        Construct a ``CodonWeights`` object with codon probabilities corresponding to D. melanogaster.
 
-        Weights are obtained from GenScript https://www.genscript.com/tools/codon-frequency-table
+        Weights are based on codon usage counts from GenScript:
+
+        https://www.genscript.com/tools/codon-frequency-table
 
         Parameters
         ----------
@@ -301,7 +317,7 @@ class CodonWeights:
 
         Returns
         -------
-        A CodonWeights object corresponding to Drosophila melanogaster.
+        A ``CodonWeights`` object corresponding to Drosophila melanogaster.
         """
         from codeine.translation.data.weights import DROSOPHILA_WEIGHTS
         return cls(DROSOPHILA_WEIGHTS, rna=rna)
