@@ -12,3 +12,16 @@ Sequence contexts are useful in two main scenarios:
 
 Sequence contexts can be supplied to ``CodingSpace`` via the ``context_l`` and
 ``context_r`` arguments.
+
+.. code-block:: python
+
+    from codeine import CodingSpace, RestrictionSite
+
+    space = CodingSpace(
+        'SEQVENCE',
+        context_l='GCGGCCGCGAAT',
+        context_r='TTCAGAATTCCT',
+        forbidden_motifs=[RestrictionSite.EcoRI],
+    )
+
+    print(space.n_valid_sequences)
