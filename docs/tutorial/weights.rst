@@ -5,7 +5,7 @@ Codon weights
 
 They do not change which coding sequences are valid: they change how likely
 different valid sequences are to be sampled. This can be useful if you want
-to bias sequences towards a codon frequencies found in a specific organism.
+to bias sequences towards the codon frequencies found in a specific organism.
 
 If no ``CodonWeights`` object is passed to a ``CodingSpace``, then codons are sampled evenly.
 
@@ -35,7 +35,7 @@ The species weights currently available in **Codeine** are:
    CodonWeights.mouse()
    CodonWeights.yeast()
 
-The species weights are based on codon count tables from GenScript (`https://www.genscript.com/tools/codon-frequency-table <https://www.genscript.com/tools/codon-frequency-table>`_).
+The species weights are based on codon usage tables from GenScript (`https://www.genscript.com/tools/codon-frequency-table <https://www.genscript.com/tools/codon-frequency-table>`_).
 
 Custom weights
 --------------

@@ -18,5 +18,3 @@ Example output:
 
    1536
    AGCGAACAGGTCGAGAACTGCGAA
-
-Have fun!

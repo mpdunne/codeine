@@ -94,7 +94,7 @@ The recognition sequences for these were taken from the
 Max homopolymer
 ---------------
 
-Long homopolymer runs can be difficult to work with because they increase the risk of polymerase slippage and sequencing errors. In **Codeine**, runs of identical nucleotides can be avoided using the The ``max_homopolymer`` constraint.
+Long homopolymer runs can be difficult to work with because they increase the risk of polymerase slippage and sequencing errors. In **Codeine**, runs of identical nucleotides can be avoided using the ``max_homopolymer`` constraint.
 
 For example, setting ``max_homopolymer=5`` excludes any coding sequence
 containing six or more consecutive identical nucleotides.

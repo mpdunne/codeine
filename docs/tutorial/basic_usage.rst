@@ -26,7 +26,7 @@ Output:
 
 Sampling
 --------
-Coding sequences for the chosen amino acid sequence can be obtained by randomly samping the space. For example:
+Coding sequences for the chosen amino acid sequence can be obtained by randomly sampling the space. For example:
 
 .. code-block:: python
 

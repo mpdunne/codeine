@@ -4,11 +4,11 @@ Codeine
 **Codeine** is a Python library for exploring constrained
 synonymous coding sequence spaces.
 
-Why?
-----
+Overview
+--------
 
-**Codeine** represents the complete feasible space of synonymous
-coding sequences under user-defined constraints. This makes it
+**Codeine** represents the complete space of synonymous
+coding sequences satisfying user-defined constraints. This makes it
 possible to count, sample and enumerate valid coding sequences exactly.
 
 Traditional codon optimisation tools typically return a single
@@ -16,9 +16,9 @@ sequence. By contrast, Codeine represents the full feasible
 sequence space, allowing users to explore alternative designs freely.
 
 Constraints are built in to **Codeine**'s sequence generation process,
-so that all generated variants are automatically valid. This means you can generate as
-many sequences as you want and score them according to your own objective
-functions without worrying about sequence feasibility.
+so that all generated sequences are automatically valid. This means you can generate as
+many sequences as needed and score them according to your own objective
+functions, without having to repair or filter them.
 
 
 Features
@@ -33,10 +33,8 @@ Features
 * Homopolymer constraints
 * Custom translation tables
 
-Example, please!
-----------------
-
-Here you go:
+Example
+-------
 
 .. code-block:: python
 

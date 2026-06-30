@@ -24,7 +24,7 @@ To sample mutants, start with a ``CodingSpace`` and a reference coding sequence.
     print(muts.n_valid_variants)
 
 Calling ``space.mutants(...)`` returns a ``MutationSpace`` object.
-Alternatively the ``MutationSpace`` can be constructed directy:
+Alternatively the ``MutationSpace`` can be constructed directly:
 
 
 .. code-block:: python
@@ -132,7 +132,7 @@ Mutation spaces can be counted, enumerated, and sampled just like ordinary codin
         max_nts=2,
     )
 
-    print(muts.n_valid_sequences)
+    print(muts.n_valid_variants)
 
     print(space.sample())
 

@@ -85,7 +85,6 @@ Available tables
 ----------------
 
 Codeine supports the following `NCBI genetic code tables <https://www.ncbi.nlm.nih.gov/Taxonomy/Utils/wprintgc.cgi>`_:
-:
 
 .. list-table::
    :header-rows: 1
