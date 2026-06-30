@@ -11,7 +11,7 @@ class TranslationTable:
     """
     Translation table. Here we use the NCBI translation table IDs
     (see https://www.ncbi.nlm.nih.gov/Taxonomy/Utils/wprintgc.cgi)
-    Uses DNA by default, but can switch to RNA by setting rna=True.
+    Uses DNA by default, but can switch to RNA by setting ``rna=True``.
     """
 
     def __init__(self, table_id: int = 1, rna: bool = False) -> None:
@@ -19,7 +19,7 @@ class TranslationTable:
         Parameters
         ----------
         table_id
-            Which translation table to use. Default is 1.
+            Which translation table to use. Default is 1, which is the standard genetic code.
         rna
             Whether to use RNA. Default is no (False), i.e. use DNA.
         """
@@ -159,7 +159,7 @@ class TranslationTable:
 
     def normalise_sequence(self, seq: str) -> str:
         """
-        Format a codon in the format specified by this codon table, i.e. convert to
+        Format a sequence in the format specified by this codon table, i.e. convert to
         RNA/DNA and cast to upper case.
 
         Parameters
