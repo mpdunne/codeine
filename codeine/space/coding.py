@@ -43,11 +43,11 @@ class CodingSpace:
         translation_table
             The translation table to use. Leave blank to use standard table.
         rna
-            Whether to use RNA. If false, use DNA.
+            Whether to use RNA. If false or blank, use DNA.
         codon_restrictions
-            Any codon restrictions in the format e.g. {4: 'TCC'} or {5: ['AGT', 'AGC']}.
+            Any codon restrictions in the format e.g. ``{4: 'TCC'}`` or ``{5: ['AGT', 'AGC']}``. Positions are 1-based.
         forbidden_motifs
-            Forbidden motifs, either as strings or as codeine.RestrictionSite.
+            Forbidden motifs, either as strings or as ``codeine.RestrictionSite``.
         max_homopolymer
             The maximum allowed length of nucleotide homopolymer
         context_l
