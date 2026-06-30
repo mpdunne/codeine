@@ -5,10 +5,11 @@ Sequence contexts
 
 Sequence contexts are useful in two main scenarios:
 
-* Designing genes for insertion into plasmids or expression vectors,
-  where motifs may span the junction between the vector and the coding sequence.
-* Redesigning only part of an existing coding sequence while leaving the
-  surrounding sequence unchanged.
+* Designing genes for insertion into plasmids or expression vectors;
+* Redesigning a small part of an existing coding sequence.
+
+In both cases, forbidden sequences can span the junctions between the coding and context sequences, meaning that the contexts have to be considered
+when designing sequences.
 
 Sequence contexts can be supplied to ``CodingSpace`` via the ``context_l`` and
 ``context_r`` arguments.

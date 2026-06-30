@@ -3,8 +3,9 @@ Codon weights
 
 ``CodonWeights`` control how codons are weighted during sampling.
 
-They do not change which coding sequences are valid. They only change how likely
-different valid sequences are to be sampled and can be useful if you want to bias sequences towards a codon frequency found in a specific organism.
+They do not change which coding sequences are valid: they change how likely
+different valid sequences are to be sampled. This can be useful if you want
+to bias sequences towards a codon frequencies found in a specific organism.
 
 If no ``CodonWeights`` object is passed to a ``CodingSpace``, then codons are sampled evenly.
 
