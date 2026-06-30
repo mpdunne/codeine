@@ -1,8 +1,7 @@
 Quickstart
 ==========
 
-Codeine represents the set of coding sequences that translate to a given amino
-acid sequence.
+To get going with **Codeine**, create a ``CodingSpace``, and start exploring:
 
 .. code-block:: python
 
@@ -19,3 +18,5 @@ Example output:
 
    1536
    AGCGAACAGGTCGAGAACTGCGAA
+
+Have fun!
