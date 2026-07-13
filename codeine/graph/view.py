@@ -11,7 +11,7 @@ from codeine.graph.nodes import CodonNode
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
 from codeine.utils.display import format_forbidden_motifs, format_count, format_restrictions
-from codeine.utils.sampling import Seedable, Sampler
+from codeine.utils.sampling import Seedable, Sampler, SingletonSampler, UniformSampler, WeightedSampler
 from codeine.graph.compile import ViewCompiler
 
 
@@ -532,7 +532,7 @@ class CodonGraphView:
 
     def _sampler_for_state_id(self, state_id: int) -> Optional[Sampler]:
         """
-        Return the weighted sampler for one compiled traversal state.
+        Return the appropriate sampler for one compiled traversal state.
 
         Samplers are created lazily because many compiled states may never be
         visited during sampling.
@@ -565,8 +565,13 @@ class CodonGraphView:
             runtime_items.append((result.choice, result.is_coding, result.next_state_id))
             runtime_log_masses.append(result.descendant_log_mass)
 
-        runtime_weights = self._convert_log_masses_to_sampler_weights(runtime_log_masses)
-        sampler = Sampler(runtime_items, runtime_weights, rng=self._rng)
+        if len(runtime_items) == 1:
+            sampler = SingletonSampler(item=runtime_items[0])
+        elif len(set(runtime_log_masses)) == 1:
+            sampler = UniformSampler(items=runtime_items, rng=self._rng)
+        else:
+            runtime_weights = self._convert_log_masses_to_sampler_weights(runtime_log_masses)
+            sampler = WeightedSampler(items=runtime_items, weights=runtime_weights, rng=self._rng)
 
         self.samplers_by_state_id[state_id] = sampler
 
