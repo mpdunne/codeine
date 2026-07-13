@@ -5,10 +5,10 @@ from itertools import product
 from codeine.graph.base import CodonGraph
 from codeine.translation.tables import TranslationTable
 from codeine.constraints.base import DEAD_STATE
-from codeine.constraints.banned import BannedSequenceTracker, _find_matching_subpaths
+from codeine.constraints.banned import BannedSequenceConstraint, _find_matching_subpaths
 
 
-def test_tracker_finds_ban_inside_left_context():
+def test_banned_sequence_constraint_finds_ban_inside_left_context():
     graph = CodonGraph('REGINALD', context_l='aaggaaggaagg')
     banned_seqs = (
         'ATG',
@@ -17,7 +17,7 @@ def test_tracker_finds_ban_inside_left_context():
         'ATTAAGG',
         'GAATAC',
     )
-    tracker = BannedSequenceTracker(graph, banned_seqs)
+    tracker = BannedSequenceConstraint(graph, banned_seqs)
     assert tracker.paths
 
 
@@ -51,8 +51,8 @@ def helper_walk_path(tracker, path):
     return result
 
 
-def test_tracker_is_trivial_without_banned_sequences():
-    tracker = BannedSequenceTracker(CodonGraph(aa_seq='MIKEY'), [])
+def test_banned_sequence_constraint_is_trivial_without_banned_sequences():
+    tracker = BannedSequenceConstraint(CodonGraph(aa_seq='MIKEY'), [])
 
     assert tracker.is_trivial
     assert tracker.paths == ()
@@ -61,16 +61,16 @@ def test_tracker_is_trivial_without_banned_sequences():
     assert tracker.initial_state_id == 0
 
 
-def test_tracker_finds_paths_for_possible_banned_sequence():
-    tracker = BannedSequenceTracker(CodonGraph(aa_seq='MIKEY'), ['TCAAA'])
+def test_banned_sequence_constraint_finds_paths_for_possible_banned_sequence():
+    tracker = BannedSequenceConstraint(CodonGraph(aa_seq='MIKEY'), ['TCAAA'])
 
     assert not tracker.is_trivial
     assert len(tracker.paths) > 0
     assert all(path.sequence == 'TCAAA' for path in tracker.paths)
 
 
-def test_tracker_has_no_paths_for_impossible_banned_sequence():
-    tracker = BannedSequenceTracker(CodonGraph(aa_seq='MIKEY'), ['CCCCCC'])
+def test_banned_sequence_constraint_has_no_paths_for_impossible_banned_sequence():
+    tracker = BannedSequenceConstraint(CodonGraph(aa_seq='MIKEY'), ['CCCCCC'])
 
     assert tracker.is_trivial
     assert tracker.paths == ()
@@ -78,7 +78,7 @@ def test_tracker_has_no_paths_for_impossible_banned_sequence():
 
 
 def test_starts_are_built_from_first_path_step():
-    tracker = BannedSequenceTracker(CodonGraph(aa_seq='MIKEY'), ['TCAAA'])
+    tracker = BannedSequenceConstraint(CodonGraph(aa_seq='MIKEY'), ['TCAAA'])
     path = helper_find_first_path_for(tracker, 'TCAAA')
     first_step = path.steps[0]
 
@@ -88,7 +88,7 @@ def test_starts_are_built_from_first_path_step():
 
 def test_safe_choice_returns_empty_state():
     graph = CodonGraph(aa_seq='MIKEY')
-    tracker = BannedSequenceTracker(graph, ['TCAAA'])
+    tracker = BannedSequenceConstraint(graph, ['TCAAA'])
     path = helper_find_first_path_for(tracker, 'TCAAA')
 
     pos, _choice = path.steps[0]
@@ -99,7 +99,7 @@ def test_safe_choice_returns_empty_state():
 
 def test_choice_can_start_watch():
     graph = CodonGraph(aa_seq='MIKEY')
-    tracker = BannedSequenceTracker(graph, ['TCAAA'])
+    tracker = BannedSequenceConstraint(graph, ['TCAAA'])
     path = helper_find_first_path_for(tracker, 'TCAAA')
 
     pos, choice = path.steps[0]
@@ -111,7 +111,7 @@ def test_choice_can_start_watch():
 
 def test_choice_can_immediately_complete_banned_sequence():
     graph = CodonGraph(aa_seq='MIKEY')
-    tracker = BannedSequenceTracker(graph, ['ATG'])
+    tracker = BannedSequenceConstraint(graph, ['ATG'])
     path = helper_find_first_path_for(tracker, 'ATG')
 
     pos, choice = path.steps[0]
@@ -122,7 +122,7 @@ def test_choice_can_immediately_complete_banned_sequence():
 
 def test_existing_watch_can_complete_banned_sequence():
     graph = CodonGraph(aa_seq='MIKEY')
-    tracker = BannedSequenceTracker(graph, ['TCAAA'])
+    tracker = BannedSequenceConstraint(graph, ['TCAAA'])
     path = helper_find_first_path_for(tracker, 'TCAAA')
 
     pos_1, choice_1 = path.steps[0]
@@ -136,7 +136,7 @@ def test_existing_watch_can_complete_banned_sequence():
 
 def test_existing_watch_drops_if_choice_does_not_match():
     graph = CodonGraph(aa_seq='MIKEY')
-    tracker = BannedSequenceTracker(graph, ['TCAAA'])
+    tracker = BannedSequenceConstraint(graph, ['TCAAA'])
     path = helper_find_first_path_for(tracker, 'TCAAA')
 
     pos_2, _choice_2 = path.steps[1]
@@ -152,7 +152,7 @@ def test_existing_watch_drops_if_choice_does_not_match():
 
 def test_multiple_watches_can_be_active():
     graph = CodonGraph(aa_seq='MIKEY')
-    tracker = BannedSequenceTracker(graph, ['TCAAA', 'TCAAG'])
+    tracker = BannedSequenceConstraint(graph, ['TCAAA', 'TCAAG'])
 
     path = helper_find_first_path_for(tracker, 'TCAAA')
 
@@ -165,7 +165,7 @@ def test_multiple_watches_can_be_active():
 
 def test_one_of_multiple_watches_can_complete_ban():
     graph = CodonGraph(aa_seq='MIKEY')
-    tracker = BannedSequenceTracker(graph, ['TCAAA', 'TCAAG'])
+    tracker = BannedSequenceConstraint(graph, ['TCAAA', 'TCAAG'])
 
     path = helper_find_first_path_for(tracker, 'TCAAA')
 
@@ -180,7 +180,7 @@ def test_one_of_multiple_watches_can_complete_ban():
 
 def test_state_is_a_frozenset():
     graph = CodonGraph(aa_seq='MIKEY')
-    tracker = BannedSequenceTracker(graph, ['TCAAA'])
+    tracker = BannedSequenceConstraint(graph, ['TCAAA'])
     path = helper_find_first_path_for(tracker, 'TCAAA')
 
     pos, choice = path.steps[0]
@@ -189,34 +189,34 @@ def test_state_is_a_frozenset():
     assert isinstance(tracker.states[result], frozenset)
 
 
-def test_tracker_finds_banned_sequence_crossing_left_context():
+def test_banned_sequence_constraint_finds_banned_sequence_crossing_left_context():
     graph = CodonGraph(aa_seq='MIKEY', context_l='TCA')
-    tracker = BannedSequenceTracker(graph, ['TCAATG'])
+    tracker = BannedSequenceConstraint(graph, ['TCAATG'])
     assert not tracker.is_trivial
 
 
 def test_left_context_can_immediately_complete_ban():
     graph = CodonGraph(aa_seq='MIKEY', context_l='TCA')
-    tracker = BannedSequenceTracker(graph, ['TCAATG'])
+    tracker = BannedSequenceConstraint(graph, ['TCAATG'])
     path = helper_find_first_path_for(tracker, 'TCAATG')
     result = helper_walk_path(tracker, path)
 
     assert result == DEAD_STATE
 
 
-def test_tracker_finds_banned_sequence_crossing_right_context():
+def test_banned_sequence_constraint_finds_banned_sequence_crossing_right_context():
     graph = CodonGraph(aa_seq='MIKEY', context_r='AAA')
-    tracker = BannedSequenceTracker(graph, ['ATACAAA'])
+    tracker = BannedSequenceConstraint(graph, ['ATACAAA'])
     assert not tracker.is_trivial
 
     graph = CodonGraph(aa_seq='MIKEY', context_r='AAA')
-    tracker = BannedSequenceTracker(graph, ['GGGAAA'])
+    tracker = BannedSequenceConstraint(graph, ['GGGAAA'])
     assert tracker.is_trivial
 
 
 def test_existing_watch_can_complete_in_right_context():
     graph = CodonGraph(aa_seq='MIKEY', context_r='AAA')
-    tracker = BannedSequenceTracker(graph, ['ATACAAA'])
+    tracker = BannedSequenceConstraint(graph, ['ATACAAA'])
     path = helper_find_first_path_for(tracker, 'ATACAAA')
     result = helper_walk_path(tracker, path)
 
@@ -243,7 +243,7 @@ def test_existing_watch_can_complete_in_right_context():
 )
 def test_found_paths_are_walkable(context_l, context_r, sequence):
     graph = CodonGraph('MIKEY', context_l=context_l, context_r=context_r)
-    tracker = BannedSequenceTracker(graph, [sequence])
+    tracker = BannedSequenceConstraint(graph, [sequence])
     path = helper_find_first_path_for(tracker, sequence)
 
     assert helper_walk_path(tracker, path) == DEAD_STATE
@@ -258,7 +258,7 @@ def test_found_paths_are_walkable(context_l, context_r, sequence):
     ],
 )
 def test_offsets_are_correct(sequence, expected_offset):
-    tracker = BannedSequenceTracker(CodonGraph('MIKEY'), [sequence])
+    tracker = BannedSequenceConstraint(CodonGraph('MIKEY'), [sequence])
     path = helper_find_first_path_for(tracker, sequence)
 
     assert path.offset == expected_offset
@@ -266,7 +266,7 @@ def test_offsets_are_correct(sequence, expected_offset):
 
 def test_watch_survives_until_partial_final_codon_match():
     graph = CodonGraph('MIKEY')
-    tracker = BannedSequenceTracker(graph, ['ATTAAG'])
+    tracker = BannedSequenceConstraint(graph, ['ATTAAG'])
     path = helper_find_first_path_for(tracker, 'ATTAAG')
 
     state_id = tracker.initial_state_id
@@ -285,7 +285,7 @@ def test_watch_survives_until_partial_final_codon_match():
 
 def test_ban_longer_than_choice_keeps_watch_alive():
     graph = CodonGraph('MIKEY')
-    tracker = BannedSequenceTracker(graph, ['ATGATA'])
+    tracker = BannedSequenceConstraint(graph, ['ATGATA'])
     path = helper_find_first_path_for(tracker, 'ATGATA')
 
     pos, choice = path.steps[0]
@@ -301,7 +301,7 @@ def test_ban_longer_than_choice_keeps_watch_alive():
 
 
 def test_duplicate_banned_sequences_do_not_break_tracking():
-    tracker = BannedSequenceTracker(CodonGraph('MIKEY'), ['TCAAA', 'TCAAA'])
+    tracker = BannedSequenceConstraint(CodonGraph('MIKEY'), ['TCAAA', 'TCAAA'])
     path = helper_find_first_path_for(tracker, 'TCAAA')
 
     result = helper_walk_path(tracker, path)
@@ -310,7 +310,7 @@ def test_duplicate_banned_sequences_do_not_break_tracking():
 
 def test_different_bans_can_start_from_same_choice():
     graph = CodonGraph('MIKEY')
-    tracker = BannedSequenceTracker(graph, ['ATGA', 'ATGAT'])
+    tracker = BannedSequenceConstraint(graph, ['ATGA', 'ATGAT'])
     path = helper_find_first_path_for(tracker, 'ATGA')
 
     pos, choice = path.steps[0]
@@ -321,7 +321,7 @@ def test_different_bans_can_start_from_same_choice():
 
 
 def test_shorter_ban_wins_when_multiple_bans_share_prefix():
-    tracker = BannedSequenceTracker(CodonGraph('MIKEY'), ['ATGA', 'ATGATA'])
+    tracker = BannedSequenceConstraint(CodonGraph('MIKEY'), ['ATGA', 'ATGATA'])
     path = helper_find_first_path_for(tracker, 'ATGA')
 
     result = helper_walk_path(tracker, path)
@@ -329,7 +329,7 @@ def test_shorter_ban_wins_when_multiple_bans_share_prefix():
 
 
 def test_longer_ban_can_complete_after_shorter_related_ban_if_shorter_absent():
-    tracker = BannedSequenceTracker(CodonGraph('MIKEY'), ['ATGATA'])
+    tracker = BannedSequenceConstraint(CodonGraph('MIKEY'), ['ATGATA'])
     path = helper_find_first_path_for(tracker, 'ATGATA')
 
     result = helper_walk_path(tracker, path)
@@ -338,7 +338,7 @@ def test_longer_ban_can_complete_after_shorter_related_ban_if_shorter_absent():
 
 def test_unrelated_active_watch_does_not_prevent_new_watch_starting():
     graph = CodonGraph('MIKEY')
-    tracker = BannedSequenceTracker(graph, ['TCAAA', 'GAA'])
+    tracker = BannedSequenceConstraint(graph, ['TCAAA', 'GAA'])
     path = helper_find_first_path_for(tracker, 'TCAAA')
 
     pos_1, choice_1 = path.steps[0]
@@ -350,14 +350,14 @@ def test_unrelated_active_watch_does_not_prevent_new_watch_starting():
 
 
 def test_path_steps_are_never_empty():
-    tracker = BannedSequenceTracker(CodonGraph('MIKEY'), ['A', 'AT', 'ATG', 'TCAAA'])
+    tracker = BannedSequenceConstraint(CodonGraph('MIKEY'), ['A', 'AT', 'ATG', 'TCAAA'])
 
     assert tracker.paths
     assert all(path.steps for path in tracker.paths)
 
 
 def test_starts_only_reference_real_paths():
-    tracker = BannedSequenceTracker(CodonGraph('MIKEY'), ['A', 'ATG', 'TCAAA'])
+    tracker = BannedSequenceConstraint(CodonGraph('MIKEY'), ['A', 'ATG', 'TCAAA'])
 
     for starts in tracker.starts.values():
         for watch in starts:
@@ -371,7 +371,7 @@ def test_starts_only_reference_real_paths():
 
 
 def test_all_start_keys_are_real_first_steps():
-    tracker = BannedSequenceTracker(CodonGraph('MIKEY'), ['A', 'ATG', 'TCAAA'])
+    tracker = BannedSequenceConstraint(CodonGraph('MIKEY'), ['A', 'ATG', 'TCAAA'])
 
     first_steps = {path.steps[0] for path in tracker.paths}
     assert set(tracker.starts) <= first_steps
@@ -379,7 +379,7 @@ def test_all_start_keys_are_real_first_steps():
 
 def test_every_found_path_really_contains_banned_sequence():
     graph = CodonGraph('MIKEY', context_l='AAGG', context_r='TTCC')
-    tracker = BannedSequenceTracker(graph, ['GGATG', 'TACAAG', 'ATTAAG'])
+    tracker = BannedSequenceConstraint(graph, ['GGATG', 'TACAAG', 'ATTAAG'])
 
     for path in tracker.paths:
         emitted = ''.join(choice for pos, choice in path.steps)
@@ -389,7 +389,7 @@ def test_every_found_path_really_contains_banned_sequence():
 
 def test_walking_every_found_path_completes_ban():
     graph = CodonGraph('MIKEY', context_l='AAGG', context_r='TTCC')
-    tracker = BannedSequenceTracker(graph, ['GGATG', 'TACAAG', 'ATTAAG'])
+    tracker = BannedSequenceConstraint(graph, ['GGATG', 'TACAAG', 'ATTAAG'])
 
     for path in tracker.paths:
         result = helper_walk_path(tracker, path)
@@ -397,7 +397,7 @@ def test_walking_every_found_path_completes_ban():
 
 
 def test_safe_walk_drops_all_active_watches():
-    tracker = BannedSequenceTracker(CodonGraph('MIKEY'), ['TCAAA'])
+    tracker = BannedSequenceConstraint(CodonGraph('MIKEY'), ['TCAAA'])
     path = helper_find_first_path_for(tracker, 'TCAAA')
 
     pos_2, _choice_2 = path.steps[1]
@@ -413,7 +413,7 @@ def test_safe_walk_drops_all_active_watches():
 def test_every_tracker_path_is_walkable_from_initial_state():
     graph = CodonGraph('MIKEY', context_l='AAGGTT', context_r='CCAAGG')
     banned = ['A', 'AT', 'ATG', 'TGATA', 'GGTTATG', 'TACCCA']
-    tracker = BannedSequenceTracker(graph, banned)
+    tracker = BannedSequenceConstraint(graph, banned)
 
     for path in tracker.paths:
         result = helper_walk_path(tracker, path)

@@ -5,7 +5,7 @@ from itertools import islice
 from typing import Dict, Generator, List, Optional, Sequence, Union, Tuple
 
 from codeine.constraints.base import Constraint
-from codeine.constraints.banned import BannedSequenceTracker
+from codeine.constraints.banned import BannedSequenceConstraint
 from codeine.graph.base import CodonGraph, CodonRestriction
 from codeine.graph.nodes import CodonNode
 from codeine.translation.tables import TranslationTable
@@ -50,7 +50,7 @@ class CodonGraphView:
         self.banned_sequences: List[str] = self._validate_banned_sequences(banned_sequences)
         self.constraints: Tuple[Constraint, ...] = constraints or ()
 
-        self.banned_tracker = BannedSequenceTracker(self.graph, self.banned_sequences)
+        self.banned_tracker = BannedSequenceConstraint(self.graph, self.banned_sequences)
 
         self._compiled = None
         self._requires_compile = True
@@ -427,7 +427,7 @@ class CodonGraphView:
         not on temporary pins, so it is rebuilt only when the banned list changes.
         """
         self.banned_sequences = self._validate_banned_sequences(banned_sequences)
-        self.banned_tracker = BannedSequenceTracker(self.graph, self.banned_sequences)
+        self.banned_tracker = BannedSequenceConstraint(self.graph, self.banned_sequences)
         self._requires_compile = True
 
     def clear_banned_sequences(self) -> None:

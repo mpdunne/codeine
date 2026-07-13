@@ -51,7 +51,7 @@ CLEAR_ADVANCE_RESULT = BannedTrackerAdvanceResult(banned=False, state_id=0)
 BANNED_ADVANCE_RESULT = BannedTrackerAdvanceResult(banned=True, state_id=0)
 
 
-class BannedSequenceTracker(Constraint):
+class BannedSequenceConstraint(Constraint):
     """
     Tracks progress along concrete banned graph subpaths.
 
