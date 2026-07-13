@@ -26,6 +26,7 @@ class CodonGraphView:
     def __init__(self,
                  graph: CodonGraph,
                  banned_sequences: Optional[Sequence[str]] = None,
+                 constraints: Optional[Sequence[Constraint]] = None,
                  seed: Seedable = None,
                  ) -> None:
         """
@@ -37,6 +38,8 @@ class CodonGraphView:
             The underlying codon graph.
         banned_sequences
             Nucleotide sequences that are forbidden in this view.
+        constraints
+            Any constraint trackers that we wish to use when traversing coding space.
         seed
             Seed used to initialise a random number generator, if not providing an RNG.
         """
@@ -45,7 +48,7 @@ class CodonGraphView:
         self.graph = graph
         self.pinned_codons: Dict[int, List[str]] = {}
         self.banned_sequences: List[str] = self._validate_banned_sequences(banned_sequences)
-        self.constraints: Tuple[Constraint, ...] = ()
+        self.constraints: Tuple[Constraint, ...] = constraints or ()
 
         self.banned_tracker = BannedSequenceTracker(self.graph, self.banned_sequences)
 

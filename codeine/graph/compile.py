@@ -408,6 +408,9 @@ class ViewCompiler:
 
         for constraint, state in zip(self.constraints, constraint_states):
             next_state = constraint.advance(state, pos, choice)
+            if next_state == DEAD_STATE:
+                return None
+
             next_states.append(next_state)
 
         return tuple(next_states)

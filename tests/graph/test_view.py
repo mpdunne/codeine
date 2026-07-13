@@ -7,7 +7,7 @@ from itertools import product
 from unittest.mock import MagicMock
 from scipy.stats import chisquare, chi2_contingency
 
-from codeine.constraints.base import Constraint
+from codeine.constraints.base import Constraint, DEAD_STATE, SAFE_STATE
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
 from codeine.graph.base import CodonGraph
@@ -1237,20 +1237,22 @@ def test_regression_banned_sequences_long_aa_sequence_many_banned_sequences(aa_s
 
 
 class RejectAllConstraint(Constraint):
-    def advance(self, state, pos, choice):
-        return None
 
+    @property
     def initial_state(self):
-        return None
+        return ()
+
+    def advance(self, state, pos, choice):
+        return DEAD_STATE
 
     def link(self, graph):
         pass
 
 
-def test_path_constraint_can_reject_all_sequences():
+def test_constraint_can_reject_all_sequences():
     view = CodonGraph('MIKEY', context_l='aaa', context_r='ttt').view()
 
-    view.set_path_constraint(RejectAllConstraint())
+    view.set_constraints([RejectAllConstraint()])
 
     assert view.n_valid_sequences == 0
     assert [*view.enumerate()] == []
@@ -1259,29 +1261,108 @@ def test_path_constraint_can_reject_all_sequences():
         view.sample()
 
 
-def test_clear_path_constraint_restores_default_behaviour():
+def test_clear_constraints_restores_default_behaviour():
     view = CodonGraph('MIKEY', context_l='aaa', context_r='ttt').view()
 
     expected_sequences = [*view.enumerate()]
     expected_count = view.n_valid_sequences
 
-    view.set_path_constraint(RejectAllConstraint())
+    view.set_constraints([RejectAllConstraint()])
     assert view.n_valid_sequences == 0
 
-    view.clear_path_constraint()
+    view.clear_constraints()
 
     assert view.n_valid_sequences == expected_count
     assert [*view.enumerate()] == expected_sequences
 
 
-def test_path_constraint_is_copied_with_view():
+def test_constraints_are_copied_with_view():
     view = CodonGraph('MIKEY', context_l='aaa', context_r='ttt').view()
-    view.set_path_constraint(RejectAllConstraint())
+    view.set_constraints([RejectAllConstraint()])
 
     copied = view.copy()
 
     assert copied.n_valid_sequences == 0
     assert [*copied.enumerate()] == []
+
+
+
+class RejectChoiceConstraint(Constraint):
+
+    def __init__(self, rejected_choice):
+        self.rejected_choice = rejected_choice
+
+    @property
+    def initial_state(self):
+        return ()
+
+    def advance(self, state, pos, choice):
+        if state in (SAFE_STATE, DEAD_STATE):
+            return state
+
+        if choice == self.rejected_choice:
+            return DEAD_STATE
+
+        return ()
+
+    def link(self, graph):
+        pass
+
+
+class SafeAfterFirstConstraint(Constraint):
+
+    @property
+    def initial_state(self):
+        return 0
+
+    def advance(self, state, pos, choice):
+        if state in (SAFE_STATE, DEAD_STATE):
+            return state
+
+        if pos >= 1:
+            return SAFE_STATE
+
+        return 0
+
+    def link(self, graph):
+        pass
+
+
+def test_view_applies_multiple_constraints():
+    graph = CodonGraph('MIKEY', context_l='aaa', context_r='ttt')
+    all_sequences = set(graph.view().enumerate())
+
+    view = graph.view()
+    view.set_constraints([RejectChoiceConstraint('ATA'), RejectChoiceConstraint('AAG')])
+
+    expected = {sequence for sequence in all_sequences
+                if sequence[3:6] != 'ATA' and sequence[6:9] != 'AAG'}
+
+    assert set(view.enumerate()) == expected
+
+
+def test_view_rejects_choice_when_any_constraint_is_dead():
+    graph = CodonGraph('MIKEY')
+    all_sequences = set(graph.view().enumerate())
+
+    view = graph.view()
+    view.set_constraints([SafeAfterFirstConstraint(), RejectChoiceConstraint('GAG')]),
+
+    expected = {sequence for sequence in all_sequences if sequence[9:12] != 'GAG'}
+
+    assert set(view.enumerate()) == expected
+
+
+def test_safe_constraint_does_not_disable_other_constraints():
+    graph = CodonGraph('MIKEY')
+    all_sequences = set(graph.view().enumerate())
+
+    view = graph.view()
+    view.set_constraints([SafeAfterFirstConstraint(), RejectChoiceConstraint('TAC')])
+
+    expected = {sequence for sequence in all_sequences if sequence[12:15] != 'TAC'}
+
+    assert set(view.enumerate()) == expected
 
 
 def helper_chi_square_codon_test(observed_counts, expected_counts):
