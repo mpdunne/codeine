@@ -313,7 +313,7 @@ class MutationSpace:
         self.min_codons = min_codons
         self.max_codons = max_codons
 
-        self._update_path_constraint()
+        self._update_distance_constraint()
 
     def clear_distance_constraints(self) -> None:
         """
@@ -402,23 +402,28 @@ class MutationSpace:
         distance_constraints = [self.min_nts, self.max_nts, self.min_codons, self.max_codons]
         return any(value is not None for value in distance_constraints)
 
-    def _update_path_constraint(self) -> None:
+    def _update_distance_constraint(self) -> None:
         """
-        Apply the current distance constraints to the underlying view.
+        Replace the mutation-distance constraint on the underlying view.
         """
-        if not self.has_distance_constraints:
-            self.view.clear_path_constraint()
-            return
-
-        self.view.set_path_constraint(
-            MutationDistanceConstraint(
-                reference_cds=self.cds,
-                min_nts=self.min_nts,
-                max_nts=self.max_nts,
-                min_codons=self.min_codons,
-                max_codons=self.max_codons,
-            )
+        constraints = tuple(
+            constraint
+            for constraint in self.view.constraints
+            if not isinstance(constraint, MutationDistanceConstraint)
         )
+
+        if self.has_distance_constraints:
+            constraints += (
+                MutationDistanceConstraint(
+                    reference_cds=self.cds,
+                    min_nts=self.min_nts,
+                    max_nts=self.max_nts,
+                    min_codons=self.min_codons,
+                    max_codons=self.max_codons,
+                ),
+            )
+
+        self.view.set_constraints(constraints)
 
     def _validate_positions(self, positions: Collection[int]) -> Set[int]:
         """

@@ -438,7 +438,7 @@ class CodonGraphView:
 
     def set_constraints(self, constraints: Sequence[Constraint]) -> None:
         """
-        Set the path constraints for this view.
+        Set the constraints for this view.
 
         Parameters
         ----------
@@ -450,7 +450,7 @@ class CodonGraphView:
 
     def clear_constraints(self) -> None:
         """
-        Remove all path constraints from this view.
+        Remove all constraints from this view.
         """
         self.set_constraints(())
 
