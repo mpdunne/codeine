@@ -35,22 +35,6 @@ BannedTrackerStateId = int
 TransitionValue = Optional[Watch]
 
 
-class BannedTrackerAdvanceResult(NamedTuple):
-    """
-    Result of advancing a registered banned-tracker state.
-
-    If banned is True, the graph step has completed a banned sequence and the
-    candidate path should be rejected. Otherwise, state_id gives the registered
-    tracker state reached after taking the step.
-    """
-    banned: bool
-    state_id: BannedTrackerStateId = 0
-
-
-CLEAR_ADVANCE_RESULT = BannedTrackerAdvanceResult(banned=False, state_id=0)
-BANNED_ADVANCE_RESULT = BannedTrackerAdvanceResult(banned=True, state_id=0)
-
-
 class BannedSequenceConstraint(Constraint):
     """
     Tracks progress along concrete banned graph subpaths.
@@ -99,7 +83,7 @@ class BannedSequenceConstraint(Constraint):
         self.state_ids: Dict[BannedTrackerState, BannedTrackerStateId] = {initial_tracker_state: self.initial_state_id}
         self.states: List[BannedTrackerState] = [initial_tracker_state]
 
-        self.advance_cache: Dict[Tuple[Step, BannedTrackerStateId], BannedTrackerAdvanceResult] = {}
+        self.advance_cache: Dict[Tuple[Step, BannedTrackerStateId], ConstraintState] = {}
 
         self.paths = self._find_banned_paths()
         self.starts = self._build_starts()
@@ -276,13 +260,13 @@ class BannedSequenceConstraint(Constraint):
 
         cached = self.advance_cache.get(key)
         if cached is not None:
-            return DEAD_STATE if cached.banned else cached.state_id
+            return cached
 
         tracker_state = self.states[state_id]
         starts = self.starts.get(step)
 
         if starts is None and not tracker_state:
-            self.advance_cache[key] = CLEAR_ADVANCE_RESULT
+            self.advance_cache[key] = self.initial_state_id
             return self.initial_state_id
 
         transitions = self.transitions.get(choice)
@@ -291,7 +275,7 @@ class BannedSequenceConstraint(Constraint):
         if starts is not None:
             for watch in starts:
                 if watch is None:
-                    self.advance_cache[key] = BANNED_ADVANCE_RESULT
+                    self.advance_cache[key] = DEAD_STATE
                     return DEAD_STATE
 
                 next_state.add(watch)
@@ -302,7 +286,7 @@ class BannedSequenceConstraint(Constraint):
 
                 if next_watch is None:
                     if watch in transitions:
-                        self.advance_cache[key] = BANNED_ADVANCE_RESULT
+                        self.advance_cache[key] = DEAD_STATE
                         return DEAD_STATE
 
                     continue
@@ -310,14 +294,11 @@ class BannedSequenceConstraint(Constraint):
                 next_state.add(next_watch)
 
         if not next_state:
-            self.advance_cache[key] = CLEAR_ADVANCE_RESULT
+            self.advance_cache[key] = self.initial_state_id
             return self.initial_state_id
 
         next_state_id = self._get_or_register_state_id(frozenset(next_state))
-        self.advance_cache[key] = BannedTrackerAdvanceResult(
-            banned=False,
-            state_id=next_state_id,
-        )
+        self.advance_cache[key] = next_state_id
         return next_state_id
 
 
