@@ -1,5 +1,6 @@
 from typing import Dict, FrozenSet, List, NamedTuple, Optional, Sequence, Tuple
 
+from codeine.constraints.base import Constraint, ConstraintState, DEAD_STATE
 from codeine.graph.base import CodonGraph
 from codeine.graph.nodes import CodonNode
 
@@ -50,7 +51,7 @@ CLEAR_ADVANCE_RESULT = BannedTrackerAdvanceResult(banned=False, state_id=0)
 BANNED_ADVANCE_RESULT = BannedTrackerAdvanceResult(banned=True, state_id=0)
 
 
-class BannedSequenceTracker:
+class BannedSequenceTracker(Constraint):
     """
     Tracks progress along concrete banned graph subpaths.
 
@@ -92,17 +93,22 @@ class BannedSequenceTracker:
         self.graph = graph
         self.banned_sequences = tuple(sequence.upper() for sequence in banned_sequences)
 
-        self.initial_state: BannedTrackerState = frozenset()
+        initial_tracker_state: BannedTrackerState = frozenset()
         self.initial_state_id: int = 0
 
-        self.state_ids: Dict[BannedTrackerState, BannedTrackerStateId] = {self.initial_state: self.initial_state_id}
-        self.states: List[BannedTrackerState] = [self.initial_state]
+        self.state_ids: Dict[BannedTrackerState, BannedTrackerStateId] = {initial_tracker_state: self.initial_state_id}
+        self.states: List[BannedTrackerState] = [initial_tracker_state]
 
         self.advance_cache: Dict[Tuple[Step, BannedTrackerStateId], BannedTrackerAdvanceResult] = {}
 
         self.paths = self._find_banned_paths()
         self.starts = self._build_starts()
         self.transitions = self._build_transitions()
+
+    @property
+    def initial_state(self) -> ConstraintState:
+        """Return the registered empty tracker-state ID."""
+        return self.initial_state_id
 
     @property
     def is_trivial(self) -> bool:
@@ -239,41 +245,46 @@ class BannedSequenceTracker:
 
         return state_id
 
+    def link(self, graph: CodonGraph) -> None:
+        """
+        Link the constraint to a graph.
+
+        The banned tracker is currently constructed with its graph, so there is
+        nothing further to initialise here.
+        """
+        if graph is not self.graph:
+            raise ValueError('BannedSequenceTracker is already linked to a different graph.')
+
     def advance(
             self,
-            step: Step,
-            state_id: BannedTrackerStateId,
-    ) -> BannedTrackerAdvanceResult:
+            state: ConstraintState,
+            pos: int,
+            choice: str,
+    ) -> ConstraintState:
         """
-        Advance a registered tracker state after taking one graph step.
+        Advance the tracker after taking one graph choice.
 
-        Parameters
-        ----------
-        step
-            The graph step just taken, as (graph pos, choice).
-        state_id
-            Integer ID of the current banned-tracker state.
-
-        Returns
-        -------
-        BannedTrackerAdvanceResult
-            Whether the step completed a banned sequence, and otherwise the
-            integer ID of the updated tracker state.
+        Returns DEAD_STATE if the choice completes a banned sequence; otherwise
+        returns the integer ID of the updated tracker state.
         """
+        if state == DEAD_STATE:
+            return DEAD_STATE
+
+        state_id = state
+        step = (pos, choice)
         key = (step, state_id)
 
         cached = self.advance_cache.get(key)
         if cached is not None:
-            return cached
+            return DEAD_STATE if cached.banned else cached.state_id
 
-        state = self.states[state_id]
+        tracker_state = self.states[state_id]
         starts = self.starts.get(step)
 
-        if starts is None and not state:
+        if starts is None and not tracker_state:
             self.advance_cache[key] = CLEAR_ADVANCE_RESULT
-            return CLEAR_ADVANCE_RESULT
+            return self.initial_state_id
 
-        _pos, choice = step
         transitions = self.transitions.get(choice)
         next_state = set()
 
@@ -281,18 +292,18 @@ class BannedSequenceTracker:
             for watch in starts:
                 if watch is None:
                     self.advance_cache[key] = BANNED_ADVANCE_RESULT
-                    return BANNED_ADVANCE_RESULT
+                    return DEAD_STATE
 
                 next_state.add(watch)
 
         if transitions is not None:
-            for watch in state:
+            for watch in tracker_state:
                 next_watch = transitions.get(watch)
 
                 if next_watch is None:
                     if watch in transitions:
                         self.advance_cache[key] = BANNED_ADVANCE_RESULT
-                        return BANNED_ADVANCE_RESULT
+                        return DEAD_STATE
 
                     continue
 
@@ -300,15 +311,14 @@ class BannedSequenceTracker:
 
         if not next_state:
             self.advance_cache[key] = CLEAR_ADVANCE_RESULT
-            return CLEAR_ADVANCE_RESULT
+            return self.initial_state_id
 
-        result = BannedTrackerAdvanceResult(
+        next_state_id = self._get_or_register_state_id(frozenset(next_state))
+        self.advance_cache[key] = BannedTrackerAdvanceResult(
             banned=False,
-            state_id=self._get_or_register_state_id(frozenset(next_state)),
+            state_id=next_state_id,
         )
-
-        self.advance_cache[key] = result
-        return result
+        return next_state_id
 
 
 def _find_matching_subpaths(

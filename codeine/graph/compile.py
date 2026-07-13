@@ -2,7 +2,7 @@ import math
 
 from typing import Dict, NamedTuple, Tuple, List, Optional, TYPE_CHECKING
 
-from codeine.constraints.banned import BannedTrackerStateId, BannedTrackerAdvanceResult
+from codeine.constraints.banned import BannedTrackerStateId
 from codeine.constraints.base import ConstraintState, DEAD_STATE, SAFE_STATE
 from codeine.graph.nodes import CodonNode, Node, ContextNode
 
@@ -72,6 +72,7 @@ class ViewCompiler:
 
         self.banned_tracker = view.banned_tracker
         self.has_banned_tracker = not self.banned_tracker.is_trivial
+        self.banned_tracker.link(self.graph)
 
         self.constraints = tuple(view.constraints)
 
@@ -91,7 +92,7 @@ class ViewCompiler:
         # Avoids recomputing tracker advances during compilation.
         self.banned_advance_cache: Dict[
             Tuple[Node, BannedTrackerStateId, str],
-            BannedTrackerAdvanceResult,
+            ConstraintState,
         ] = {}
 
         # Traversal transition table:
@@ -322,8 +323,8 @@ class ViewCompiler:
         list of tuple
             Stack entries for child state IDs still needing compilation.
         """
-        children = []
         child_results = []
+        uncompiled_child_ids = set()
 
         state = self.states[state_id]
         node = state.node
@@ -334,25 +335,35 @@ class ViewCompiler:
             if child is None:
                 continue
 
-            advance = self._advance_banned_tracker(state.banned_tracker_state_id, node, choice)
-            if advance.banned:
+            next_banned_tracker_state_id = self._advance_banned_tracker(
+                state.banned_tracker_state_id,
+                node,
+                choice,
+            )
+            if next_banned_tracker_state_id == DEAD_STATE:
                 continue
 
             next_constraint_states = self._advance_constraints(state.constraint_states, node.pos, choice)
-
             if next_constraint_states is None:
                 continue
 
-            child_state = TraversalState(child, advance.state_id, next_constraint_states)
+            child_state = TraversalState(
+                child,
+                next_banned_tracker_state_id,
+                next_constraint_states,
+            )
             child_id = self._get_or_register_state_id(child_state)
+
+            # Keep every codon transition.
             child_results.append((choice, child_id))
 
+            # But compile each shared child only once.
             if self.totals_by_state_id[child_id] is None:
-                children.append((child_id, False))
+                uncompiled_child_ids.add(child_id)
 
         self.child_results_by_state_id[state_id] = child_results
 
-        return children
+        return [(child_id, False) for child_id in uncompiled_child_ids]
 
     def _get_choices_for_node(self, node: Node) -> List[str]:
         """
@@ -420,41 +431,31 @@ class ViewCompiler:
             banned_tracker_state_id: BannedTrackerStateId,
             node: Node,
             choice: str,
-    ) -> BannedTrackerAdvanceResult:
+    ) -> ConstraintState:
         """
-        Advance the banned-sequence tracker after taking one graph choice.
+        Advance the banned-sequence constraint after taking one graph choice.
 
-        Results are cached because the same tracker transition may be encountered
-        from many traversal states during compilation.
-
-        Parameters
-        ----------
-        banned_tracker_state_id
-            Current banned-sequence tracker state.
-        node
-            Current graph node.
-        choice
-            Graph choice taken from the current node.
-
-        Returns
-        -------
-        BannedTrackerAdvanceResult
-            Whether the choice enters a banned state and the resulting tracker
-            state.
+        This remains separate from the other constraints for now. Results are
+        cached because the same transition may be encountered from many traversal
+        states during compilation.
         """
         key = (node, banned_tracker_state_id, choice)
 
-        if key in self.banned_advance_cache:
-            return self.banned_advance_cache[key]
+        cached = self.banned_advance_cache.get(key)
+        if cached is not None:
+            return cached
 
         if not self.has_banned_tracker:
-            result = BannedTrackerAdvanceResult(banned=False, state_id=banned_tracker_state_id)
+            next_state = banned_tracker_state_id
         else:
-            step = (node.pos, choice)
-            result = self.banned_tracker.advance(step, banned_tracker_state_id)
+            next_state = self.banned_tracker.advance(
+                banned_tracker_state_id,
+                node.pos,
+                choice,
+            )
 
-        self.banned_advance_cache[key] = result
-        return result
+        self.banned_advance_cache[key] = next_state
+        return next_state
 
     def _accumulate_log_mass(
             self,
