@@ -1,14 +1,15 @@
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
-from codeine.constraints.base import PathConstraint
+from codeine.constraints.base import Constraint
+from codeine.graph.base import CodonGraph
 
 # nt_diffs, codon_diffs
 MutationDistanceState = Tuple[Optional[int], Optional[int]]
 
 
 @dataclass
-class MutationDistanceConstraint(PathConstraint):
+class MutationDistanceConstraint(Constraint):
     """
     Constrain graph walks by distance from a reference CDS.
 
@@ -113,3 +114,10 @@ class MutationDistanceConstraint(PathConstraint):
             return False
 
         return True
+
+    def link(self, graph: CodonGraph):
+        """
+        Link up to the graph.
+        """
+        if len(graph.aa_seq) != len(self._ref_codons):
+            raise ValueError('Length of linked graph does not match number of codons for reference CDS.')

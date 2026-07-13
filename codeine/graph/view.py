@@ -4,7 +4,7 @@ import random
 from itertools import islice
 from typing import Dict, Generator, List, Optional, Sequence, Union
 
-from codeine.constraints.base import PathConstraint
+from codeine.constraints.base import Constraint
 from codeine.constraints.banned import BannedSequenceTracker
 from codeine.graph.base import CodonGraph, CodonRestriction
 from codeine.graph.nodes import CodonNode
@@ -45,7 +45,7 @@ class CodonGraphView:
         self.graph = graph
         self.pinned_codons: Dict[int, List[str]] = {}
         self.banned_sequences: List[str] = self._validate_banned_sequences(banned_sequences)
-        self.path_constraint: Optional[PathConstraint] = None
+        self.path_constraint: Optional[Constraint] = None
 
         self.banned_tracker = BannedSequenceTracker(self.graph, self.banned_sequences)
 
@@ -433,7 +433,7 @@ class CodonGraphView:
         """
         self.set_banned_sequences([])
 
-    def set_path_constraint(self, path_constraint: Optional[PathConstraint]) -> None:
+    def set_path_constraint(self, path_constraint: Optional[Constraint]) -> None:
         """
         Set an additional generic path constraint for this view.
 

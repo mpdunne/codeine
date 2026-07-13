@@ -1,9 +1,14 @@
-from typing import Any, Optional
+from abc import ABC, abstractmethod
+from typing import Hashable
 
-ConstraintState = Any
+from codeine.graph.base import CodonGraph
+
+ConstraintState = Hashable
+
+DEAD_STATE = -1
 
 
-class PathConstraint:
+class Constraint(ABC):
     """
     Base class for tracking constraints applied while walking a codon graph.
     Designed to track sequence properties that can be calculated by accumulating
@@ -13,27 +18,47 @@ class PathConstraint:
     """
 
     @property
+    @abstractmethod
     def initial_state(self) -> ConstraintState:
         """
         Initial constraint-tracking state.
         """
-        return ()
+        pass
 
+    @abstractmethod
     def advance(
         self,
-        state: Any,
+        state: ConstraintState,
         pos: int,
         choice: str,
-    ) -> Optional[Any]:
+    ) -> ConstraintState:
         """
-        Advance the constraint state after taking one graph choice.
+        Return the state after taking a choice at `pos`.
+        Return `DEAD_STATE` when the choice violates the constraint.
 
-        Return None if this choice should be rejected.
-        """
-        return state
+        Parameters
+        ----------
+        state
+            The input state.
+        pos
+            The current position.
+        choice
+            The codon choice.
 
-    def is_satisfied(self, state: ConstraintState) -> bool:
+        Returns
+        -------
+        An updated state.
         """
-        Return whether this constraint is satisfied by the current state.
+        pass
+
+    @abstractmethod
+    def link(self, graph: CodonGraph) -> None:
         """
-        return True
+        Link up this constraint with a codon graph and precompute any relevant data.
+
+        Parameters
+        ----------
+        graph
+            The graph to link.
+        """
+        pass

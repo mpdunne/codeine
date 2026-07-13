@@ -7,7 +7,7 @@ from itertools import product
 from unittest.mock import MagicMock
 from scipy.stats import chisquare, chi2_contingency
 
-from codeine.constraints.base import PathConstraint
+from codeine.constraints.base import Constraint
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
 from codeine.graph.base import CodonGraph
@@ -1236,9 +1236,15 @@ def test_regression_banned_sequences_long_aa_sequence_many_banned_sequences(aa_s
     )
 
 
-class RejectAllConstraint(PathConstraint):
+class RejectAllConstraint(Constraint):
     def advance(self, state, pos, choice):
         return None
+
+    def initial_state(self):
+        return None
+
+    def link(self, graph):
+        pass
 
 
 def test_path_constraint_can_reject_all_sequences():
