@@ -59,6 +59,8 @@ class CountConstraint(Constraint):
         self.min_count = min_count
         self.max_count = max_count
 
+        self._n_positions: Optional[int] = None
+
         self._total_count: Optional[int] = None
         self._resolved_min_count: Optional[int] = None
         self._resolved_max_count: Optional[int] = None
@@ -103,6 +105,8 @@ class CountConstraint(Constraint):
         bounds, and precompute the minimum and maximum remaining counts.
         """
         n_positions = len(graph.codon_nodes)
+        self._n_positions = n_positions
+
         total_count = n_positions * self._positions_per_choice
 
         self._resolved_min_count = self._resolve_min_count(total_count)
@@ -187,11 +191,11 @@ class CountConstraint(Constraint):
         An updated state.
         """
 
-        if state == DEAD_STATE:
-            return DEAD_STATE
+        if state in (DEAD_STATE, SAFE_STATE):
+            return state
 
-        if state == SAFE_STATE:
-            return SAFE_STATE
+        if pos < 1 or pos > self._n_positions:
+            return state
 
         count = state + self._choice_counts[choice]
 
