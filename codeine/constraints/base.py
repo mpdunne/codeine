@@ -5,6 +5,7 @@ from codeine.graph.base import CodonGraph
 
 ConstraintState = Hashable
 
+SAFE_STATE = -2
 DEAD_STATE = -1
 
 

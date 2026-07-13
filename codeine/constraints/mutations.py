@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
-from codeine.constraints.base import Constraint
+from codeine.constraints.base import Constraint, ConstraintState, DEAD_STATE, SAFE_STATE
 from codeine.graph.base import CodonGraph
 
 # nt_diffs, codon_diffs
@@ -66,7 +66,7 @@ class MutationDistanceConstraint(Constraint):
         state: MutationDistanceState,
         pos: int,
         choice: str,
-    ) -> Optional[MutationDistanceState]:
+    ) -> ConstraintState:
         """
         Advance mutation-distance tracking by one graph choice. The state updates on each
         advance by adding the number of nt/codon differences given each next choice.
@@ -77,43 +77,58 @@ class MutationDistanceConstraint(Constraint):
         if pos < self.first_pos or pos > self.last_pos:
             return state
 
+        if state == DEAD_STATE:
+            return DEAD_STATE
+
+        if state == SAFE_STATE:
+            return SAFE_STATE
+
         nt_diffs, codon_diffs = state
         ref_codon = self._ref_codons[pos - 1]
 
         nt_diff = (
-            (ref_codon[0] != choice[0])
-            + (ref_codon[1] != choice[1])
-            + (ref_codon[2] != choice[2])
+                (ref_codon[0] != choice[0])
+                + (ref_codon[1] != choice[1])
+                + (ref_codon[2] != choice[2])
         )
         codon_diff = int(nt_diff != 0)
+
+        remaining_codons = self.last_pos - pos
 
         if self._tracks_nts:
             nt_diffs += nt_diff
 
             if self.max_nts is not None and nt_diffs > self.max_nts:
-                return None
+                return DEAD_STATE
+
+            if self.min_nts is not None and nt_diffs + 3 * remaining_codons < self.min_nts:
+                return DEAD_STATE
+
+            nts_safe = (self.min_nts is None or nt_diffs >= self.min_nts) and \
+                       (self.max_nts is None or nt_diffs + 3 * remaining_codons <= self.max_nts)
+
+        else:
+            nts_safe = True
 
         if self._tracks_codons:
             codon_diffs += codon_diff
 
             if self.max_codons is not None and codon_diffs > self.max_codons:
-                return None
+                return DEAD_STATE
+
+            if self.min_codons is not None and codon_diffs + remaining_codons < self.min_codons:
+                return DEAD_STATE
+
+            codons_safe = (self.min_codons is None or codon_diffs >= self.min_codons) and \
+                          (self.max_codons is None or codon_diffs + remaining_codons <= self.max_codons)
+
+        else:
+            codons_safe = True
+
+        if nts_safe and codons_safe:
+            return SAFE_STATE
 
         return nt_diffs, codon_diffs
-
-    def is_satisfied(self, state: MutationDistanceState) -> bool:
-        """
-        Check whether a given state satisfies minimum distances.
-        """
-        nt_diffs, codon_diffs = state
-
-        if self.min_nts is not None and nt_diffs < self.min_nts:
-            return False
-
-        if self.min_codons is not None and codon_diffs < self.min_codons:
-            return False
-
-        return True
 
     def link(self, graph: CodonGraph):
         """

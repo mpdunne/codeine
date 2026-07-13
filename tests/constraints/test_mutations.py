@@ -1,4 +1,5 @@
 from codeine.constraints.mutations import MutationDistanceConstraint
+from codeine.constraints.base import DEAD_STATE, SAFE_STATE
 
 
 def test_mutation_distance_ignores_non_codon_positions():
@@ -19,15 +20,14 @@ def test_mutation_distance_initial_state_tracks_only_requested_distances():
 
 
 def test_mutation_distance_counts_nt_and_codon_differences():
-    constraint = MutationDistanceConstraint('AAA', min_nts=1, min_codons=1)
-
+    constraint = MutationDistanceConstraint('AAATTAAAT', min_nts=1, min_codons=1)
     state = constraint.advance(constraint.initial_state, 1, 'TTT')
 
     assert state == (3, 1)
 
 
 def test_mutation_distance_accumulates_across_codons():
-    constraint = MutationDistanceConstraint('AAAATG', min_nts=1, min_codons=1)
+    constraint = MutationDistanceConstraint('AAAATGTTAAAT', min_nts=1, min_codons=1)
     state = constraint.initial_state
 
     state = constraint.advance(state, 1, 'AAT',)
@@ -36,37 +36,64 @@ def test_mutation_distance_accumulates_across_codons():
     assert state == (2, 2)
 
 
-def test_mutation_distance_rejects_when_max_nts_exceeded():
+def test_mutation_distance_dead_when_max_nts_exceeded():
     constraint = MutationDistanceConstraint('ATG', max_nts=0)
     state = constraint.advance(constraint.initial_state, 1, 'ATA',)
 
-    assert state is None
+    assert state is DEAD_STATE
 
 
-def test_mutation_distance_rejects_when_max_codons_exceeded():
+def test_mutation_distance_dead_when_max_codons_exceeded():
     constraint = MutationDistanceConstraint('ATG', max_codons=0)
     state = constraint.advance(constraint.initial_state, 1, 'ATA')
 
-    assert state is None
+    assert state is DEAD_STATE
 
 
-def test_mutation_distance_accepts_final_enforces_min_nts():
+def test_mutation_distance_dead_when_max_nts_exceeded():
+    constraint = MutationDistanceConstraint('ATG', max_nts=0)
+    state = constraint.advance(constraint.initial_state, 1, 'ATA')
+
+    assert state == DEAD_STATE
+
+
+def test_mutation_distance_dead_when_min_nts_unreachable():
     constraint = MutationDistanceConstraint('ATG', min_nts=1)
+    state = constraint.advance(constraint.initial_state, 1, 'ATG')
 
-    assert not constraint.is_satisfied((0, None))
-    assert constraint.is_satisfied((1, None))
+    assert state == DEAD_STATE
 
 
-def test_mutation_distance_accepts_final_enforces_min_codons():
+def test_mutation_distance_dead_when_min_codons_unreachable():
     constraint = MutationDistanceConstraint('ATG', min_codons=1)
+    state = constraint.advance(constraint.initial_state, 1, 'ATG')
 
-    assert not constraint.is_satisfied((None, 0))
-    assert constraint.is_satisfied((None, 1))
+    assert state == DEAD_STATE
 
 
-def test_mutation_distance_accepts_final_enforces_both_minimums():
-    constraint = MutationDistanceConstraint('ATG', min_nts=2, min_codons=1)
+def test_mutation_distance_safe_when_minimums_are_reached():
+    constraint = MutationDistanceConstraint('ATGAAA', min_nts=1, min_codons=1)
+    state = constraint.advance(constraint.initial_state, 1, 'ATA')
 
-    assert not constraint.is_satisfied((1, 1))
-    assert not constraint.is_satisfied((2, 0))
-    assert constraint.is_satisfied((2, 1))
+    assert state == SAFE_STATE
+
+
+def test_mutation_distance_not_safe_when_maximum_can_still_be_exceeded():
+    constraint = MutationDistanceConstraint('ATGAAA', min_nts=1, max_nts=2)
+    state = constraint.advance(constraint.initial_state, 1, 'ATA')
+
+    assert state == (1, None)
+
+
+def test_mutation_distance_safe_when_maximum_is_unreachable():
+    constraint = MutationDistanceConstraint('ATG', min_nts=1, max_nts=2)
+    state = constraint.advance(constraint.initial_state, 1, 'ATA')
+
+    assert state == SAFE_STATE
+
+
+def test_mutation_distance_safe_at_valid_final_state():
+    constraint = MutationDistanceConstraint('ATG', min_nts=1, min_codons=1)
+    state = constraint.advance(constraint.initial_state, 1, 'ATA')
+
+    assert state == SAFE_STATE

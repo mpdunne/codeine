@@ -2,11 +2,10 @@ import math
 from numbers import Real
 from typing import Dict, Optional
 
-from codeine.constraints.base import Constraint, ConstraintState, DEAD_STATE
+from codeine.constraints.base import Constraint, ConstraintState, DEAD_STATE, SAFE_STATE
 from codeine.graph.base import CodonGraph
 
 
-SAFE_STATE = -2
 INITIAL_STATE = 0
 
 

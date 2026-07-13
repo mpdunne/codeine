@@ -3,7 +3,7 @@ import math
 from typing import Dict, NamedTuple, Tuple, List, Optional, TYPE_CHECKING
 
 from codeine.constraints.banned import BannedTrackerStateId, BannedTrackerAdvanceResult
-from codeine.constraints.base import ConstraintState
+from codeine.constraints.base import ConstraintState, DEAD_STATE, SAFE_STATE
 from codeine.graph.nodes import CodonNode, Node, ContextNode
 
 if TYPE_CHECKING:
@@ -75,6 +75,9 @@ class ViewCompiler:
 
         self.path_constraint = view.path_constraint
         self.has_path_constraint = self.path_constraint is not None
+
+        if self.has_path_constraint:
+            self.path_constraint.link(self.graph)
 
         self.state_ids: Dict[TraversalState, int] = {}
         self.states: List[TraversalState] = []
@@ -228,23 +231,12 @@ class ViewCompiler:
         banned-sequence tracker or path constraint would not have reached this
         state.
 
-        The only remaining decision is whether the final path-constraint state is
-        acceptable. If so, this terminal state contributes one complete sequence
-        with log mass 0.0. Otherwise, it contributes no sequences.
-
         Parameters
         ----------
         state_id
             ID of the terminal traversal state being compiled.
         """
-        state = self.states[state_id]
-
-        if not self.has_path_constraint or self.path_constraint.is_satisfied(state.constraint_state):
-            total = (1, 0.0)
-        else:
-            total = (0, -math.inf)
-
-        self.totals_by_state_id[state_id] = total
+        self.totals_by_state_id[state_id] = (1, 0.0)
         self.choices_by_state_id[state_id] = {}
 
     def _compile_state(self, state_id: int) -> None:
@@ -340,10 +332,13 @@ class ViewCompiler:
                 continue
 
             if self.has_path_constraint:
-                next_constraint_state = self.path_constraint.advance(state.constraint_state, node.pos, choice)
+                if state.constraint_state == SAFE_STATE:
+                    next_constraint_state = SAFE_STATE
+                else:
+                    next_constraint_state = self.path_constraint.advance(state.constraint_state, node.pos, choice)
 
-                if next_constraint_state is None:
-                    continue
+                    if next_constraint_state == DEAD_STATE:
+                        continue
             else:
                 next_constraint_state = ()
 
