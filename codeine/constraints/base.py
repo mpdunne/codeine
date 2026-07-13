@@ -63,3 +63,10 @@ class Constraint(ABC):
             The graph to link.
         """
         pass
+
+    @property
+    def is_trivial(self) -> bool:
+        """
+        Whether this constraint can never reject any path.
+        """
+        return False

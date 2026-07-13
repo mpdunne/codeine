@@ -136,3 +136,10 @@ class MutationDistanceConstraint(Constraint):
         """
         if len(graph.aa_seq) != len(self._ref_codons):
             raise ValueError('Length of linked graph does not match number of codons for reference CDS.')
+
+    @property
+    def is_trivial(self) -> bool:
+        """
+        Whether this constraint can never reject any path.
+        """
+        return not self._tracks_nts and not self._tracks_codons

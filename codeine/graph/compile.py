@@ -68,13 +68,12 @@ class ViewCompiler:
         self.view = view
         self.graph = view.graph
 
-        self.constraints = (
-            *((view.banned_tracker,) if not view.banned_tracker.is_trivial else ()),
-            *view.constraints,
-        )
+        constraints = (view.banned_tracker, *view.constraints,)
 
-        for constraint in self.constraints:
+        for constraint in constraints:
             constraint.link(self.graph)
+
+        self.constraints = tuple(constraint for constraint in constraints if not constraint.is_trivial)
 
         self.state_ids: Dict[TraversalState, int] = {}
         self.states: List[TraversalState] = []
@@ -221,9 +220,8 @@ class ViewCompiler:
         Compile a terminal traversal state.
 
         By the time a terminal state is reached, all graph choices have already
-        been processed, including the right context. Choices rejected by the
-        banned-sequence tracker or path constraint would not have reached this
-        state.
+        been processed, including the right context. Choices rejected by the constraint
+        would not have reached this state.
 
         Parameters
         ----------

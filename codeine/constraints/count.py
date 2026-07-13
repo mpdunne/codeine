@@ -225,3 +225,10 @@ class CountConstraint(Constraint):
             return SAFE_STATE
 
         return count
+
+    @property
+    def is_trivial(self) -> bool:
+        """
+        Whether this constraint can never reject any path.
+        """
+        return self._initial_state == SAFE_STATE
