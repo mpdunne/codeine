@@ -435,7 +435,7 @@ class CodingSpace:
 
         if forbidden_sequences:
             constraints = (
-                BannedSequenceConstraint(self.view.graph, forbidden_sequences),
+                BannedSequenceConstraint(forbidden_sequences),
                 *constraints,
             )
 

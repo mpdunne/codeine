@@ -63,19 +63,22 @@ class BannedSequenceConstraint(Constraint):
         choice -> (path_ix, matched_length) -> banned | next watch | dead
     """
 
-    def __init__(self, graph: CodonGraph, banned_sequences: Sequence[str]) -> None:
+    def __init__(self, banned_sequences: Sequence[str]) -> None:
         """
         Constructor for the BannedSequenceTracker class.
 
         Parameters
         ----------
-        graph
-            The codon graph on which to operate.
         banned_sequences
             A collection of sequences that must not occur in generated paths.
         """
-        self.graph = graph
-        self.banned_sequences = tuple(sequence.upper() for sequence in banned_sequences)
+        if isinstance(banned_sequences, str):
+            banned_sequences = [banned_sequences]
+
+        if any(s == '' for s in banned_sequences):
+            raise ValueError('Banned sequences cannot be empty.')
+
+        self.banned_sequences = tuple(set(sequence.upper() for sequence in banned_sequences))
 
         initial_tracker_state: BannedTrackerState = frozenset()
         self.initial_state_id: int = 0
@@ -85,9 +88,10 @@ class BannedSequenceConstraint(Constraint):
 
         self.advance_cache: Dict[Tuple[Step, BannedTrackerStateId], ConstraintState] = {}
 
-        self.paths = self._find_banned_paths()
-        self.starts = self._build_starts()
-        self.transitions = self._build_transitions()
+        self.graph = None
+        self.paths = None
+        self.starts = None
+        self.transitions = None
 
     @property
     def initial_state(self) -> ConstraintState:
@@ -236,8 +240,11 @@ class BannedSequenceConstraint(Constraint):
         The banned tracker is currently constructed with its graph, so there is
         nothing further to initialise here.
         """
-        if graph is not self.graph:
-            raise ValueError('BannedSequenceTracker is already linked to a different graph.')
+        self.banned_sequences = tuple(graph.tt.normalise_sequence(seq) for seq in self.banned_sequences)
+        self.graph = graph
+        self.paths = self._find_banned_paths()
+        self.starts = self._build_starts()
+        self.transitions = self._build_transitions()
 
     def advance(
             self,

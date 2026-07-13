@@ -580,3 +580,27 @@ def test_contains_normalises_dna_input_for_rna_space():
     space = CodingSpace('M', rna=True)
     assert space.contains('ATG')
     assert 'ATG' in space
+
+
+def test_setting_forbidden_motifs_rebulids_constraint():
+    space = CodingSpace('MIKEY')
+    space.set_forbidden_motifs(['GAATTC'])
+
+    constraints = space.view.constraints
+    banned_sequence_constraints = [c for c in constraints if isinstance(c, BannedSequenceConstraint)]
+    assert len(banned_sequence_constraints) == 1
+    bsc = banned_sequence_constraints[0]
+
+    space.set_forbidden_motifs(['GAATTC'])
+    constraints = space.view.constraints
+    banned_sequence_constraints = [c for c in constraints if isinstance(c, BannedSequenceConstraint)]
+    assert len(banned_sequence_constraints) == 1
+    bsc_new = banned_sequence_constraints[0]
+    assert bsc_new is not bsc
+
+    space.set_forbidden_motifs(['GAATTC', 'ccgatt'])
+    constraints = space.view.constraints
+    banned_sequence_constraints = [c for c in constraints if isinstance(c, BannedSequenceConstraint)]
+    assert len(banned_sequence_constraints) == 1
+    bsc_new = banned_sequence_constraints[0]
+    assert bsc_new is not bsc
