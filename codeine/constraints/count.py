@@ -68,6 +68,11 @@ class CountConstraint(Constraint):
         self._min_remaining = None
         self._max_remaining = None
 
+        self._min_viable_count = None
+        self._max_viable_count = None
+        self._min_safe_count = None
+        self._max_safe_count = None
+
         self._initial_state = INITIAL_STATE
 
     @staticmethod
@@ -125,6 +130,18 @@ class CountConstraint(Constraint):
             ix = pos - 1
             self._min_remaining[ix] = min(counts) + self._min_remaining[ix + 1]
             self._max_remaining[ix] = max(counts) + self._max_remaining[ix + 1]
+
+        # Precompute the accumulated-count thresholds used by advance().
+        self._min_viable_count = [0] * (n_positions + 1)
+        self._max_viable_count = [0] * (n_positions + 1)
+        self._min_safe_count = [0] * (n_positions + 1)
+        self._max_safe_count = [0] * (n_positions + 1)
+
+        for pos in range(n_positions + 1):
+            self._min_viable_count[pos] = self._resolved_min_count - self._max_remaining[pos]
+            self._max_viable_count[pos] = self._resolved_max_count - self._min_remaining[pos]
+            self._min_safe_count[pos] = self._resolved_min_count - self._min_remaining[pos]
+            self._max_safe_count[pos] = self._resolved_max_count - self._max_remaining[pos]
 
         min_possible = self._min_remaining[0]
         max_possible = self._max_remaining[0]
@@ -199,15 +216,12 @@ class CountConstraint(Constraint):
 
         count = state + self._choice_counts[choice]
 
-        min_possible = count + self._min_remaining[pos]
-        max_possible = count + self._max_remaining[pos]
-
         # If there's no way to satisfy the bounds from here, we're dead :(
-        if max_possible < self._resolved_min_count or min_possible > self._resolved_max_count:
+        if count < self._min_viable_count[pos] or count > self._max_viable_count[pos]:
             return DEAD_STATE
 
         # If every sequence from here is guaranteed to satisfy the bounds, mark the constraint as safe.
-        if min_possible >= self._resolved_min_count and max_possible <= self._resolved_max_count:
+        if self._min_safe_count[pos] <= count <= self._max_safe_count[pos]:
             return SAFE_STATE
 
         return count
