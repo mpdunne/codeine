@@ -2,7 +2,7 @@ import math
 import random
 
 from itertools import islice
-from typing import Dict, Generator, List, Optional, Sequence, Union
+from typing import Dict, Generator, List, Optional, Sequence, Union, Tuple
 
 from codeine.constraints.base import Constraint
 from codeine.constraints.banned import BannedSequenceTracker
@@ -45,7 +45,7 @@ class CodonGraphView:
         self.graph = graph
         self.pinned_codons: Dict[int, List[str]] = {}
         self.banned_sequences: List[str] = self._validate_banned_sequences(banned_sequences)
-        self.path_constraint: Optional[Constraint] = None
+        self.constraints: Tuple[Constraint, ...] = ()
 
         self.banned_tracker = BannedSequenceTracker(self.graph, self.banned_sequences)
 
@@ -335,7 +335,7 @@ class CodonGraphView:
 
         view.pinned_codons = self.pinned_codons.copy()
         view.banned_sequences = self.banned_sequences.copy()
-        view.path_constraint = self.path_constraint
+        view.constraints = self.constraints
         view.banned_tracker = self.banned_tracker
 
         view._compiled = self._compiled
@@ -433,20 +433,23 @@ class CodonGraphView:
         """
         self.set_banned_sequences([])
 
-    def set_path_constraint(self, path_constraint: Optional[Constraint]) -> None:
+    def set_constraints(self, constraints: Sequence[Constraint]) -> None:
         """
-        Set an additional generic path constraint for this view.
+        Set the path constraints for this view.
 
-        Pass None to remove any path constraint.
+        Parameters
+        ----------
+        constraints
+            Constraints to apply during graph traversal.
         """
-        self.path_constraint = path_constraint
+        self.constraints = tuple(constraints)
         self._requires_compile = True
 
-    def clear_path_constraint(self) -> None:
+    def clear_constraints(self) -> None:
         """
-        Remove the additional generic path constraint from this view.
+        Remove all path constraints from this view.
         """
-        self.set_path_constraint(None)
+        self.set_constraints(())
 
     @property
     def aa_seq(self) -> str:

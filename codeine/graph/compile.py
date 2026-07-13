@@ -21,7 +21,7 @@ class TraversalState(NamedTuple):
     """
     node: Node
     banned_tracker_state_id: BannedTrackerStateId
-    constraint_state: ConstraintState
+    constraint_states: Tuple[ConstraintState, ...]
 
 
 class ChoiceResult(NamedTuple):
@@ -73,11 +73,10 @@ class ViewCompiler:
         self.banned_tracker = view.banned_tracker
         self.has_banned_tracker = not self.banned_tracker.is_trivial
 
-        self.path_constraint = view.path_constraint
-        self.has_path_constraint = self.path_constraint is not None
+        self.constraints = tuple(view.constraints)
 
-        if self.has_path_constraint:
-            self.path_constraint.link(self.graph)
+        for constraint in self.constraints:
+            constraint.link(self.graph)
 
         self.state_ids: Dict[TraversalState, int] = {}
         self.states: List[TraversalState] = []
@@ -90,17 +89,24 @@ class ViewCompiler:
         # Banned-sequence tracker transitions:
         # (node, tracker state, choice) -> tracker result
         # Avoids recomputing tracker advances during compilation.
-        self.banned_advance_cache: Dict[Tuple[Node, BannedTrackerStateId, str], BannedTrackerAdvanceResult] = {}
+        self.banned_advance_cache: Dict[
+            Tuple[Node, BannedTrackerStateId, str],
+            BannedTrackerAdvanceResult,
+        ] = {}
 
         # Traversal transition table:
         # state ID -> [(choice, child state ID), ...]
         # Avoids rediscovering successor states during compilation.
-        self.child_results_by_state_id: List[Optional[List[Tuple[str, int]]]] = []
+        self.child_results_by_state_id: List[
+            Optional[List[Tuple[str, int]]]
+        ] = []
 
         # Compiled graph choices (lookup):
         # state ID -> choice -> ChoiceResult
         # Used for fast sequence validation and graph traversal in the graph view.
-        self.choices_by_state_id: List[Optional[Dict[str, ChoiceResult]]] = []
+        self.choices_by_state_id: List[
+            Optional[Dict[str, ChoiceResult]]
+        ] = []
 
         # The cached log-ified codon weights, to avoid repeated log calculations
         self.log_codon_weights = {
@@ -109,7 +115,8 @@ class ViewCompiler:
             if weight > 0
         }
 
-        # Cached version of the choices available at each node, taking into account fixed codons & pins
+        # Cached version of the choices available at each node, taking into
+        # account fixed codons & pins.
         self.choices_by_node = {
             node: tuple(self._get_choices_for_node(node))
             for node in self.graph.nodes
@@ -180,14 +187,15 @@ class ViewCompiler:
         TraversalState
             Starting state for graph compilation.
         """
-        if self.has_path_constraint:
-            constraint_state = self.path_constraint.initial_state
-        else:
-            constraint_state = ()
+        constraint_states = tuple(constraint.initial_state for constraint in self.constraints)
 
         banned_tracker_state_id = 0
 
-        return TraversalState(self.graph.initial_node, banned_tracker_state_id, constraint_state)
+        return TraversalState(
+            self.graph.initial_node,
+            banned_tracker_state_id,
+            constraint_states,
+        )
 
     def _compile_from(self, initial_state_id: int) -> None:
         """
@@ -301,8 +309,8 @@ class ViewCompiler:
         """
         Return child state IDs reached by taking each outgoing graph choice.
 
-        Choices rejected by the banned-sequence tracker or path constraint are skipped.
-        Only child states that have not yet been compiled are returned.
+        Choices rejected by the banned-sequence tracker or path constraints are
+        skipped. Only child states that have not yet been compiled are returned.
 
         Parameters
         ----------
@@ -327,22 +335,15 @@ class ViewCompiler:
                 continue
 
             advance = self._advance_banned_tracker(state.banned_tracker_state_id, node, choice)
-
             if advance.banned:
                 continue
 
-            if self.has_path_constraint:
-                if state.constraint_state == SAFE_STATE:
-                    next_constraint_state = SAFE_STATE
-                else:
-                    next_constraint_state = self.path_constraint.advance(state.constraint_state, node.pos, choice)
+            next_constraint_states = self._advance_constraints(state.constraint_states, node.pos, choice)
 
-                    if next_constraint_state == DEAD_STATE:
-                        continue
-            else:
-                next_constraint_state = ()
+            if next_constraint_states is None:
+                continue
 
-            child_state = TraversalState(child, advance.state_id, next_constraint_state)
+            child_state = TraversalState(child, advance.state_id, next_constraint_states)
             child_id = self._get_or_register_state_id(child_state)
             child_results.append((choice, child_id))
 
@@ -378,6 +379,38 @@ class ViewCompiler:
 
         elif isinstance(node, ContextNode):
             return [node.sequence]
+
+    def _advance_constraints(
+            self,
+            constraint_states: Tuple[ConstraintState, ...],
+            pos: int,
+            choice: str,
+    ) -> Optional[Tuple[ConstraintState, ...]]:
+        """
+        Advance all active constraints after taking one graph choice.
+
+        Parameters
+        ----------
+        constraint_states
+            Current state of each constraint.
+        pos
+            Position of the current graph node.
+        choice
+            Graph choice taken from the current node.
+
+        Returns
+        -------
+        tuple or None
+            The updated constraint states, or None if any constraint rejects the
+            graph choice.
+        """
+        next_states = []
+
+        for constraint, state in zip(self.constraints, constraint_states):
+            next_state = constraint.advance(state, pos, choice)
+            next_states.append(next_state)
+
+        return tuple(next_states)
 
     def _advance_banned_tracker(
             self,
