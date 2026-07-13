@@ -5,27 +5,24 @@ from itertools import islice
 from typing import Dict, Generator, List, Optional, Sequence, Union, Tuple
 
 from codeine.constraints.base import Constraint
-from codeine.constraints.banned import BannedSequenceConstraint
 from codeine.graph.base import CodonGraph, CodonRestriction
 from codeine.graph.nodes import CodonNode
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
-from codeine.utils.display import format_forbidden_motifs, format_count, format_restrictions
+from codeine.utils.display import format_count, format_restrictions
 from codeine.utils.sampling import Seedable, Sampler, SingletonSampler, UniformSampler, WeightedSampler
 from codeine.graph.compile import ViewCompiler
 
 
 class CodonGraphView:
     """
-    View of a codon graph. The view allows optional temporary constraints such as pinned codons
-    and banned nucleotide sequences to be added without affecting the underlying codon graph.
+    View of a codon graph with optional constraints and temporary codon pins.
 
     It is on this object that most operations (counting, sampling, enumeration....) take place.
     """
 
     def __init__(self,
                  graph: CodonGraph,
-                 banned_sequences: Optional[Sequence[str]] = None,
                  constraints: Optional[Sequence[Constraint]] = None,
                  seed: Seedable = None,
                  ) -> None:
@@ -36,8 +33,6 @@ class CodonGraphView:
         ----------
         graph
             The underlying codon graph.
-        banned_sequences
-            Nucleotide sequences that are forbidden in this view.
         constraints
             Any constraint trackers that we wish to use when traversing coding space.
         seed
@@ -47,10 +42,7 @@ class CodonGraphView:
 
         self.graph = graph
         self.pinned_codons: Dict[int, List[str]] = {}
-        self.banned_sequences: List[str] = self._validate_banned_sequences(banned_sequences)
-        self.constraints: Tuple[Constraint, ...] = constraints or ()
-
-        self.banned_tracker = BannedSequenceConstraint(self.graph, self.banned_sequences)
+        self.constraints: Tuple[Constraint, ...] = tuple(constraints or ())
 
         self._compiled = None
         self._requires_compile = True
@@ -122,15 +114,6 @@ class CodonGraphView:
                 *format_restrictions(
                     self.graph.codon_restrictions,
                     label='restricted positions',
-                ),
-                '',
-                ]
-
-        if self.banned_sequences:
-            lines += [
-                'Banned sequences:',
-                *format_forbidden_motifs(
-                    self.banned_sequences,
                 ),
                 '',
                 ]
@@ -337,9 +320,7 @@ class CodonGraphView:
         view._rng.setstate(self._rng.getstate())
 
         view.pinned_codons = self.pinned_codons.copy()
-        view.banned_sequences = self.banned_sequences.copy()
         view.constraints = self.constraints
-        view.banned_tracker = self.banned_tracker
 
         view._compiled = self._compiled
         view._requires_compile = self._requires_compile
@@ -353,8 +334,7 @@ class CodonGraphView:
 
     def compile(self) -> None:
         """
-        Calculate all graph properties that are derived from its structure plus constraints
-        such as pins and banned sequences.
+        Calculate graph properties derived from its structure, constraints, and pins.
 
         Remember to do this after editing any constraints!
         """
@@ -418,23 +398,6 @@ class CodonGraphView:
         """
         self.pinned_codons.clear()
         self._requires_compile = True
-
-    def set_banned_sequences(self, banned_sequences: Sequence[str]) -> None:
-        """
-        Set banned nucleotide sequences for this view.
-
-        Banned-sequence tracking depends only on the graph and banned sequences,
-        not on temporary pins, so it is rebuilt only when the banned list changes.
-        """
-        self.banned_sequences = self._validate_banned_sequences(banned_sequences)
-        self.banned_tracker = BannedSequenceConstraint(self.graph, self.banned_sequences)
-        self._requires_compile = True
-
-    def clear_banned_sequences(self) -> None:
-        """
-        Remove all banned sequence restrictions from this view.
-        """
-        self.set_banned_sequences([])
 
     def set_constraints(self, constraints: Sequence[Constraint]) -> None:
         """
@@ -509,32 +472,6 @@ class CodonGraphView:
             self.compile()
 
         return self._compiled.n_valid_sequences
-
-    def _validate_banned_sequences(self, banned_sequences: Optional[Sequence[str]]) -> List[str]:
-        """
-        Check the inputted banned sequences make sense, and return normalised versions of them.
-
-        Parameters
-        ----------
-        banned_sequences
-            The list of banned sequences.
-
-        Returns
-        -------
-        A normalised, de-duplicated list of banned sequences.
-        """
-        banned_sequences = banned_sequences or []
-
-        normalised = []
-        for sequence in banned_sequences:
-            sequence = self.translation_table.normalise_sequence(sequence)
-
-            if len(sequence) == 0:
-                raise ValueError('Banned sequences cannot be empty.')
-
-            normalised.append(sequence)
-
-        return sorted(set(normalised))
 
     def _sampler_for_state_id(self, state_id: int) -> Optional[Sampler]:
         """

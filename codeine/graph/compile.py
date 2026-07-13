@@ -68,7 +68,7 @@ class ViewCompiler:
         self.view = view
         self.graph = view.graph
 
-        constraints = (view.banned_tracker, *view.constraints,)
+        constraints = view.constraints
 
         for constraint in constraints:
             constraint.link(self.graph)

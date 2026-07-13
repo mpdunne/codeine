@@ -1,5 +1,4 @@
 import pickle
-import random
 
 from pathlib import Path
 from typing import Dict, Generator, List, Optional, Sequence, Tuple, Union, TYPE_CHECKING
@@ -7,6 +6,7 @@ from typing import Dict, Generator, List, Optional, Sequence, Tuple, Union, TYPE
 if TYPE_CHECKING:
     from codeine.space.mutation import MutationSpace
 
+from codeine.constraints.banned import BannedSequenceConstraint
 from codeine.graph.base import CodonGraph, CodonRestriction
 from codeine.motifs.validate import expand_and_validate_sequence_constraints, ForbiddenMotifs
 from codeine.motifs.restriction import RestrictionSite
@@ -419,14 +419,27 @@ class CodingSpace:
 
     def _update_forbidden_sequences(self) -> None:
         """
-        Rebuild concrete forbidden sequences and apply them to the view.
+        Rebuild concrete forbidden sequences and update their constraint.
         """
         forbidden_sequences = expand_and_validate_sequence_constraints(
             forbidden_motifs=self.forbidden_motifs,
             max_homopolymer=self.max_homopolymer,
             rna=self.translation_table.rna,
         )
-        self.view.set_banned_sequences(forbidden_sequences)
+
+        constraints = tuple(
+            constraint
+            for constraint in self.view.constraints
+            if not isinstance(constraint, BannedSequenceConstraint)
+        )
+
+        if forbidden_sequences:
+            constraints = (
+                BannedSequenceConstraint(self.view.graph,forbidden_sequences),
+                *constraints,
+            )
+
+        self.view.set_constraints(constraints)
 
     @staticmethod
     def _resolve_tables(
