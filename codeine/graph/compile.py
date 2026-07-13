@@ -2,8 +2,7 @@ import math
 
 from typing import Dict, NamedTuple, Tuple, List, Optional, TYPE_CHECKING
 
-from codeine.constraints.banned import BannedTrackerStateId
-from codeine.constraints.base import ConstraintState, DEAD_STATE, SAFE_STATE
+from codeine.constraints.base import ConstraintState, DEAD_STATE
 from codeine.graph.nodes import CodonNode, Node, ContextNode
 
 if TYPE_CHECKING:
@@ -14,13 +13,12 @@ class TraversalState(NamedTuple):
     """
     The traversal state consists of the current node, plus a summary of the relevant
     parts of how we got there. For example, it tracks whether we have seen parts of
-    banned sequences, and can track nucleotide or codon properties.
+    constraints, such as banned sequences or nucleotide/codon properties.
 
     Different graph traversal histories that produce the same traversal state are
     collapsed and are equivalent under this framework.
     """
     node: Node
-    banned_tracker_state_id: BannedTrackerStateId
     constraint_states: Tuple[ConstraintState, ...]
 
 
@@ -70,11 +68,10 @@ class ViewCompiler:
         self.view = view
         self.graph = view.graph
 
-        self.banned_tracker = view.banned_tracker
-        self.has_banned_tracker = not self.banned_tracker.is_trivial
-        self.banned_tracker.link(self.graph)
-
-        self.constraints = tuple(view.constraints)
+        self.constraints = (
+            *((view.banned_tracker,) if not view.banned_tracker.is_trivial else ()),
+            *view.constraints,
+        )
 
         for constraint in self.constraints:
             constraint.link(self.graph)
@@ -86,14 +83,6 @@ class ViewCompiler:
         # state ID -> (descendant count, descendant log mass)
         # Avoids repeatedly recomputing subtree sizes and probability masses.
         self.totals_by_state_id: List[Optional[Tuple[int, float]]] = []
-
-        # Banned-sequence tracker transitions:
-        # (node, tracker state, choice) -> tracker result
-        # Avoids recomputing tracker advances during compilation.
-        self.banned_advance_cache: Dict[
-            Tuple[Node, BannedTrackerStateId, str],
-            ConstraintState,
-        ] = {}
 
         # Traversal transition table:
         # state ID -> [(choice, child state ID), ...]
@@ -180,8 +169,7 @@ class ViewCompiler:
         """
         Return the starting traversal state.
 
-        The initial state starts at the graph's initial node, with fresh banned-
-        sequence and path-constraint states if those systems are active.
+        The initial state starts at the graph's initial node, with fresh constraint states.
 
         Returns
         -------
@@ -190,11 +178,8 @@ class ViewCompiler:
         """
         constraint_states = tuple(constraint.initial_state for constraint in self.constraints)
 
-        banned_tracker_state_id = 0
-
         return TraversalState(
             self.graph.initial_node,
-            banned_tracker_state_id,
             constraint_states,
         )
 
@@ -310,8 +295,7 @@ class ViewCompiler:
         """
         Return child state IDs reached by taking each outgoing graph choice.
 
-        Choices rejected by the banned-sequence tracker or path constraints are
-        skipped. Only child states that have not yet been compiled are returned.
+        Choices rejected by constraints are skipped. Only child states that have not yet been compiled are returned.
 
         Parameters
         ----------
@@ -335,21 +319,16 @@ class ViewCompiler:
             if child is None:
                 continue
 
-            next_banned_tracker_state_id = self._advance_banned_tracker(
-                state.banned_tracker_state_id,
-                node,
+            next_constraint_states = self._advance_constraints(
+                state.constraint_states,
+                node.pos,
                 choice,
             )
-            if next_banned_tracker_state_id == DEAD_STATE:
-                continue
-
-            next_constraint_states = self._advance_constraints(state.constraint_states, node.pos, choice)
             if next_constraint_states is None:
                 continue
 
             child_state = TraversalState(
                 child,
-                next_banned_tracker_state_id,
                 next_constraint_states,
             )
             child_id = self._get_or_register_state_id(child_state)
@@ -425,37 +404,6 @@ class ViewCompiler:
             next_states.append(next_state)
 
         return tuple(next_states)
-
-    def _advance_banned_tracker(
-            self,
-            banned_tracker_state_id: BannedTrackerStateId,
-            node: Node,
-            choice: str,
-    ) -> ConstraintState:
-        """
-        Advance the banned-sequence constraint after taking one graph choice.
-
-        This remains separate from the other constraints for now. Results are
-        cached because the same transition may be encountered from many traversal
-        states during compilation.
-        """
-        key = (node, banned_tracker_state_id, choice)
-
-        cached = self.banned_advance_cache.get(key)
-        if cached is not None:
-            return cached
-
-        if not self.has_banned_tracker:
-            next_state = banned_tracker_state_id
-        else:
-            next_state = self.banned_tracker.advance(
-                banned_tracker_state_id,
-                node.pos,
-                choice,
-            )
-
-        self.banned_advance_cache[key] = next_state
-        return next_state
 
     def _accumulate_log_mass(
             self,
