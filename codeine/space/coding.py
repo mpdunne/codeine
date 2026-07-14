@@ -70,12 +70,11 @@ class CodingSpace:
             aa_seq,
             codon_restrictions=codon_restrictions,
             translation_table=translation_table,
-            weights=codon_weights,
             context_l=context_l,
             context_r=context_r,
         )
 
-        view = graph.view(seed=seed)
+        view = graph.view(seed=seed, weights=codon_weights)
         self.view = view
 
         self.constraints = tuple(constraints or ())
