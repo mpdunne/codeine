@@ -799,7 +799,7 @@ def test_copied_view_copies_rng_state():
     assert copied.sample() == view.sample()
 
 
-def test_graph_defaults_to_dna_when_only_weights_are_given():
+def test_view_defaults_to_dna_when_only_weights_are_given():
     weights = CodonWeights.ecoli()
 
     view = CodonGraph('MIKEY').view(weights=weights)
@@ -808,7 +808,7 @@ def test_graph_defaults_to_dna_when_only_weights_are_given():
     assert view.codon_weights is weights
 
 
-def test_graph_preserves_matching_weights():
+def test_view_preserves_matching_weights():
     tt = TranslationTable()
     weights = CodonWeights.ecoli()
 
@@ -818,7 +818,7 @@ def test_graph_preserves_matching_weights():
     assert view.codon_weights is weights
 
 
-def test_graph_converts_dna_weights_for_rna_table():
+def test_view_converts_dna_weights_for_rna_table():
     tt = TranslationTable(rna=True)
     weights = CodonWeights.ecoli()
 
@@ -832,7 +832,7 @@ def test_graph_converts_dna_weights_for_rna_table():
     assert 'AUG' not in weights.weights
 
 
-def test_graph_converts_rna_weights_for_dna_table():
+def test_view_converts_rna_weights_for_dna_table():
     rna_table = TranslationTable(rna=True)
     weights = CodonWeights.uniform(table=rna_table)
 
@@ -851,6 +851,69 @@ def test_view_rejects_incompatible_codon_weights():
 
     with pytest.raises(ValueError):
         CodonGraph('MIKEY', translation_table=TranslationTable(table_id=2)).view(weights=weights)
+
+
+def test_view_defaults_to_uniform_weights():
+    graph = CodonGraph('MIKEY')
+    view = graph.view()
+
+    assert view.codon_weights.weights == CodonWeights.uniform(table=graph.tt).weights
+
+
+def test_view_uses_provided_weights():
+    graph = CodonGraph('MIKEY')
+    weights = CodonWeights.ecoli()
+
+    view = graph.view(weights=weights)
+
+    assert view.codon_weights is weights
+
+
+def test_view_converts_weights_to_graph_molecule_type():
+    graph = CodonGraph('MIKEY', translation_table=TranslationTable(rna=True))
+    weights = CodonWeights.ecoli()
+
+    view = graph.view(weights=weights)
+
+    assert view.codon_weights is not weights
+    assert 'AUG' in view.codon_weights.weights
+    assert 'ATG' not in view.codon_weights.weights
+
+
+def test_set_weights_updates_weights_and_requires_compile():
+    graph = CodonGraph('MIKEY')
+    view = graph.view()
+
+    view.compile()
+    assert view._requires_compile is False
+
+    weights = CodonWeights.ecoli()
+    view.set_weights(weights)
+
+    assert view.codon_weights is weights
+    assert view._requires_compile is True
+
+
+def test_clear_weights_restores_uniform_weights():
+    graph = CodonGraph('MIKEY')
+    view = graph.view(weights=CodonWeights.ecoli())
+
+    view.clear_weights()
+
+    assert view.codon_weights.weights == CodonWeights.uniform(
+        table=graph.tt,
+    ).weights
+
+
+def test_copy_preserves_weights():
+    graph = CodonGraph('MIKEY')
+    weights = CodonWeights.ecoli()
+    view = graph.view(weights=weights)
+
+    copied = view.copy()
+
+    assert copied.codon_weights is weights
+
 
 
 def test_sample_respects_pins():

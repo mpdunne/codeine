@@ -328,6 +328,7 @@ class CodonGraphView:
         """
         view = self.graph.view()
         view._rng.setstate(self._rng.getstate())
+        view._codon_weights = self._codon_weights
 
         view.pinned_codons = self.pinned_codons.copy()
         view.constraints = self.constraints
@@ -426,6 +427,29 @@ class CodonGraphView:
         Remove all constraints from this view.
         """
         self.set_constraints(())
+
+    def set_weights(self, weights: Optional[CodonWeights] = None) -> None:
+        """
+        Set the codon weights used for sampling.
+
+        Parameters
+        ----------
+        weights
+            Codon weights to use. If omitted, use uniform weights.
+        """
+        if weights is None:
+            weights = CodonWeights.uniform(table=self.graph.tt)
+        else:
+            weights = weights.for_table(self.graph.tt)
+
+        self._codon_weights = weights
+        self._requires_compile = True
+
+    def clear_weights(self) -> None:
+        """
+        Reset sampling to uniform codon weights.
+        """
+        self.set_weights()
 
     @property
     def aa_seq(self) -> str:
