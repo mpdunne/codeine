@@ -23,12 +23,6 @@ def test_view_exposes_translation_table():
     assert view.translation_table is graph.tt
 
 
-def test_view_exposes_codon_weights():
-    graph = CodonGraph('MIKEY')
-    view = graph.view()
-    assert view.codon_weights is graph.cw
-
-
 def test_view_exposes_codon_restrictions():
     graph = CodonGraph('MIKEY', codon_restrictions={2: 'ATC'})
     view = graph.view()
@@ -805,6 +799,60 @@ def test_copied_view_copies_rng_state():
     assert copied.sample() == view.sample()
 
 
+def test_graph_defaults_to_dna_when_only_weights_are_given():
+    weights = CodonWeights.ecoli()
+
+    view = CodonGraph('MIKEY').view(weights=weights)
+
+    assert view.translation_table.rna is False
+    assert view.codon_weights is weights
+
+
+def test_graph_preserves_matching_weights():
+    tt = TranslationTable()
+    weights = CodonWeights.ecoli()
+
+    view = CodonGraph('MIKEY', translation_table=tt).view(weights=weights)
+
+    assert view.translation_table is tt
+    assert view.codon_weights is weights
+
+
+def test_graph_converts_dna_weights_for_rna_table():
+    tt = TranslationTable(rna=True)
+    weights = CodonWeights.ecoli()
+
+    view = CodonGraph('MIKEY', translation_table=tt).view(weights=weights)
+
+    assert view.translation_table is tt
+    assert view.codon_weights is not weights
+    assert 'AUG' in view.codon_weights.weights
+    assert 'ATG' not in view.codon_weights.weights
+    assert 'ATG' in weights.weights
+    assert 'AUG' not in weights.weights
+
+
+def test_graph_converts_rna_weights_for_dna_table():
+    rna_table = TranslationTable(rna=True)
+    weights = CodonWeights.uniform(table=rna_table)
+
+    view = CodonGraph('MIKEY', translation_table=TranslationTable()).view(weights=weights)
+
+    assert view.translation_table.rna is False
+    assert view.codon_weights is not weights
+    assert 'ATG' in view.codon_weights.weights
+    assert 'AUG' not in view.codon_weights.weights
+    assert 'AUG' in weights.weights
+    assert 'ATG' not in weights.weights
+
+
+def test_view_rejects_incompatible_codon_weights():
+    weights = CodonWeights.uniform()
+
+    with pytest.raises(ValueError):
+        CodonGraph('MIKEY', translation_table=TranslationTable(table_id=2)).view(weights=weights)
+
+
 def test_sample_respects_pins():
     view = CodonGraph('MIKEY').view(seed=8675309)
     view.pin_codons({2: 'ATT'})
@@ -988,7 +1036,6 @@ def test_banned_sequences_can_be_set_and_are_normalised():
     assert isinstance(view.constraints[0], BannedSequenceConstraint)
     assert set(view.constraints[0].banned_sequences) == {'AAA', 'TTT'}
 
-    view = CodonGraphView(graph)
     view = CodonGraphView(graph, constraints=[BannedSequenceConstraint(['ccc', 'CCC', 'ggg'])])
     assert len(view.constraints) == 1
     assert isinstance(view.constraints[0], BannedSequenceConstraint)
@@ -1016,7 +1063,6 @@ def test_view_exposes_graph_properties():
 
     assert view.aa_seq == graph.aa_seq
     assert view.translation_table is graph.tt
-    assert view.codon_weights is graph.cw
     assert view.codon_restrictions is graph.codon_restrictions
     assert view.context_l == graph.context_l
     assert view.context_r == graph.context_r
@@ -1384,7 +1430,7 @@ def helper_codon_counts_by_position(seqs):
 ))
 def test_codon_distributions_roughly_match_weights(aa_seq, codon_weights):
     cw = codon_weights()
-    view = CodonGraph(aa_seq, context_l='aaa', context_r='ttt', weights=cw).view(seed=8675309)
+    view = CodonGraph(aa_seq, context_l='aaa', context_r='ttt').view(seed=8675309, weights=cw)
 
     n = 1000
 
@@ -1436,7 +1482,7 @@ def helper_chi_square_two_sample_test(counts_a, counts_b):
 ))
 def test_codon_distributions_roughly_match_weights_banned_sequences(name, aa_seq, banned):
     cw = CodonWeights.ecoli()
-    view = CodonGraph(aa_seq, context_l='aaa', context_r='ttt', weights=cw).view(seed=8675309)
+    view = CodonGraph(aa_seq, context_l='aaa', context_r='ttt').view(seed=8675309, weights=cw)
 
     n = 10000
 

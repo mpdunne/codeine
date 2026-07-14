@@ -4,12 +4,13 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Sequence, Tuple, Union
 
 from codeine.graph.nodes import CodonNode, ContextNode, EndNode, Node
 from codeine.translation.tables import TranslationTable
-from codeine.translation.weights import CodonWeights
 from codeine.utils.display import format_restrictions
 from codeine.utils.sampling import Seedable
 
 if TYPE_CHECKING:
+    from codeine.constraints.base import Constraint
     from codeine.graph.view import CodonGraphView
+    from codeine.translation.weights import CodonWeights
 
 CodonRestriction = Union[str, Sequence[str]]
 
@@ -24,7 +25,6 @@ class CodonGraph:
         aa_seq: str,
         codon_restrictions: Optional[Dict[int, CodonRestriction]] = None,
         translation_table: Optional[TranslationTable] = None,
-        weights: Optional[CodonWeights] = None,
         context_l: str = '',
         context_r: str = '',
     ) -> None:
@@ -37,8 +37,6 @@ class CodonGraph:
             Any codon restrictions, for example fixed codons or subsets, in the form {3: 'AAA', 6: ['TTT', 'TTC']...}
         translation_table
             The translation table to use.
-        weights
-            The codon weights.
         context_l
             The left context sequence.
         context_r
@@ -50,13 +48,7 @@ class CodonGraph:
         if translation_table is None:
             translation_table = TranslationTable(table_id=1, rna=False)
 
-        if weights is None:
-            weights = CodonWeights.uniform(table=translation_table)
-        else:
-            weights = weights.for_table(translation_table)
-
         self.tt = translation_table
-        self.cw = weights
 
         self.aa_seq = aa_seq.upper()
         self.validate_aa_seq()
@@ -232,14 +224,27 @@ class CodonGraph:
             self.end_node,
         )
 
-    def view(self, seed: Optional[Seedable] = None) -> 'CodonGraphView':
+    def view(self,
+             *,
+             constraints: Optional[Sequence[Constraint]] = None,
+             weights: Optional[CodonWeights] = None,
+             seed: Seedable = None,
+             ) -> 'CodonGraphView':
         """
-        Return a constrained view over this graph.
+        Return
 
         Parameters
         ----------
+        constraints
+            Any constraint trackers that we wish to use when traversing coding space.
+        weights
+            The codon weights to use when sampling.
         seed
-            Seed used to initialise the view's random number generator.
+            Seed used to initialise a random number generator.
+
+        Returns
+        -------
+        A constrained view over this graph.
         """
         from codeine.graph.view import CodonGraphView
-        return CodonGraphView(self, seed=seed)
+        return CodonGraphView(self, seed=seed, weights=weights)

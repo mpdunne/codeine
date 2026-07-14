@@ -98,7 +98,7 @@ class ViewCompiler:
         # The cached log-ified codon weights, to avoid repeated log calculations
         self.log_codon_weights = {
             codon: math.log(weight)
-            for codon, weight in self.graph.cw.weights.items()
+            for codon, weight in self.view.codon_weights.weights.items()
             if weight > 0
         }
 

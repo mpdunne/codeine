@@ -23,7 +23,9 @@ class CodonGraphView:
 
     def __init__(self,
                  graph: CodonGraph,
+                 *,
                  constraints: Optional[Sequence[Constraint]] = None,
+                 weights: Optional[CodonWeights] = None,
                  seed: Seedable = None,
                  ) -> None:
         """
@@ -35,14 +37,23 @@ class CodonGraphView:
             The underlying codon graph.
         constraints
             Any constraint trackers that we wish to use when traversing coding space.
+        weights
+            The codon weights to use when sampling.
         seed
-            Seed used to initialise a random number generator, if not providing an RNG.
+            Seed used to initialise a random number generator.
         """
-        self._rng = random.Random(seed)
 
         self.graph = graph
         self.pinned_codons: Dict[int, List[str]] = {}
         self.constraints: Tuple[Constraint, ...] = tuple(constraints or ())
+
+        if weights is None:
+            weights = CodonWeights.uniform(table=self.graph.tt)
+        else:
+            weights = weights.for_table(self.graph.tt)
+
+        self._codon_weights = weights
+        self._rng = random.Random(seed)
 
         self._compiled = None
         self._requires_compile = True
@@ -439,7 +450,7 @@ class CodonGraphView:
         """
         The codon weights used by the codon graph.
         """
-        return self.graph.cw
+        return self._codon_weights
 
     @property
     def codon_restrictions(self) -> Dict[int, CodonRestriction]:

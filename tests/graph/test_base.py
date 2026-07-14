@@ -5,7 +5,6 @@ import pytest
 from codeine.graph.base import CodonGraph
 from codeine.graph.nodes import ContextNode, CodonNode, EndNode
 from codeine.translation.tables import TranslationTable
-from codeine.translation.weights import CodonWeights
 
 
 def test_empty_sequence_raises():
@@ -168,8 +167,6 @@ def test_graph_defaults_to_dna():
     graph = CodonGraph('MIKEY')
 
     assert graph.tt.rna is False
-    assert 'ATG' in graph.cw.weights
-    assert 'AUG' not in graph.cw.weights
 
 
 def test_graph_uses_provided_dna_translation_table():
@@ -178,8 +175,6 @@ def test_graph_uses_provided_dna_translation_table():
     graph = CodonGraph('MIKEY', translation_table=tt)
 
     assert graph.tt is tt
-    assert 'ATG' in graph.cw.weights
-    assert 'AUG' not in graph.cw.weights
 
 
 def test_graph_uses_provided_rna_translation_table():
@@ -188,62 +183,6 @@ def test_graph_uses_provided_rna_translation_table():
     graph = CodonGraph('MIKEY', translation_table=tt)
 
     assert graph.tt is tt
-    assert 'AUG' in graph.cw.weights
-    assert 'ATG' not in graph.cw.weights
-
-
-def test_graph_defaults_to_dna_when_only_weights_are_given():
-    weights = CodonWeights.ecoli()
-
-    graph = CodonGraph('MIKEY', weights=weights)
-
-    assert graph.tt.rna is False
-    assert graph.cw is weights
-
-
-def test_graph_preserves_matching_weights():
-    tt = TranslationTable()
-    weights = CodonWeights.ecoli()
-
-    graph = CodonGraph('MIKEY', translation_table=tt, weights=weights)
-
-    assert graph.tt is tt
-    assert graph.cw is weights
-
-
-def test_graph_converts_dna_weights_for_rna_table():
-    tt = TranslationTable(rna=True)
-    weights = CodonWeights.ecoli()
-
-    graph = CodonGraph('MIKEY', translation_table=tt, weights=weights)
-
-    assert graph.tt is tt
-    assert graph.cw is not weights
-    assert 'AUG' in graph.cw.weights
-    assert 'ATG' not in graph.cw.weights
-    assert 'ATG' in weights.weights
-    assert 'AUG' not in weights.weights
-
-
-def test_graph_converts_rna_weights_for_dna_table():
-    rna_table = TranslationTable(rna=True)
-    weights = CodonWeights.uniform(table=rna_table)
-
-    graph = CodonGraph('MIKEY', translation_table=TranslationTable(), weights=weights)
-
-    assert graph.tt.rna is False
-    assert graph.cw is not weights
-    assert 'ATG' in graph.cw.weights
-    assert 'AUG' not in graph.cw.weights
-    assert 'AUG' in weights.weights
-    assert 'ATG' not in weights.weights
-
-
-def test_graph_rejects_incompatible_codon_weights():
-    weights = CodonWeights.uniform()
-
-    with pytest.raises(ValueError):
-        CodonGraph('MIKEY', translation_table=TranslationTable(table_id=2), weights=weights)
 
 
 def test_codon_graph_pickle_preserves_enumeration():
