@@ -7,6 +7,7 @@ if TYPE_CHECKING:
     from codeine.space.mutation import MutationSpace
 
 from codeine.constraints.banned import BannedSequenceConstraint
+from codeine.constraints.base import Constraint
 from codeine.graph.base import CodonGraph, CodonRestriction
 from codeine.motifs.validate import expand_and_validate_sequence_constraints, ForbiddenMotifs
 from codeine.motifs.restriction import RestrictionSite
@@ -30,6 +31,7 @@ class CodingSpace:
         codon_restrictions: Optional[Dict[int, CodonRestriction]] = None,
         forbidden_motifs: Optional[ForbiddenMotifs] = None,
         max_homopolymer: Optional[int] = None,
+        constraints: Optional[Sequence[Constraint]] = None,
         context_l: str = '',
         context_r: str = '',
         codon_weights: Optional[CodonWeights] = None,
@@ -50,6 +52,8 @@ class CodingSpace:
             Forbidden motifs, either as strings or as ``codeine.RestrictionSite``.
         max_homopolymer
             The maximum allowed length of nucleotide homopolymer
+        constraints
+            Any additional constraints.
         context_l
             The context sequence to the left of the coding sequence.
         context_r
@@ -74,10 +78,11 @@ class CodingSpace:
         view = graph.view(seed=seed)
         self.view = view
 
+        self.constraints = tuple(constraints or ())
         self.forbidden_motifs = self._normalise_forbidden_motifs(forbidden_motifs)
         self.max_homopolymer = max_homopolymer
 
-        self._update_forbidden_sequences()
+        self._update_constraints()
 
     @classmethod
     def load(cls, path) -> 'CodingSpace':
@@ -335,7 +340,7 @@ class CodingSpace:
             Motifs that should be forbidden in generated sequences.
         """
         self.forbidden_motifs = self._normalise_forbidden_motifs(forbidden_motifs)
-        self._update_forbidden_sequences()
+        self._update_constraints()
 
     def clear_forbidden_motifs(self) -> None:
         """
@@ -353,7 +358,7 @@ class CodingSpace:
             The longest allowed repeated run of one nucleotide, or None for no limit.
         """
         self.max_homopolymer = max_homopolymer
-        self._update_forbidden_sequences()
+        self._update_constraints()
 
     def clear_max_homopolymer(self) -> None:
         """
@@ -417,9 +422,9 @@ class CodingSpace:
         """
         return self.view.pinned_codons
 
-    def _update_forbidden_sequences(self) -> None:
+    def _update_constraints(self) -> None:
         """
-        Rebuild concrete forbidden sequences and update their constraint.
+        Rebuild and apply all constraints for this coding space.
         """
         forbidden_sequences = expand_and_validate_sequence_constraints(
             forbidden_motifs=self.forbidden_motifs,
@@ -427,11 +432,7 @@ class CodingSpace:
             rna=self.translation_table.rna,
         )
 
-        constraints = tuple(
-            constraint
-            for constraint in self.view.constraints
-            if not isinstance(constraint, BannedSequenceConstraint)
-        )
+        constraints = self.constraints
 
         if forbidden_sequences:
             constraints = (
@@ -440,6 +441,13 @@ class CodingSpace:
             )
 
         self.view.set_constraints(constraints)
+
+    def set_constraints(self, constraints: Sequence[Constraint]) -> None:
+        self.constraints = tuple(constraints)
+        self._update_constraints()
+
+    def clear_constraints(self) -> None:
+        self.set_constraints(())
 
     @staticmethod
     def _resolve_tables(

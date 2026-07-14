@@ -604,3 +604,29 @@ def test_setting_forbidden_motifs_rebulids_constraint():
     assert len(banned_sequence_constraints) == 1
     bsc_new = banned_sequence_constraints[0]
     assert bsc_new is not bsc
+
+
+def test_coding_space_accepts_constraints():
+    constraint = BannedSequenceConstraint(['GAA'])
+    space = CodingSpace('E', constraints=[constraint])
+
+    assert space.constraints == (constraint,)
+    assert set(space.enumerate()) == {'GAG'}
+
+
+def test_coding_space_can_set_and_clear_constraints():
+    space = CodingSpace('E')
+    constraint = BannedSequenceConstraint(['GAA'])
+
+    space.set_constraints([constraint])
+    assert set(space.enumerate()) == {'GAG'}
+
+    space.clear_constraints()
+    assert set(space.enumerate()) == {'GAA', 'GAG'}
+
+
+def test_coding_space_constraints_combine_with_forbidden_motifs():
+    constraint = BannedSequenceConstraint(['GAG'])
+    space = CodingSpace('E', forbidden_motifs=['GAA'], constraints=[constraint])
+
+    assert space.n_valid_sequences == 0
