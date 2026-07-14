@@ -2,7 +2,7 @@ import math
 
 from typing import Dict, NamedTuple, Tuple, List, Optional, TYPE_CHECKING
 
-from codeine.constraints.base import ConstraintState, DEAD_STATE
+from codeine.constraints.base import ConstraintState, DEAD_STATE, SAFE_STATE
 from codeine.graph.nodes import CodonNode, Node, ContextNode
 
 if TYPE_CHECKING:
@@ -433,6 +433,10 @@ class ViewCompiler:
         append = next_states.append
 
         for advance, state in zip(self.constraint_advancers, constraint_states):
+            if state == SAFE_STATE:
+                append(SAFE_STATE)
+                continue
+
             next_state = advance(state, pos, choice)
 
             if next_state == DEAD_STATE:
