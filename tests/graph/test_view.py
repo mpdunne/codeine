@@ -330,7 +330,7 @@ class RejectChoiceConstraint(Constraint):
         return ()
 
     def advance(self, state, pos, choice):
-        if state in (SAFE_STATE, DEAD_STATE):
+        if state < 0:
             return state
 
         if choice == self.rejected_choice:
@@ -349,7 +349,7 @@ class SafeAfterFirstConstraint(Constraint):
         return 0
 
     def advance(self, state, pos, choice):
-        if state in (SAFE_STATE, DEAD_STATE):
+        if state < 0:
             return state
 
         if pos >= 1:

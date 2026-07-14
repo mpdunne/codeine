@@ -208,7 +208,7 @@ class CountConstraint(Constraint):
         An updated state.
         """
 
-        if state in (DEAD_STATE, SAFE_STATE):
+        if state < 0:
             return state
 
         if pos < 1 or pos > self._n_positions:
