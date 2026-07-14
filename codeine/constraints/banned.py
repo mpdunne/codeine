@@ -65,8 +65,6 @@ class BannedSequenceConstraint(Constraint):
 
     def __init__(self, banned_sequences: Sequence[str]) -> None:
         """
-        Constructor for the BannedSequenceTracker class.
-
         Parameters
         ----------
         banned_sequences
@@ -316,6 +314,11 @@ class BannedSequenceConstraint(Constraint):
         return state_id
 
 
+###############################################################################
+# Algorithm for finding graph subpaths matching a nucleotide sequence.
+###############################################################################
+
+
 def _find_matching_subpaths(
         graph: CodonGraph,
         sequence: str,
@@ -361,7 +364,7 @@ def _find_matching_subpaths(
         if node is graph.end_node:
             continue
 
-        for choice, child in node.transitions.items():
+        for choice in node.transitions:
             for offset in range(len(choice)):
                 choice_subsequence = choice[offset:]
 
