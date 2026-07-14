@@ -820,3 +820,9 @@ def test_banned_sequence_constraint_relink_resets_internal_state():
     assert constraint.states == [frozenset()]
     assert constraint.state_ids == {frozenset(): 0}
     assert constraint.advance_cache == {}
+
+
+def test_banned_sequence_constraint_is_trivial_before_linking():
+    constraint = BannedSequenceConstraint(['AAA'])
+
+    assert constraint.is_trivial

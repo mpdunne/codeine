@@ -88,10 +88,10 @@ class BannedSequenceConstraint(Constraint):
 
         self.advance_cache: Dict[Tuple[Step, BannedTrackerStateId], ConstraintState] = {}
 
-        self.graph = None
-        self.paths = None
-        self.starts = None
-        self.transitions = None
+        self.graph: Optional[CodonGraph] = None
+        self.paths: Tuple[SubPath, ...] = ()
+        self.starts: Dict[Step, Tuple[TransitionValue, ...]] = {}
+        self.transitions: Dict[str, Dict[Watch, TransitionValue]] = {}
 
     @property
     def initial_state(self) -> ConstraintState:
@@ -244,6 +244,7 @@ class BannedSequenceConstraint(Constraint):
         self.advance_cache.clear()
 
         self.banned_sequences = tuple(graph.tt.normalise_sequence(sequence) for sequence in self.banned_sequences)
+
         self.graph = graph
         self.paths = self._find_banned_paths()
         self.starts = self._build_starts()
