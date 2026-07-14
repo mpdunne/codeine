@@ -268,7 +268,6 @@ def test_n_valid_sequences_pinning_and_unpinning(standard_codon_table):
     assert len(sequences_all) == view.n_valid_sequences
 
 
-
 class RejectAllConstraint(Constraint):
 
     @property
@@ -335,7 +334,7 @@ class RejectChoiceConstraint(Constraint):
         if choice == self.rejected_choice:
             return DEAD_STATE
 
-        return ()
+        return 0
 
     def link(self, graph):
         pass
