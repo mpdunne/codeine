@@ -9,17 +9,10 @@ if TYPE_CHECKING:
     from codeine.graph.view import CodonGraphView
 
 
-class TraversalState(NamedTuple):
-    """
-    The traversal state consists of the current node, plus a summary of the relevant
-    parts of how we got there. For example, it tracks whether we have seen parts of
-    constraints, such as banned sequences or nucleotide/codon properties.
-
-    Different graph traversal histories that produce the same traversal state are
-    collapsed and are equivalent under this framework.
-    """
-    node: Node
-    constraint_states: Tuple[ConstraintState, ...]
+# The traversal state consists of the current graph node and the current state
+# of each active constraint. Plain tuples are immutable and hashable, while
+# avoiding NamedTuple construction in the compiler's hottest path.
+TraversalState = Tuple[Node, Tuple[ConstraintState, ...]]
 
 
 class ChoiceResult(NamedTuple):
@@ -182,7 +175,7 @@ class ViewCompiler:
         """
         constraint_states = tuple(constraint.initial_state for constraint in self.constraints)
 
-        return TraversalState(
+        return (
             self.graph.initial_node,
             constraint_states,
         )
@@ -204,7 +197,7 @@ class ViewCompiler:
         while stack:
             state_id, expanded = stack.pop()
             state = self.states[state_id]
-            node = state.node
+            node, _constraint_states = state
 
             if self.totals_by_state_id[state_id] is not None:
                 continue
@@ -250,7 +243,7 @@ class ViewCompiler:
             ID of the traversal state being compiled.
         """
         state = self.states[state_id]
-        node = state.node
+        node, _constraint_states = state
 
         choice_results = {}
         descendant_count = 0
@@ -262,8 +255,7 @@ class ViewCompiler:
         child_results = self.child_results_by_state_id[state_id] or ()
 
         for choice, child_id in child_results:
-            child_state = self.states[child_id]
-            child = child_state.node
+            child, _child_constraint_states = self.states[child_id]
             child_total = self.totals_by_state_id[child_id]
 
             if child_total is None:
@@ -339,9 +331,7 @@ class ViewCompiler:
         child_results = []
         uncompiled_children = []
 
-        state = self.states[state_id]
-        node = state.node
-        constraint_states = state.constraint_states
+        node, constraint_states = self.states[state_id]
         pos = node.pos
 
         for choice in self.choices_by_node[node]:
@@ -359,7 +349,7 @@ class ViewCompiler:
             if next_constraint_states is None:
                 continue
 
-            child_state = TraversalState(
+            child_state = (
                 child,
                 next_constraint_states,
             )

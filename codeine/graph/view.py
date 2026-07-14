@@ -159,8 +159,7 @@ class CodonGraphView:
 
         while state_id is not None:
 
-            state = states[state_id]
-            node = state.node
+            node, _constraint_states = states[state_id]
 
             if isinstance(node, CodonNode):
                 start = (node.pos - 1) * 3
