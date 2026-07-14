@@ -68,6 +68,10 @@ class ViewCompiler:
             constraint.link(self.graph)
 
         self.constraints = tuple(constraint for constraint in constraints if not constraint.is_trivial)
+        self.constraint_advancers = tuple(
+            constraint.advance
+            for constraint in self.constraints
+        )
 
         self.state_ids: Dict[TraversalStateKey, int] = {}
         self.states: List[TraversalState] = []
@@ -282,14 +286,15 @@ class ViewCompiler:
             if child_count == 0:
                 continue
 
-            choice_log_mass = self._accumulate_log_mass(
-                node,
-                choice,
-                subtree_log_mass,
-            )
+            if is_coding:
+                codon_log_weight = self.log_codon_weights.get(choice)
 
-            if choice_log_mass == -math.inf:
-                continue
+                if codon_log_weight is None:
+                    continue
+
+                choice_log_mass = codon_log_weight + subtree_log_mass
+            else:
+                choice_log_mass = subtree_log_mass
 
             result = ChoiceResult(
                 choice=choice,
@@ -425,49 +430,14 @@ class ViewCompiler:
             graph choice.
         """
         next_states = []
+        append = next_states.append
 
-        for constraint, state in zip(self.constraints, constraint_states):
-            next_state = constraint.advance(state, pos, choice)
+        for advance, state in zip(self.constraint_advancers, constraint_states):
+            next_state = advance(state, pos, choice)
+
             if next_state == DEAD_STATE:
                 return None
 
-            next_states.append(next_state)
+            append(next_state)
 
         return tuple(next_states)
-
-    def _accumulate_log_mass(
-            self,
-            node: Node,
-            choice: str,
-            subtree_log_mass: float,
-    ) -> float:
-        """
-        Accumulate the log probability mass contributed by one graph choice.
-
-        The subtree log mass has already been computed for the child state. Codon
-        nodes contribute the log of their codon weight, whereas context nodes
-        contribute no additional mass.
-
-        Parameters
-        ----------
-        node
-            The graph node from which the choice is taken.
-        choice
-            The outgoing graph choice.
-        subtree_log_mass
-            The total log mass reachable from the child state.
-
-        Returns
-        -------
-        float
-            The total log mass reachable after taking this choice.
-        """
-        if isinstance(node, CodonNode):
-            codon_log_weight = self.log_codon_weights.get(choice)
-
-            if codon_log_weight is None:
-                return -math.inf
-
-            return codon_log_weight + subtree_log_mass
-
-        return subtree_log_mass
