@@ -98,10 +98,15 @@ class ViewCompiler:
             if weight > 0
         }
 
-        # Cached version of the choices available at each node, taking into
-        # account fixed codons & pins.
-        self.choices_by_node = {
-            node: tuple(self._get_choices_for_node(node))
+        # Cached transitions available at each node, taking into account fixed
+        # codons and pins. Storing the child alongside each choice avoids a
+        # dictionary lookup in the compiler's hottest traversal loop.
+        self.transitions_by_node = {
+            node: tuple(
+                (choice, node.transitions[choice])
+                for choice in self._get_choices_for_node(node)
+                if choice in node.transitions
+            )
             for node in self.graph.nodes
             if node is not self.graph.final_node
         }
@@ -345,12 +350,7 @@ class ViewCompiler:
         node, constraint_states = self.states[state_id]
         pos = node.pos
 
-        for choice in self.choices_by_node[node]:
-            child = node.transitions.get(choice)
-
-            if child is None:
-                continue
-
+        for choice, child in self.transitions_by_node[node]:
             next_constraint_states = self._advance_constraints(
                 constraint_states,
                 pos,
