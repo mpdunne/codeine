@@ -28,6 +28,22 @@ class CodonGraph:
         context_l: str = '',
         context_r: str = '',
     ) -> None:
+        """
+        Parameters
+        ----------
+        aa_seq
+            The amino acid sequence.
+        codon_restrictions
+            Any codon restrictions, for example fixed codons or subsets, in the form {3: 'AAA', 6: ['TTT', 'TTC']...}
+        translation_table
+            The translation table to use.
+        weights
+            The codon weights.
+        context_l
+            The left context sequence.
+        context_r
+            The right context sequence.
+        """
         if len(aa_seq) == 0:
             raise ValueError('Please provide non-empty sequence!')
 
@@ -112,7 +128,7 @@ class CodonGraph:
             if isinstance(codon_restriction, str):
                 codons = [codon_restriction]
             else:
-                codons = list(codon_restriction)
+                codons = list(set(codon_restriction))
 
             if len(codons) == 0:
                 raise ValueError(f'Codon restriction at position {pos} cannot be empty.')
@@ -224,8 +240,6 @@ class CodonGraph:
         ----------
         seed
             Seed used to initialise the view's random number generator.
-        rng
-            Random number generator used by the view for sampling.
         """
         from codeine.graph.view import CodonGraphView
         return CodonGraphView(self, seed=seed)

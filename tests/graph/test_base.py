@@ -42,6 +42,11 @@ def test_rna_codon_restrictions_are_normalised():
     assert graph.codon_node_by_pos(1).codons == ('AUG',)
 
 
+def test_duplicate_codon_restrictions_are_deduplicated():
+    graph = CodonGraph('MIKEY', codon_restrictions={3: ['AAA', 'AAA', 'AAG']})
+    assert set(graph.codon_restrictions[3]) == {'AAA', 'AAG'}
+
+
 def test_invalid_codon_restriction_positions_raises():
     with pytest.raises(ValueError):
         CodonGraph('MIKEY', codon_restrictions={-1: 'ATG'})
