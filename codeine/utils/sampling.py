@@ -10,13 +10,12 @@ Seedable = Union[int, float, str, bytes, bytearray]
 
 class Sampler(ABC):
     """
-    Generic abstract sampler class
+    Generic abstract sampler class.
     """
     @abstractmethod
     def sample(self):
         """
-        Sample the item(s) according to whatever rules the inheriting
-        class has decreed.
+        Sample the item(s).
 
         Returns
         -------
@@ -27,7 +26,7 @@ class Sampler(ABC):
 
 class SingletonSampler(Sampler):
     """
-    A sample class that takes and returns a single item.
+    A "sampler" that accepts and returns a single item.
     """
 
     def __init__(
@@ -56,7 +55,7 @@ class SingletonSampler(Sampler):
 
 class RandomSampler(Sampler, ABC):
     """
-    Base class for samplers that use an RNG to choose the returned items.
+    Base class for samplers that use a random number generator to choose the returned items.
     """
     def __init__(
             self,
@@ -95,7 +94,7 @@ class RandomSampler(Sampler, ABC):
 
 class UniformSampler(RandomSampler):
     """
-    A uniform sampler.
+    A sampler that chooses from a specified list of items, uniformly at random.
     """
     def __init__(self,
                  items: Sequence[Any],
