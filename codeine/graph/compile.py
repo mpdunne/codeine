@@ -251,9 +251,13 @@ class ViewCompiler:
         """
         state = self.states[state_id]
         node = state.node
+
         choice_results = {}
         descendant_count = 0
-        descendant_log_masses = []
+
+        max_log_mass = -math.inf
+        relative_mass_sum = 0.0
+
         is_coding = isinstance(node, CodonNode)
         child_results = self.child_results_by_state_id[state_id] or ()
 
@@ -270,7 +274,11 @@ class ViewCompiler:
             if child_count == 0:
                 continue
 
-            choice_log_mass = self._accumulate_log_mass(node, choice, subtree_log_mass)
+            choice_log_mass = self._accumulate_log_mass(
+                node,
+                choice,
+                subtree_log_mass,
+            )
 
             if choice_log_mass == -math.inf:
                 continue
@@ -285,14 +293,32 @@ class ViewCompiler:
 
             choice_results[choice] = result
             descendant_count += child_count
-            descendant_log_masses.append(choice_log_mass)
 
-        descendant_log_mass = self._sum_log_masses(descendant_log_masses)
+            # Incremental log-sum-exp.
+            if choice_log_mass <= max_log_mass:
+                relative_mass_sum += math.exp(choice_log_mass - max_log_mass)
+            else:
+                if max_log_mass == -math.inf:
+                    relative_mass_sum = 1.0
+                else:
+                    relative_mass_sum = (
+                            relative_mass_sum
+                            * math.exp(max_log_mass - choice_log_mass)
+                            + 1.0
+                    )
 
-        total = (descendant_count, descendant_log_mass)
+                max_log_mass = choice_log_mass
+
+        if max_log_mass == -math.inf:
+            descendant_log_mass = -math.inf
+        else:
+            descendant_log_mass = max_log_mass + math.log(relative_mass_sum)
 
         self.choices_by_state_id[state_id] = choice_results
-        self.totals_by_state_id[state_id] = total
+        self.totals_by_state_id[state_id] = (
+            descendant_count,
+            descendant_log_mass,
+        )
 
     def _uncompiled_children(self, state_id: int) -> List[Tuple[int, bool]]:
         """
@@ -445,29 +471,3 @@ class ViewCompiler:
             return codon_log_weight + subtree_log_mass
 
         return subtree_log_mass
-
-    def _sum_log_masses(self, log_masses: List[float]) -> float:
-        """
-        Combine several subtree log masses into a single log mass.
-
-        The calculation is performed using the log-sum-exp trick to avoid numerical
-        underflow when the subtree probabilities are extremely small.
-
-        Parameters
-        ----------
-        log_masses
-            Log-space masses to sum.
-
-        Returns
-        -------
-        float
-            The log of the summed masses, or -inf if no finite masses exist.
-        """
-        if not log_masses:
-            return -math.inf
-
-        max_log_mass = max(log_masses)
-
-        total_relative_mass = sum(math.exp(log_mass - max_log_mass) for log_mass in log_masses)
-
-        return max_log_mass + math.log(total_relative_mass)
