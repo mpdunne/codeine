@@ -146,15 +146,11 @@ class CodonWeights:
 
         missing_aas = expected_aas - observed_aas
         if missing_aas:
-            raise ValueError(
-                f'Missing weights for amino acid(s): {sorted(missing_aas)}'
-            )
+            raise ValueError(f'Missing weights for amino acid(s): {sorted(missing_aas)}')
 
         extra_aas = observed_aas - expected_aas
         if extra_aas:
-            raise ValueError(
-                f'Unknown amino acid(s): {sorted(extra_aas)}'
-            )
+            raise ValueError(f'Unknown amino acid(s): {sorted(extra_aas)}')
 
         resolved_weights: WeightDict = {}
         resolved_codons = set()
@@ -170,9 +166,7 @@ class CodonWeights:
                     changed = True
 
                 if resolved_codon in resolved_codons:
-                    raise ValueError(
-                        f'Duplicate weight for codon {resolved_codon}'
-                    )
+                    raise ValueError(f'Duplicate weight for codon {resolved_codon}')
 
                 resolved_codons.add(resolved_codon)
                 codon_weights[resolved_codon] = self.weights[codon]
@@ -182,17 +176,11 @@ class CodonWeights:
 
             missing_codons = expected_codons - observed_codons
             if missing_codons:
-                raise ValueError(
-                    f'Missing weights for codon(s) for amino acid {aa}: '
-                    f'{sorted(missing_codons)}'
-                )
+                raise ValueError(f'Missing weights for codon(s) for amino acid {aa}: {sorted(missing_codons)}')
 
             extra_codons = observed_codons - expected_codons
             if extra_codons:
-                raise ValueError(
-                    f'Unknown codon(s) for amino acid {aa}: '
-                    f'{sorted(extra_codons)}'
-                )
+                raise ValueError(f'Unknown codon(s) for amino acid {aa}: {sorted(extra_codons)}')
 
             resolved_weights[aa] = codon_weights
 

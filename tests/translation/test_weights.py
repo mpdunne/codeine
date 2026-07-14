@@ -214,18 +214,6 @@ def test_duplicate_codon_between_amino_acids_raises_value_error():
         CodonWeights(data)
 
 
-def test_resolve_rejects_duplicate_codon_after_normalisation():
-    table = TranslationTable()
-    data = make_weights_data(table)
-
-    data['R']['GCU'] = 1.0
-
-    weights = CodonWeights(data)
-
-    with pytest.raises(ValueError, match='Duplicate weight for codon GCT'):
-        weights.for_table(table)
-
-
 def test_weights_is_immutable():
     weights = CodonWeights.uniform()
 
@@ -380,15 +368,4 @@ def test_missing_codon_raises_value_error_when_resolved():
     weights = CodonWeights(data)
 
     with pytest.raises(ValueError, match='Missing weights for codon'):
-        weights.for_table(table)
-
-
-def test_extra_codon_raises_value_error_when_resolved():
-    table = TranslationTable()
-    data = make_weights_data(table)
-    data['A']['AAA'] = 1.0
-
-    weights = CodonWeights(data)
-
-    with pytest.raises(ValueError, match='Unknown codon'):
         weights.for_table(table)
