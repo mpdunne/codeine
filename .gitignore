@@ -214,3 +214,7 @@ docs/generated/
 sandbox/
 Sandbox.ipynb
 Untitled.ipynb
+Scratch.ipynb
+
+# DS_STORE
+.DS_STORE
