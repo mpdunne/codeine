@@ -77,6 +77,9 @@ class CountConstraint(Constraint):
 
     @staticmethod
     def _validate_real(name: str, value: Optional[float], maximum: float) -> None:
+        """
+        Validate a real-valued parameter.
+        """
         if value is None:
             return
 
@@ -88,6 +91,9 @@ class CountConstraint(Constraint):
 
     @staticmethod
     def _validate_count(name: str, value: Optional[int]) -> None:
+        """
+        Validate an integer-valued parameter.
+        """
         if value is None:
             return
 
@@ -155,34 +161,6 @@ class CountConstraint(Constraint):
         else:
             self._initial_state = INITIAL_STATE
 
-    def _resolve_min_count(self, total_count: int) -> int:
-        bounds = [0]
-
-        if self.min_frac is not None:
-            bounds.append(math.ceil(self.min_frac * total_count))
-
-        if self.min_perc is not None:
-            bounds.append(math.ceil(self.min_perc * total_count / 100))
-
-        if self.min_count is not None:
-            bounds.append(self.min_count)
-
-        return max(bounds)
-
-    def _resolve_max_count(self, total_count: int) -> int:
-        bounds = [total_count]
-
-        if self.max_frac is not None:
-            bounds.append(math.floor(self.max_frac * total_count))
-
-        if self.max_perc is not None:
-            bounds.append(math.floor(self.max_perc * total_count / 100))
-
-        if self.max_count is not None:
-            bounds.append(self.max_count)
-
-        return min(bounds)
-
     def advance(
             self,
             state: ConstraintState,
@@ -232,3 +210,37 @@ class CountConstraint(Constraint):
         Whether this constraint can never reject any path.
         """
         return self._initial_state == SAFE_STATE
+
+    def _resolve_min_count(self, total_count: int) -> int:
+        """
+        Resolve the effective minimum count from all specified bounds.
+        """
+        bounds = [0]
+
+        if self.min_frac is not None:
+            bounds.append(math.ceil(self.min_frac * total_count))
+
+        if self.min_perc is not None:
+            bounds.append(math.ceil(self.min_perc * total_count / 100))
+
+        if self.min_count is not None:
+            bounds.append(self.min_count)
+
+        return max(bounds)
+
+    def _resolve_max_count(self, total_count: int) -> int:
+        """
+        Resolve the effective maximum count from all specified bounds.
+        """
+        bounds = [total_count]
+
+        if self.max_frac is not None:
+            bounds.append(math.floor(self.max_frac * total_count))
+
+        if self.max_perc is not None:
+            bounds.append(math.floor(self.max_perc * total_count / 100))
+
+        if self.max_count is not None:
+            bounds.append(self.max_count)
+
+        return min(bounds)
