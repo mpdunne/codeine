@@ -7,7 +7,8 @@ from itertools import product
 from unittest.mock import MagicMock
 from scipy.stats import chisquare, chi2_contingency
 
-from codeine.constraints.base import PathConstraint
+from codeine.constraints.base import Constraint, DEAD_STATE, SAFE_STATE
+from codeine.constraints.banned import BannedSequenceConstraint
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
 from codeine.graph.base import CodonGraph
@@ -267,6 +268,134 @@ def test_n_valid_sequences_pinning_and_unpinning(standard_codon_table):
     assert len(sequences_all) == view.n_valid_sequences
 
 
+class RejectAllConstraint(Constraint):
+
+    @property
+    def initial_state(self):
+        return 0
+
+    def advance(self, state, pos, choice):
+        return DEAD_STATE
+
+    def link(self, graph):
+        pass
+
+
+def test_constraint_can_reject_all_sequences():
+    view = CodonGraph('MIKEY', context_l='aaa', context_r='ttt').view()
+
+    view.set_constraints([RejectAllConstraint()])
+
+    assert view.n_valid_sequences == 0
+    assert [*view.enumerate()] == []
+
+    with pytest.raises(ValueError):
+        view.sample()
+
+
+def test_clear_constraints_restores_default_behaviour():
+    view = CodonGraph('MIKEY', context_l='aaa', context_r='ttt').view()
+
+    expected_sequences = [*view.enumerate()]
+    expected_count = view.n_valid_sequences
+
+    view.set_constraints([RejectAllConstraint()])
+    assert view.n_valid_sequences == 0
+
+    view.clear_constraints()
+
+    assert view.n_valid_sequences == expected_count
+    assert [*view.enumerate()] == expected_sequences
+
+
+def test_constraints_are_copied_with_view():
+    view = CodonGraph('MIKEY', context_l='aaa', context_r='ttt').view()
+    view.set_constraints([RejectAllConstraint()])
+
+    copied = view.copy()
+
+    assert copied.n_valid_sequences == 0
+    assert [*copied.enumerate()] == []
+
+
+class RejectChoiceConstraint(Constraint):
+
+    def __init__(self, rejected_choice):
+        self.rejected_choice = rejected_choice
+
+    @property
+    def initial_state(self):
+        return 0
+
+    def advance(self, state, pos, choice):
+        if state < 0:
+            return state
+
+        if choice == self.rejected_choice:
+            return DEAD_STATE
+
+        return 0
+
+    def link(self, graph):
+        pass
+
+
+class SafeAfterFirstConstraint(Constraint):
+
+    @property
+    def initial_state(self):
+        return 0
+
+    def advance(self, state, pos, choice):
+        if state < 0:
+            return state
+
+        if pos >= 1:
+            return SAFE_STATE
+
+        return 0
+
+    def link(self, graph):
+        pass
+
+
+def test_view_applies_multiple_constraints():
+    graph = CodonGraph('MIKEY', context_l='aaa', context_r='ttt')
+    all_sequences = set(graph.view().enumerate())
+
+    view = graph.view()
+    view.set_constraints([RejectChoiceConstraint('ATA'), RejectChoiceConstraint('AAG')])
+
+    expected = {sequence for sequence in all_sequences
+                if sequence[3:6] != 'ATA' and sequence[6:9] != 'AAG'}
+
+    assert set(view.enumerate()) == expected
+
+
+def test_view_rejects_choice_when_any_constraint_is_dead():
+    graph = CodonGraph('MIKEY')
+    all_sequences = set(graph.view().enumerate())
+
+    view = graph.view()
+    view.set_constraints([SafeAfterFirstConstraint(), RejectChoiceConstraint('GAG')]),
+
+    expected = {sequence for sequence in all_sequences if sequence[9:12] != 'GAG'}
+
+    assert set(view.enumerate()) == expected
+
+
+def test_safe_constraint_does_not_disable_other_constraints():
+    graph = CodonGraph('MIKEY')
+    all_sequences = set(graph.view().enumerate())
+
+    view = graph.view()
+    view.set_constraints([SafeAfterFirstConstraint(), RejectChoiceConstraint('TAC')])
+
+    expected = {sequence for sequence in all_sequences if sequence[12:15] != 'TAC'}
+
+    assert set(view.enumerate()) == expected
+
+
 @pytest.mark.parametrize('aa_seq',
                          (
                                  'MIKEY',
@@ -397,10 +526,24 @@ def test_large_stepped_slice_matches_repeated_sequence_at():
     assert observed == expected
 
 
-def test_large_enumerate_range_respects_pins_and_banned_sequences():
+def test_enumerate_range_raise_if_bounds_are_bad():
+    view = CodonGraph('MIKEY').view()
+    n = view.n_valid_sequences
+
+    with pytest.raises(IndexError):
+        _ = [*view.enumerate_range(-1, 1)]
+
+    with pytest.raises(IndexError):
+        _ = [*view.enumerate_range(2, 1)]
+
+    with pytest.raises(IndexError):
+        _ = [*view.enumerate_range(0, n + 1)]
+
+
+def test_large_enumerate_range_respects_pins_and_constraints():
     view = CodonGraph('MIKEY' * 100).view()
     view.pin_codons({2: 'ATC'})
-    view.set_banned_sequences(['AAA'])
+    view.set_constraints([RejectChoiceConstraint('TAC')])
 
     start = 10**69
     stop = start + 10
@@ -410,21 +553,7 @@ def test_large_enumerate_range_respects_pins_and_banned_sequences():
 
     assert observed == expected
     assert all(seq[3:6] == 'ATC' for seq in observed)
-    assert all('AAA' not in seq for seq in observed)
-
-
-def test_enumerate_range_raise_if_bounds_are_bad():
-    view = CodonGraph('MIKEY').view()
-    n = view.n_valid_sequences
-
-    with pytest.raises(IndexError):
-        [*view.enumerate_range(-1, 1)]
-
-    with pytest.raises(IndexError):
-        [*view.enumerate_range(2, 1)]
-
-    with pytest.raises(IndexError):
-        [*view.enumerate_range(0, n + 1)]
+    assert all('TAC' not in seq for seq in observed)
 
 
 def test_view_seed_consistent():
@@ -484,13 +613,13 @@ def test_view_copy_copies_pins():
     assert [*copied.enumerate()] == [*view.enumerate()]
 
 
-def test_view_copy_copies_banned_sequences():
+def test_view_copy_copies_constraints():
     view = CodonGraph('MIKEY').view()
-    view.set_banned_sequences(['AAA'])
+    view.set_constraints([RejectChoiceConstraint('ATA')])
 
     copied = view.copy()
 
-    assert copied.banned_sequences == view.banned_sequences
+    assert copied.constraints == view.constraints
     assert copied.n_valid_sequences == view.n_valid_sequences
     assert [*copied.enumerate()] == [*view.enumerate()]
 
@@ -513,32 +642,6 @@ def test_codon_graph_view_pickle_preserves_pins():
     assert loaded.pinned_codons == view.pinned_codons
     assert loaded.n_valid_sequences == view.n_valid_sequences
     assert [*loaded.enumerate()] == [*view.enumerate()]
-
-
-def test_pinning_reuses_banned_tracker():
-    view = CodonGraph('MIKEY').view()
-    view.set_banned_sequences(['GAATTC'])
-
-    tracker = view.banned_tracker
-    view.pin_codons({1: ['ATG']})
-    assert view.banned_tracker is tracker
-
-    tracker = view.banned_tracker
-    view.clear_pins()
-    assert view.banned_tracker is tracker
-
-
-def test_setting_banned_sequences_rebuilds_tracker():
-    view = CodonGraph('MIKEY').view()
-    view.set_banned_sequences(['GAATTC'])
-
-    tracker = view.banned_tracker
-
-    view.set_banned_sequences(['GAATTC'])
-    assert view.banned_tracker is not tracker
-
-    view.set_banned_sequences(['GAATTC', 'ccgatt'])
-    assert view.banned_tracker is not tracker
 
 
 def test_view_doesnt_compile_immediately():
@@ -631,18 +734,21 @@ def test_changing_copied_view_pins_leaves_original_untouched():
     assert copied.pinned_codons == {1: ['ATG']}
 
 
-def test_changing_copied_view_bans_leaves_original_untouched():
+def test_changing_copied_view_changing_constraints_leaves_original_untouched():
     view = CodonGraph('MIKEY').view()
-    view.set_banned_sequences(['AAA'])
+    view.set_constraints([RejectChoiceConstraint('AAA')])
     copied = view.copy()
 
-    copied.set_banned_sequences(['TTT'])
-    assert view.banned_sequences == ['AAA']
-    assert copied.banned_sequences == ['TTT']
+    copied.set_constraints([RejectChoiceConstraint('TTT')])
+    assert len(view.constraints) == 1
+    assert view.constraints[0].rejected_choice == 'AAA'
+    assert len(copied.constraints) == 1
+    assert copied.constraints[0].rejected_choice == 'TTT'
 
-    view.clear_banned_sequences()
-    assert view.banned_sequences == []
-    assert copied.banned_sequences == ['TTT']
+    view.clear_constraints()
+    assert len(view.constraints) == 0
+    assert len(copied.constraints) == 1
+    assert copied.constraints[0].rejected_choice == 'TTT'
 
 
 def test_copied_view_recompiles_independently_after_change():
@@ -656,7 +762,7 @@ def test_copied_view_recompiles_independently_after_change():
     assert not view._requires_compile
     assert not copied._requires_compile
 
-    copied.set_banned_sequences(['ATG'])
+    copied.set_constraints([RejectChoiceConstraint('ATG')])
     assert not view._requires_compile
     assert copied._requires_compile
 
@@ -697,6 +803,39 @@ def test_copied_view_copies_rng_state():
     assert copied._rng is not view._rng
     assert copied.sample() == view.sample()
     assert copied.sample() == view.sample()
+
+
+def test_sample_respects_pins():
+    view = CodonGraph('MIKEY').view(seed=8675309)
+    view.pin_codons({2: 'ATT'})
+
+    for _ in range(100):
+        assert view.sample()[3:6] == 'ATT'
+
+
+def test_sample_many_returns_correct_number():
+    view = CodonGraph('MIKEY').view(seed=8675309)
+    seqs = view.sample(n=10)
+
+    assert len(seqs) == 10
+    assert all(isinstance(seq, str) for seq in seqs)
+
+
+def test_sample_many_zero():
+    view = CodonGraph('MIKEY').view()
+    assert view.sample(n=0) == []
+
+
+def test_sample_many_negative_n_raises():
+    view = CodonGraph('MIKEY').view()
+    with pytest.raises(ValueError):
+        view.sample(n=-1)
+
+
+def test_sample_many_sequences_are_valid():
+    view = CodonGraph('MIKEY').view()
+    seqs = view.sample(n=100)
+    assert all(seq in view for seq in seqs)
 
 
 SHORT_AA_SEQUENCES = (
@@ -748,7 +887,10 @@ def helper_ban_sequences_and_check_enumerate(
         translation_table=tt,
     )
     view = graph.view()
-    view.set_banned_sequences(banned_sequences=banned_sequences)
+
+    bsc = BannedSequenceConstraint(banned_sequences)
+    view.set_constraints([bsc])
+
     observed_seqs = set(view)
 
     normalised_banned_sequences = [
@@ -797,7 +939,8 @@ def helper_ban_sequences_and_check_sample(
         translation_table=tt,
     )
     view = graph.view()
-    view.set_banned_sequences(banned_sequences=banned_sequences)
+    bsc = BannedSequenceConstraint(banned_sequences)
+    view.set_constraints([bsc])
 
     normalised_banned_sequences = [
         banned_sequence.upper()
@@ -824,39 +967,6 @@ def helper_ban_sequences_and_check_sample(
         )
 
 
-def test_sample_respects_pins():
-    view = CodonGraph('MIKEY').view(seed=8675309)
-    view.pin_codons({2: 'ATT'})
-
-    for _ in range(100):
-        assert view.sample()[3:6] == 'ATT'
-
-
-def test_sample_many_returns_correct_number():
-    view = CodonGraph('MIKEY').view(seed=8675309)
-    seqs = view.sample(n=10)
-
-    assert len(seqs) == 10
-    assert all(isinstance(seq, str) for seq in seqs)
-
-
-def test_sample_many_zero():
-    view = CodonGraph('MIKEY').view()
-    assert view.sample(n=0) == []
-
-
-def test_sample_many_negative_n_raises():
-    view = CodonGraph('MIKEY').view()
-    with pytest.raises(ValueError):
-        view.sample(n=-1)
-
-
-def test_sample_many_sequences_are_valid():
-    view = CodonGraph('MIKEY').view()
-    seqs = view.sample(n=100)
-    assert all(seq in view for seq in seqs)
-
-
 @pytest.mark.parametrize('aa_seq', SHORT_AA_SEQUENCES)
 @pytest.mark.parametrize('context_l', CONTEXTS_L)
 @pytest.mark.parametrize('context_r', CONTEXTS_R)
@@ -873,36 +983,31 @@ def test_view_enumerate_works_without_banned_sequences(aa_seq, context_l, contex
 
 def test_banned_sequences_can_be_set_and_are_normalised():
     graph = CodonGraph('MIKEY')
-    view = CodonGraphView(graph, banned_sequences=['aaa', 'AAA', 'ttt'])
-    assert view.banned_sequences == ['AAA', 'TTT']
+    view = CodonGraphView(graph, constraints=[BannedSequenceConstraint(['aaa', 'AAA', 'ttt'])])
+    assert len(view.constraints) == 1
+    assert isinstance(view.constraints[0], BannedSequenceConstraint)
+    assert set(view.constraints[0].banned_sequences) == {'AAA', 'TTT'}
 
     view = CodonGraphView(graph)
-    view.set_banned_sequences(['ccc', 'CCC', 'ggg'])
-    assert view.banned_sequences == ['CCC', 'GGG']
+    view = CodonGraphView(graph, constraints=[BannedSequenceConstraint(['ccc', 'CCC', 'ggg'])])
+    assert len(view.constraints) == 1
+    assert isinstance(view.constraints[0], BannedSequenceConstraint)
+    assert set(view.constraints[0].banned_sequences) == {'CCC', 'GGG'}
 
 
 def test_clear_banned_sequences_removes_bans_and_marks_stale():
     graph = CodonGraph('MIKEY')
-    view = CodonGraphView(graph, banned_sequences=['aaa', 'AAA', 'ttt'])
-    assert view.banned_sequences == ['AAA', 'TTT']
+    bsc = BannedSequenceConstraint(['aaa', 'AAA', 'ttt'])
+    view = CodonGraphView(graph, constraints=[bsc])
+    assert view.constraints == (bsc,)
     assert view._requires_compile
 
     view.compile()
     assert not view._requires_compile
 
-    view.clear_banned_sequences()
-    assert view.banned_sequences == []
+    view.clear_constraints()
+    assert view.constraints == ()
     assert view._requires_compile
-
-
-def test_empty_banned_sequence_raises():
-    graph = CodonGraph('MIKEY')
-    with pytest.raises(ValueError, match='Banned sequences cannot be empty'):
-        view = CodonGraphView(graph, banned_sequences=[''])
-
-    with pytest.raises(ValueError, match='Banned sequences cannot be empty'):
-        view = CodonGraphView(graph)
-        view.set_banned_sequences([''])
 
 
 def test_view_exposes_graph_properties():
@@ -917,59 +1022,60 @@ def test_view_exposes_graph_properties():
     assert view.context_r == graph.context_r
 
 
-def test_banned_sequence_entirely_in_left_context_gives_empty_space():
+@pytest.mark.parametrize(
+    'banned_sequence',
+    (
+        'GAATTC',
+        'AATTC',
+        'GAATT',
+    ),
+)
+def test_regression_banned_sequence_entirely_in_left_context_gives_empty_space(banned_sequence):
     graph = CodonGraph('MIKEY', context_l='GAATTC')
     view = graph.view()
-    view.set_banned_sequences(['GAATTC'])
-    assert view.n_valid_sequences == 0
-
-    graph = CodonGraph('MIKEY', context_l='GAATTC')
-    view = graph.view()
-    view.set_banned_sequences(['AATTC'])
-    assert view.n_valid_sequences == 0
-
-    graph = CodonGraph('MIKEY', context_l='GAATTC')
-    view = graph.view()
-    view.set_banned_sequences(['GAATT'])
+    bsc = BannedSequenceConstraint([banned_sequence])
+    view.set_constraints([bsc])
     assert view.n_valid_sequences == 0
 
 
-def test_banned_sequence_entirely_in_right_context_gives_empty_space():
-    graph = CodonGraph('MIKEY', context_l='GAATTC')
-    view = graph.view()
-    view.set_banned_sequences(['GAATTC'])
-    assert view.n_valid_sequences == 0
-
-    graph = CodonGraph('MIKEY', context_l='GAATTC')
-    view = graph.view()
-    view.set_banned_sequences(['AATTC'])
-    assert view.n_valid_sequences == 0
-
+@pytest.mark.parametrize(
+    'banned_sequence',
+    (
+        'GAATTC',
+        'AATTC',
+        'GAATT',
+    ),
+)
+def test_regression_banned_sequence_entirely_in_right_context_gives_empty_space(banned_sequence):
     graph = CodonGraph('MIKEY', context_r='GAATTC')
     view = graph.view()
-    view.set_banned_sequences(['AATT'])
+    bsc = BannedSequenceConstraint([banned_sequence])
+    view.set_constraints([bsc])
     assert view.n_valid_sequences == 0
 
 
-def test_banned_sequence_spanning_left_context_and_first_codon_is_respected():
+def test_regression_banned_sequence_spanning_left_context_and_first_codon_is_respected():
     view = CodonGraph('ELEPHANT', context_l='AAGGATGATG').view()
-    view.set_banned_sequences(['AAGGATGATGAA'])
+    bsc = BannedSequenceConstraint(['AAGGATGATGAA'])
+    view.set_constraints([bsc])
 
     for seq in view:
         assert 'AAGGATGATGAA' not in f'AAGGATGATG{seq}'
 
 
-def test_banned_sequence_spanning_last_codon_and_right_context_is_respected():
+def test_regression_banned_sequence_spanning_last_codon_and_right_context_is_respected():
     view = CodonGraph('ELEPHANT', context_r='AAGGATGATG').view()
-    view.set_banned_sequences(['CGAAGGATGATG'])
+    bsc = BannedSequenceConstraint(['CGAAGGATGATG'])
+    view.set_constraints([bsc])
 
     for seq in view:
         assert 'CGAAGGATGATG' not in f'{seq}AAGGATGATG'
 
 
-def test_banned_sequence_spanning_both_contexts_is_respected():
+def test_regression_banned_sequence_spanning_both_contexts_is_respected():
     view = CodonGraph('ELEPHANT', context_l='TTAA', context_r='AAGG').view()
-    view.set_banned_sequences(['AA' + 'GAGCTTGAGCCGCATGCCAATACG' + 'AA'])
+    bsc = BannedSequenceConstraint(['AA' + 'GAGCTTGAGCCGCATGCCAATACG' + 'AA'])
+    view.set_constraints([bsc])
     assert 'GAGCTTGAGCCGCATGCCAATACG' not in view
 
 
@@ -1033,7 +1139,9 @@ def test_regression_banned_whole_sequences(aa_seq, context_l, context_r):
     )
 
     view = graph.view()
-    view.set_banned_sequences([cds])
+
+    bsc = BannedSequenceConstraint([cds])
+    view.set_constraints([bsc])
 
     assert cds not in view
     assert view.n_valid_sequences == unconstrained_n_sequences - 1
@@ -1049,7 +1157,8 @@ def test_regression_banned_whole_sequences(aa_seq, context_l, context_r):
     )
 
     view = graph.view()
-    view.set_banned_sequences(seqs)
+    bsc = BannedSequenceConstraint(seqs)
+    view.set_constraints([bsc])
 
     for seq in seqs:
         assert seq not in view
@@ -1081,7 +1190,8 @@ def test_regression_banned_sequences_that_arent_present_anyway(aa_seq, context_l
 
     view = graph.view()
     banned_sequences = ['CCCCCCCCCCCC', 'GGGGGGGGGGGG', 'TTTTTTTTTTTT']
-    view.set_banned_sequences(banned_sequences)
+    bsc = BannedSequenceConstraint(banned_sequences)
+    view.set_constraints([bsc])
 
     assert view.n_valid_sequences == unconstrained_view.n_valid_sequences
 
@@ -1236,48 +1346,6 @@ def test_regression_banned_sequences_long_aa_sequence_many_banned_sequences(aa_s
     )
 
 
-class RejectAllConstraint(PathConstraint):
-    def advance(self, state, pos, choice):
-        return None
-
-
-def test_path_constraint_can_reject_all_sequences():
-    view = CodonGraph('MIKEY', context_l='aaa', context_r='ttt').view()
-
-    view.set_path_constraint(RejectAllConstraint())
-
-    assert view.n_valid_sequences == 0
-    assert [*view.enumerate()] == []
-
-    with pytest.raises(ValueError):
-        view.sample()
-
-
-def test_clear_path_constraint_restores_default_behaviour():
-    view = CodonGraph('MIKEY', context_l='aaa', context_r='ttt').view()
-
-    expected_sequences = [*view.enumerate()]
-    expected_count = view.n_valid_sequences
-
-    view.set_path_constraint(RejectAllConstraint())
-    assert view.n_valid_sequences == 0
-
-    view.clear_path_constraint()
-
-    assert view.n_valid_sequences == expected_count
-    assert [*view.enumerate()] == expected_sequences
-
-
-def test_path_constraint_is_copied_with_view():
-    view = CodonGraph('MIKEY', context_l='aaa', context_r='ttt').view()
-    view.set_path_constraint(RejectAllConstraint())
-
-    copied = view.copy()
-
-    assert copied.n_valid_sequences == 0
-    assert [*copied.enumerate()] == []
-
-
 def helper_chi_square_codon_test(observed_counts, expected_counts):
     """
     Check that a set of sampled items looks like it's drawn from a given distirbution.
@@ -1378,7 +1446,9 @@ def test_codon_distributions_roughly_match_weights_banned_sequences(name, aa_seq
         if not any(b in seq for b in banned):
             rejection_sampled_seqs.append(seq)
 
-    view.set_banned_sequences(banned)
+    bsc = BannedSequenceConstraint(banned)
+    view.set_constraints([bsc])
+
     smart_seqs = [view.sample() for _ in range(n)]
 
     rejection_counts = helper_codon_counts_by_position(rejection_sampled_seqs)
