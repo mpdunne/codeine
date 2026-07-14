@@ -89,7 +89,7 @@ def expand_and_validate_sequence_constraints(
         forbidden_motifs: Optional[ForbiddenMotifs] = None,
         max_homopolymer: Optional[int] = None,
         rna: bool = False,
-):
+) -> List[str]:
     """
     Convert forbidden sequences and/or max homopolymer constraints into sets of banned sequences.
 

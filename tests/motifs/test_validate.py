@@ -91,3 +91,13 @@ def test_validate_mixed_restrictions():
     motifs = None
     result = expand_and_validate_sequence_constraints(max_homopolymer=max_homopolymer, forbidden_motifs=motifs)
     assert set(result) == {'AAAAA', 'CCCCC', 'GGGGG', 'TTTTT'}
+
+
+def test_sequence_constraints_deduplicate_between_sources():
+    result = expand_and_validate_sequence_constraints(forbidden_motifs='AAAAA', max_homopolymer=4)
+    assert result == ['AAAAA', 'CCCCC', 'GGGGG', 'TTTTT']
+
+
+def test_restriction_site_converts_to_rna():
+    result = expand_and_validate_forbidden_motifs(RestrictionSite.BsaI, rna=True)
+    assert result == ['GAGACC', 'GGUCUC']
