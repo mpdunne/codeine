@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 # of each active constraint. Plain tuples are immutable and hashable, while
 # avoiding NamedTuple construction in the compiler's hottest path.
 TraversalState = Tuple[Node, Tuple[ConstraintState, ...]]
+TraversalStateKey = Tuple[int, Tuple[ConstraintState, ...]]
 
 
 class ChoiceResult(NamedTuple):
@@ -68,7 +69,7 @@ class ViewCompiler:
 
         self.constraints = tuple(constraint for constraint in constraints if not constraint.is_trivial)
 
-        self.state_ids: Dict[TraversalState, int] = {}
+        self.state_ids: Dict[TraversalStateKey, int] = {}
         self.states: List[TraversalState] = []
 
         # Dynamic-programming totals:
@@ -115,7 +116,11 @@ class ViewCompiler:
             A compiled view.
         """
         initial_state = self._initial_state()
-        initial_state_id, _ = self._get_or_register_state_id(initial_state)
+        initial_node, initial_constraint_states = initial_state
+        initial_state_id, _ = self._get_or_register_state_id(
+            initial_node,
+            initial_constraint_states,
+        )
 
         self._compile_from(initial_state_id)
 
@@ -143,19 +148,25 @@ class ViewCompiler:
 
     def _get_or_register_state_id(
             self,
-            state: TraversalState,
+            node: Node,
+            constraint_states: Tuple[ConstraintState, ...],
     ) -> Tuple[int, bool]:
         """
         Return the state ID and whether the state was newly registered.
+
+        State lookup uses the node position rather than the node object, keeping
+        the hot dictionary key compact. The full node is stored only when a state
+        is genuinely new.
         """
-        state_id = self.state_ids.get(state)
+        key = (node.pos, constraint_states)
+        state_id = self.state_ids.get(key)
 
         if state_id is not None:
             return state_id, False
 
         state_id = len(self.states)
-        self.state_ids[state] = state_id
-        self.states.append(state)
+        self.state_ids[key] = state_id
+        self.states.append((node, constraint_states))
         self.totals_by_state_id.append(None)
         self.choices_by_state_id.append(None)
         self.child_results_by_state_id.append(None)
@@ -349,11 +360,10 @@ class ViewCompiler:
             if next_constraint_states is None:
                 continue
 
-            child_state = (
+            child_id, is_new = self._get_or_register_state_id(
                 child,
                 next_constraint_states,
             )
-            child_id, is_new = self._get_or_register_state_id(child_state)
 
             child_results.append((choice, child_id))
 
