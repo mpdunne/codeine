@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import random
-
-from collections import Counter
 from typing import TYPE_CHECKING, Dict, List, Optional, Sequence, Tuple, Union
 
 from codeine.graph.nodes import CodonNode, ContextNode, EndNode, Node
@@ -35,13 +32,12 @@ class CodonGraph:
             raise ValueError('Please provide non-empty sequence!')
 
         if translation_table is None:
-            rna = weights.rna if weights is not None else False
-            translation_table = TranslationTable(table_id=1, rna=rna)
+            translation_table = TranslationTable(table_id=1, rna=False)
 
         if weights is None:
-            weights = CodonWeights.uniform(table=translation_table, rna=translation_table.rna)
-
-        self.validate_codon_weights(weights, translation_table)
+            weights = CodonWeights.uniform(table=translation_table)
+        else:
+            weights = weights.for_table(translation_table)
 
         self.tt = translation_table
         self.cw = weights
@@ -137,38 +133,6 @@ class CodonGraph:
             normalised[pos] = codons
 
         return normalised
-
-    @staticmethod
-    def validate_codon_weights(weights: CodonWeights, translation_table: TranslationTable) -> None:
-        """
-        Check that codon weights are compatible with the provided translation table.
-
-        Parameters
-        ----------
-        weights
-            The codon weights.
-        translation_table
-            The translation table.
-
-        Raises
-        -------
-        Various errors if things aren't good.
-        """
-        if weights.rna != translation_table.rna:
-            raise ValueError('Codon weights and translation table use different molecule types.')
-
-        expected_codons = {
-            aa: Counter(codons)
-            for aa, codons in translation_table.aa_to_codons.items()
-        }
-
-        actual_codons = {
-            aa: Counter(codons)
-            for aa, codons in weights.aa_to_codons.items()
-        }
-
-        if actual_codons != expected_codons:
-            raise ValueError('Codon weights and translation table do not match.')
 
     def codon_node_by_pos(self, pos: int) -> CodonNode:
         """

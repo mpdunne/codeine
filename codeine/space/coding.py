@@ -459,30 +459,16 @@ class CodingSpace:
         Resolve user-submited (or not) translation table, codon weights, and RNA flag.
         """
 
-        if rna is None:
-            if translation_table is not None and codon_weights is not None \
-                    and translation_table.rna != codon_weights.rna:
-                raise ValueError('Provided translation table and codon weights must have the same molecule type.')
-
-            if translation_table is not None:
-                rna = translation_table.rna
-            elif codon_weights is not None:
-                rna = codon_weights.rna
-            else:
-                rna = False
-
-        else:
-            if translation_table is not None and translation_table.rna != rna:
-                raise ValueError('Value for rna is inconsistent with the provided translation table.')
-
-            if codon_weights is not None and codon_weights.rna != rna:
-                raise ValueError('Value for rna is inconsistent with the provided codon weights.')
-
         if translation_table is None:
-            translation_table = TranslationTable(table_id=1, rna=rna)
+            translation_table = TranslationTable(table_id=1, rna=False if rna is None else rna)
+
+        elif rna is not None and translation_table.rna != rna:
+            raise ValueError('Value for rna is inconsistent with the provided translation table.')
 
         if codon_weights is None:
             codon_weights = CodonWeights.uniform(table=translation_table)
+        else:
+            codon_weights = codon_weights.for_table(translation_table)
 
         return translation_table, codon_weights
 
