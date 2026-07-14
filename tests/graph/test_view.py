@@ -269,12 +269,11 @@ def test_n_valid_sequences_pinning_and_unpinning(standard_codon_table):
 
 
 
-
 class RejectAllConstraint(Constraint):
 
     @property
     def initial_state(self):
-        return ()
+        return 0
 
     def advance(self, state, pos, choice):
         return DEAD_STATE
@@ -327,7 +326,7 @@ class RejectChoiceConstraint(Constraint):
 
     @property
     def initial_state(self):
-        return ()
+        return 0
 
     def advance(self, state, pos, choice):
         if state < 0:
