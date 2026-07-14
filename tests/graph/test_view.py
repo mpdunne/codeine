@@ -1504,7 +1504,7 @@ def test_codon_distributions_roughly_match_weights(aa_seq, codon_weights):
 
     for i, aa in enumerate(aa_seq):
         pos = i + 1
-        expected = {codon: weight * n for codon, weight in view.graph.cw.by_aa(aa).items()}
+        expected = {codon: weight * n for codon, weight in view.codon_weights.by_aa(aa).items()}
         observed = observed_counts[pos]
 
         if len(expected) == 1:
@@ -1568,7 +1568,7 @@ def test_codon_distributions_roughly_match_weights_banned_sequences(name, aa_seq
     for pos in range(1, len(aa_seq) + 1):
         aa = aa_seq[pos - 1]
 
-        if len(view.graph.cw.by_aa(aa)) == 1:
+        if len(view.codon_weights.by_aa(aa)) == 1:
             assert len(rejection_counts[pos]) == len(smart_counts[pos]) == 1
         else:
             result = helper_chi_square_two_sample_test(smart_counts[pos], rejection_counts[pos])
