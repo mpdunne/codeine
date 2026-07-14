@@ -236,11 +236,14 @@ class BannedSequenceConstraint(Constraint):
     def link(self, graph: CodonGraph) -> None:
         """
         Link the constraint to a graph.
-
-        The banned tracker is currently constructed with its graph, so there is
-        nothing further to initialise here.
         """
-        self.banned_sequences = tuple(graph.tt.normalise_sequence(seq) for seq in self.banned_sequences)
+        initial_state: BannedTrackerState = frozenset()
+
+        self.state_ids = {initial_state: self.initial_state_id}
+        self.states = [initial_state]
+        self.advance_cache.clear()
+
+        self.banned_sequences = tuple(graph.tt.normalise_sequence(sequence) for sequence in self.banned_sequences)
         self.graph = graph
         self.paths = self._find_banned_paths()
         self.starts = self._build_starts()

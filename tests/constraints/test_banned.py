@@ -800,3 +800,23 @@ def test_banned_sequence_spanning_both_contexts_is_dead():
     )
 
     assert state == DEAD_STATE
+
+
+def test_banned_sequence_constraint_relink_resets_internal_state():
+    constraint = BannedSequenceConstraint(['AAA'])
+
+    graph1 = CodonGraph('KKK')
+    graph2 = CodonGraph('MMMM')
+
+    constraint.link(graph1)
+
+    # Populate the registry/cache.
+    constraint.advance(constraint.initial_state, 1, next(iter(graph1.initial_node.transitions)))
+
+    assert len(constraint.states) > 1 or constraint.advance_cache
+
+    constraint.link(graph2)
+
+    assert constraint.states == [frozenset()]
+    assert constraint.state_ids == {frozenset(): 0}
+    assert constraint.advance_cache == {}
