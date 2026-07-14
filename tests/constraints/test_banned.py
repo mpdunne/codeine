@@ -3,8 +3,7 @@ import pytest
 from itertools import product
 
 from codeine.graph.base import CodonGraph
-from codeine.translation.tables import TranslationTable
-from codeine.constraints.base import DEAD_STATE
+from codeine.constraints.base import DEAD_STATE, SAFE_STATE
 from codeine.constraints.banned import BannedSequenceConstraint, _find_matching_subpaths
 
 
@@ -824,5 +823,11 @@ def test_banned_sequence_constraint_relink_resets_internal_state():
 
 def test_banned_sequence_constraint_is_trivial_before_linking():
     constraint = BannedSequenceConstraint(['AAA'])
-
     assert constraint.is_trivial
+
+
+def test_banned_sequence_constraint_preserves_terminal_states():
+    constraint = BannedSequenceConstraint(['AAA'])
+
+    assert constraint.advance(DEAD_STATE, 1, 'AAA') == DEAD_STATE
+    assert constraint.advance(SAFE_STATE, 1, 'AAA') == SAFE_STATE

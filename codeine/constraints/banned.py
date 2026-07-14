@@ -1,6 +1,6 @@
 from typing import Dict, FrozenSet, List, NamedTuple, Optional, Sequence, Tuple
 
-from codeine.constraints.base import Constraint, ConstraintState, DEAD_STATE
+from codeine.constraints.base import Constraint, ConstraintState, DEAD_STATE, SAFE_STATE
 from codeine.graph.base import CodonGraph
 from codeine.graph.nodes import CodonNode
 
@@ -141,6 +141,9 @@ class BannedSequenceConstraint(Constraint):
         """
         if state == DEAD_STATE:
             return DEAD_STATE
+
+        if state == SAFE_STATE:
+            return SAFE_STATE
 
         state_id = state
         step = (pos, choice)
