@@ -24,6 +24,8 @@ class MutationDistanceConstraint(Constraint):
     max_codons: Optional[int] = None
 
     def __post_init__(self) -> None:
+        if len(self.reference_cds) % 3:
+            raise ValueError('Reference CDS length must be a multiple of three.')
 
         # Store the reference codons once, on init.
         ref_codons = [self.reference_cds[i:i + 3] for i in range(0, len(self.reference_cds), 3)]

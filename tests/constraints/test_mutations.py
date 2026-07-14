@@ -155,3 +155,15 @@ def test_mutation_distance_becomes_safe_when_maxima_cannot_be_exceeded():
 
     state = constraint.advance(state, 3, 'TTA')  # unchanged
     assert state is SAFE_STATE
+
+
+def test_mutation_distance_rejects_incomplete_reference_codon():
+    with pytest.raises(ValueError, match='Reference CDS length must be a multiple of three.'):
+        MutationDistanceConstraint('AT')
+
+
+def test_mutation_distance_rejects_mismatched_graph_length():
+    constraint = MutationDistanceConstraint('ATG')
+
+    with pytest.raises(ValueError, match='Length of linked graph does not match number of codons'):
+        constraint.link(CodonGraph('MI'))
