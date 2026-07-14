@@ -122,7 +122,7 @@ class ViewCompiler:
             A compiled view.
         """
         initial_state = self._initial_state()
-        initial_state_id = self._get_or_register_state_id(initial_state)
+        initial_state_id, _ = self._get_or_register_state_id(initial_state)
 
         self._compile_from(initial_state_id)
 
@@ -148,21 +148,26 @@ class ViewCompiler:
             choice_results_by_state_id=choice_results_by_state_id,
         )
 
-    def _get_or_register_state_id(self, state: TraversalState) -> int:
+    def _get_or_register_state_id(
+            self,
+            state: TraversalState,
+    ) -> Tuple[int, bool]:
         """
-        Return the stable integer ID for a traversal state, creating one if needed.
+        Return the state ID and whether the state was newly registered.
         """
         state_id = self.state_ids.get(state)
 
-        if state_id is None:
-            state_id = len(self.states)
-            self.state_ids[state] = state_id
-            self.states.append(state)
-            self.totals_by_state_id.append(None)
-            self.choices_by_state_id.append(None)
-            self.child_results_by_state_id.append(None)
+        if state_id is not None:
+            return state_id, False
 
-        return state_id
+        state_id = len(self.states)
+        self.state_ids[state] = state_id
+        self.states.append(state)
+        self.totals_by_state_id.append(None)
+        self.choices_by_state_id.append(None)
+        self.child_results_by_state_id.append(None)
+
+        return state_id, True
 
     def _initial_state(self) -> TraversalState:
         """
@@ -306,10 +311,12 @@ class ViewCompiler:
             Stack entries for child state IDs still needing compilation.
         """
         child_results = []
-        uncompiled_child_ids = set()
+        uncompiled_children = []
 
         state = self.states[state_id]
         node = state.node
+        constraint_states = state.constraint_states
+        pos = node.pos
 
         for choice in self.choices_by_node[node]:
             child = node.transitions.get(choice)
@@ -318,10 +325,11 @@ class ViewCompiler:
                 continue
 
             next_constraint_states = self._advance_constraints(
-                state.constraint_states,
-                node.pos,
+                constraint_states,
+                pos,
                 choice,
             )
+
             if next_constraint_states is None:
                 continue
 
@@ -329,18 +337,16 @@ class ViewCompiler:
                 child,
                 next_constraint_states,
             )
-            child_id = self._get_or_register_state_id(child_state)
+            child_id, is_new = self._get_or_register_state_id(child_state)
 
-            # Keep every codon transition.
             child_results.append((choice, child_id))
 
-            # But compile each shared child only once.
-            if self.totals_by_state_id[child_id] is None:
-                uncompiled_child_ids.add(child_id)
+            if is_new:
+                uncompiled_children.append((child_id, False))
 
         self.child_results_by_state_id[state_id] = child_results
 
-        return [(child_id, False) for child_id in uncompiled_child_ids]
+        return uncompiled_children
 
     def _get_choices_for_node(self, node: Node) -> List[str]:
         """
