@@ -76,13 +76,16 @@ class MutationDistanceConstraint(Constraint):
         Non-codon nodes do not affect distance. Codon nodes add the distance
         between the chosen codon and the reference codon at the same position.
         """
-        if pos < self.first_pos or pos > self.last_pos:
-            return state
-
         if state == DEAD_STATE:
             return DEAD_STATE
 
         if state == SAFE_STATE:
+            return SAFE_STATE
+
+        if pos < self.first_pos or pos > self.last_pos:
+            return state
+
+        if not self._tracks_nts and not self._tracks_codons:
             return SAFE_STATE
 
         nt_diffs, codon_diffs = state
@@ -132,7 +135,7 @@ class MutationDistanceConstraint(Constraint):
 
         return nt_diffs, codon_diffs
 
-    def link(self, graph: CodonGraph):
+    def link(self, graph: CodonGraph) -> None:
         """
         Link up to the graph.
         """
