@@ -369,3 +369,198 @@ def test_missing_codon_raises_value_error_when_resolved():
 
     with pytest.raises(ValueError, match='Missing weights for codon'):
         weights.for_table(table)
+
+
+def test_zero_weights_are_allowed():
+    weights = CodonWeights(
+        {
+            'F': {
+                'TTT': 0.0,
+                'TTC': 1.0,
+            },
+        }
+    )
+
+    assert weights['TTT'] == 0.0
+    assert weights['TTC'] == 1.0
+
+
+def test_threshold_sets_weights_below_minimum_to_zero():
+    weights = CodonWeights(
+        {
+            'F': {
+                'TTT': 9,
+                'TTC': 91,
+            },
+        }
+    )
+
+    thresholded = weights.threshold(0.1)
+
+    assert thresholded['TTT'] == 0.0
+    assert thresholded['TTC'] == 1.0
+
+
+def test_threshold_keeps_weights_equal_to_minimum():
+    weights = CodonWeights(
+        {
+            'F': {
+                'TTT': 0.1,
+                'TTC': 0.9,
+            },
+        }
+    )
+
+    thresholded = weights.threshold(0.1)
+
+    assert thresholded is weights
+    assert thresholded['TTT'] == pytest.approx(0.1)
+    assert thresholded['TTC'] == pytest.approx(0.9)
+
+
+def test_threshold_renormalises_remaining_weights():
+    weights = CodonWeights(
+        {
+            'I': {
+                'ATT': 0.05,
+                'ATC': 0.25,
+                'ATA': 0.70,
+            },
+        }
+    )
+
+    thresholded = weights.threshold(0.1)
+
+    assert thresholded['ATT'] == 0.0
+    assert thresholded['ATC'] == pytest.approx(0.25 / 0.95)
+    assert thresholded['ATA'] == pytest.approx(0.70 / 0.95)
+
+
+def test_threshold_does_not_modify_original_weights():
+    weights = CodonWeights(
+        {
+            'F': {
+                'TTT': 0.05,
+                'TTC': 0.95,
+            },
+        }
+    )
+
+    thresholded = weights.threshold(0.1)
+
+    assert weights['TTT'] == pytest.approx(0.05)
+    assert weights['TTC'] == pytest.approx(0.95)
+    assert thresholded is not weights
+
+
+@pytest.mark.parametrize('min_weight', (-0.1, 1.1))
+def test_threshold_rejects_invalid_minimum_weight(min_weight):
+    weights = CodonWeights.uniform()
+
+    with pytest.raises(ValueError, match='between 0 and 1'):
+        weights.threshold(min_weight)
+
+
+def test_restrict_removes_zero_weight_codons_from_table_and_weights():
+    table = TranslationTable()
+    data = make_weights_data(table)
+    data['F'] = {
+        'TTT': 0.0,
+        'TTC': 1.0,
+    }
+
+    weights = CodonWeights(data)
+    restricted_table, restricted_weights = weights.restrict(table)
+
+    assert 'TTT' not in restricted_table.codons_to_aa
+    assert 'TTT' not in restricted_weights.weights
+
+    assert restricted_table['TTC'] == 'F'
+    assert restricted_weights['TTC'] == 1.0
+
+
+def test_restrict_returns_compatible_table_and_weights():
+    table = TranslationTable()
+    data = make_weights_data(table)
+    data['F'] = {
+        'TTT': 0.0,
+        'TTC': 1.0,
+    }
+
+    restricted_table, restricted_weights = CodonWeights(data).restrict(table)
+
+    assert set(restricted_weights.weights) == set(restricted_table.codons_to_aa)
+    assert restricted_weights.for_table(restricted_table) is restricted_weights
+
+
+def test_restrict_preserves_relative_positive_weights():
+    table = TranslationTable()
+    data = make_weights_data(table)
+    data['I'] = {
+        'ATT': 0.0,
+        'ATC': 1.0,
+        'ATA': 3.0,
+    }
+
+    _, restricted_weights = CodonWeights(data).restrict(table)
+
+    assert restricted_weights['ATC'] == pytest.approx(0.25)
+    assert restricted_weights['ATA'] == pytest.approx(0.75)
+
+
+def test_restrict_returns_original_objects_when_no_weights_are_zero():
+    table = TranslationTable()
+    weights = CodonWeights.uniform(table)
+
+    restricted_table, restricted_weights = weights.restrict(table)
+
+    assert restricted_table is table
+    assert restricted_weights is weights
+
+
+def test_restrict_resolves_weights_to_table_molecule_type():
+    dna_table = TranslationTable()
+    rna_table = TranslationTable(rna=True)
+
+    data = make_weights_data(dna_table)
+    data['F'] = {
+        'TTT': 0.0,
+        'TTC': 1.0,
+    }
+
+    restricted_table, restricted_weights = CodonWeights(data).restrict(rna_table)
+
+    assert restricted_table.rna is True
+    assert 'UUU' not in restricted_table.codons_to_aa
+    assert 'UUU' not in restricted_weights.weights
+    assert 'UUC' in restricted_table.codons_to_aa
+    assert 'UUC' in restricted_weights.weights
+
+
+def test_restricted_table_name_lists_omitted_codons():
+    table = TranslationTable()
+    data = make_weights_data(table)
+    data['F'] = {
+        'TTT': 0.0,
+        'TTC': 1.0,
+    }
+
+    restricted_table, _ = CodonWeights(data).restrict(table)
+
+    assert table.name in restricted_table.name
+    assert 'TTT' in restricted_table.name
+
+
+def test_restricted_table_name_summarises_many_omitted_codons():
+    table = TranslationTable()
+    data = make_weights_data(table)
+
+    omitted_codons = []
+    for aa, codons in table.aa_to_codons.items():
+        for codon in codons[:-1]:
+            data[aa][codon] = 0.0
+            omitted_codons.append(codon)
+
+    restricted_table, _ = CodonWeights(data).restrict(table)
+
+    assert f'omitting {len(omitted_codons)} zero-weight codons' in restricted_table.name
