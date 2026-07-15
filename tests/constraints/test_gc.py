@@ -114,3 +114,30 @@ def test_gc_constraint_counts_single_final_codon():
     view.set_constraints([GCConstraint(min_count=2)])
 
     assert set(view.enumerate()) == set()
+
+
+def test_combined_gc_constraints_match_enumerate_and_reject():
+    aa_seq = 'SASSAFRAS'
+
+    gc_constraint = GCConstraint(min_perc=40, max_perc=60)
+    gc3_constraint = GC3Constraint(min_perc=20, max_perc=80)
+
+    graph = CodonGraph(aa_seq)
+
+    gc_min = gc_constraint._resolve_min_count(len(aa_seq) * 3)
+    gc_max = gc_constraint._resolve_max_count(len(aa_seq) * 3)
+    gc3_min = gc3_constraint._resolve_min_count(len(aa_seq))
+    gc3_max = gc3_constraint._resolve_max_count(len(aa_seq))
+
+    expected = {
+        sequence
+        for sequence in graph.view().enumerate()
+        if gc_min <= gc_count(sequence) <= gc_max
+        and gc3_min <= gc3_count(sequence) <= gc3_max
+    }
+
+    view = CodonGraph(aa_seq).view()
+    view.set_constraints([gc_constraint, gc3_constraint])
+    view.compile()
+
+    assert set(view.enumerate()) == expected

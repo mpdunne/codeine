@@ -2,16 +2,16 @@ import math
 import random
 
 from itertools import islice
-from typing import Dict, Iterator, List, Optional, Sequence, Union, Tuple
+from typing import Dict, Iterator, List, Optional, Sequence, Tuple, Union
 
 from codeine.constraints.base import Constraint
 from codeine.graph.base import CodonGraph, CodonRestriction
+from codeine.graph.compile import ViewCompiler
 from codeine.graph.nodes import CodonNode
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
 from codeine.utils.display import format_count, format_restrictions
 from codeine.utils.sampling import Seedable, Sampler, SingletonSampler, UniformSampler, WeightedSampler
-from codeine.graph.compile import ViewCompiler
 
 
 class CodonGraphView:
@@ -44,7 +44,7 @@ class CodonGraphView:
         """
 
         self.graph = graph
-        self.pinned_codons: Dict[int, List[str]] = {}
+        self.pinned_codons: Dict[int, CodonRestriction] = {}
         self.constraints: Tuple[Constraint, ...] = tuple(constraints or ())
 
         if weights is None:
@@ -347,7 +347,6 @@ class CodonGraphView:
         """
         Calculate graph properties derived from its structure, constraints, and pins.
 
-        Remember to do this after editing any constraints!
         """
         compiler = ViewCompiler(self)
         compiled = compiler.compile()
@@ -560,7 +559,8 @@ class CodonGraphView:
 
         return sampler
 
-    def _convert_log_masses_to_sampler_weights(self, log_masses: List[float]) -> List[float]:
+    @staticmethod
+    def _convert_log_masses_to_sampler_weights(log_masses: Sequence[float]) -> List[float]:
         """
         Convert subtree log masses into relative weights for sampling.
 
@@ -578,14 +578,7 @@ class CodonGraphView:
         list of float
             Relative non-log weights suitable for weighted sampling.
         """
-        if not log_masses:
-            return log_masses
-
         max_log_mass = max(log_masses)
-
-        if max_log_mass == -math.inf:
-            return [1.0] * len(log_masses)
-
         return [math.exp(log_mass - max_log_mass) for log_mass in log_masses]
 
     def _sample(self) -> str:
@@ -633,7 +626,7 @@ class CodonGraphView:
             results = choice_results_by_state_id[state_id]
 
             if not results:
-                break
+                raise RuntimeError('Unexpected dead end during sequence index traversal.')
 
             if not results[0].is_coding:
                 state_id = results[0].next_state_id
