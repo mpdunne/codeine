@@ -287,11 +287,7 @@ class ViewCompiler:
                 continue
 
             if is_coding:
-                codon_log_weight = self.log_codon_weights.get(choice)
-
-                if codon_log_weight is None:
-                    continue
-
+                codon_log_weight = self.log_codon_weights.get(choice, -math.inf)
                 choice_log_mass = codon_log_weight + subtree_log_mass
             else:
                 choice_log_mass = subtree_log_mass

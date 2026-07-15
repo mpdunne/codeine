@@ -674,3 +674,63 @@ def test_coding_space_constraints_combine_with_forbidden_motifs():
     space = CodingSpace('E', forbidden_motifs=['GAA'], constraints=[constraint])
 
     assert space.n_valid_sequences == 0
+
+
+def test_zero_weight_codons_are_valid_but_not_sampled():
+    table = TranslationTable()
+    data = {aa: {c: 1 for c in codons} for aa, codons in table.aa_to_codons.items()}
+    data['F'] = {
+        'TTT': 0.05,
+        'TTC': 0.95,
+    }
+
+    weights = CodonWeights(data).threshold(0.1)
+    space = CodingSpace('F', codon_weights=weights)
+
+    assert space.n_valid_sequences == 2
+    assert set(space.enumerate()) == {'TTT', 'TTC'}
+    assert 'TTT' in space
+    assert 'TTC' in space
+
+    assert {space.sample() for _ in range(100)} == {'TTC'}
+
+
+def test_sampling_raises_if_all_valid_sequences_have_zero_weight():
+    table = TranslationTable()
+    data = {aa: {c: 1 for c in codons} for aa, codons in table.aa_to_codons.items()}
+    data['F'] = {
+        'TTT': 0,
+        'TTC': 1,
+    }
+
+    weights = CodonWeights(data)
+    space = CodingSpace('F', codon_restrictions={1: 'TTT'}, codon_weights=weights)
+
+    assert space.n_valid_sequences == 1
+    assert set(space.enumerate()) == {'TTT'}
+
+    with pytest.raises(ValueError):
+        space.sample()
+
+
+def test_restricted_weights_remove_zero_weight_codons_from_space():
+    table = TranslationTable()
+    data = {aa: {c: 1 for c in codons} for aa, codons in table.aa_to_codons.items()}
+    data['F'] = {
+        'TTT': 0.05,
+        'TTC': 0.95,
+    }
+
+    weights = CodonWeights(data).threshold(0.1)
+    table, weights = weights.restrict(table)
+
+    space = CodingSpace(
+        'F',
+        translation_table=table,
+        codon_weights=weights,
+    )
+
+    assert space.n_valid_sequences == 1
+    assert set(space.enumerate()) == {'TTC'}
+    assert 'TTC' in space
+    assert 'TTT' not in space

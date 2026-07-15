@@ -77,3 +77,49 @@ For example, these are equivalent:
    {'TTT': 80, 'TTC': 20}
 
 Weights can be specified using RNA or DNA codons, they will be converted internally.
+
+
+## Zero weights
+
+A codon can be assigned a weight of zero. The codon remains part of the valid
+coding space, but it will never be selected during weighted sampling.
+
+.. code-block:: python
+
+    weights = CodonWeights(
+        {
+            'F': {
+                    'TTT': 0.0,
+                    'TTC': 1.0,
+                },
+            ...
+        }
+    )
+
+At least one codon for each amino acid must have a positive weight.
+
+## Weight thresholds
+
+Low-frequency codons can be excluded from sampling using ``threshold()``.
+
+.. code-block:: python
+
+    weights = CodonWeights.ecoli().threshold(0.1)
+
+A threshold of ``0.1`` prevents codons representing less than 10% of
+the synonymous codon weight for an amino acid from being sampled.
+
+Thresholding does not remove sequences from the coding space and does not
+affect counting, enumeration, indexing and membership tests. To remove zero-weight codons from the coding space
+entirely, generate an updated translation table using the ``restrict()`` method:
+
+.. code-block:: python
+
+    from codeine import CodingSpace, CodonWeights, TranslationTable
+
+    table = TranslationTable()
+    weights = CodonWeights.ecoli().threshold(0.1)
+
+    table, weights = weights.restrict(table)
+
+    space = CodingSpace('SEQVENCE', translation_table=table, codon_weights=weights)

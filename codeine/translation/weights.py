@@ -189,6 +189,105 @@ class CodonWeights:
 
         return type(self)(resolved_weights)
 
+    def restrict(
+            self,
+            table: TranslationTable,
+    ) -> Tuple[TranslationTable, 'CodonWeights']:
+        """
+        Return compatible translation table and codon weights containing only codons
+        with positive weight.
+
+        The weights are first resolved against the supplied translation table. Codons with zero
+        weight are then removed from both the table and the returned weights.
+
+        Parameters
+        ----------
+        table
+            The translation table to restrict.
+
+        Returns
+        -------
+        TranslationTable and CodonWeights
+            A matched translation table and codon weights containing only codons with positive weight.
+        """
+        weights = self.for_table(table)
+
+        omitted_codons = [codon for codon in table.codons_to_aa if weights[codon] == 0]
+
+        if not omitted_codons:
+            return table, weights
+
+        restricted_codons_to_aa = {
+            codon: aa
+            for codon, aa in table.codons_to_aa.items()
+            if weights[codon] > 0
+        }
+
+        restricted_weights: WeightDict = {
+            aa: {
+                codon: weights[codon]
+                for codon in codons
+                if weights[codon] > 0
+            }
+            for aa, codons in table.aa_to_codons.items()
+        }
+
+        if len(omitted_codons) <= 6:
+            omitted = ', '.join(sorted(omitted_codons))
+            name = f'{table.name} (omitting {omitted})'
+        else:
+            name = f'{table.name} (omitting {len(omitted_codons)} zero-weight codons)'
+
+        restricted_table = TranslationTable.custom(
+            codons_to_aa=restricted_codons_to_aa,
+            name=name,
+            rna=table.rna,
+        )
+
+        return restricted_table, type(self)(restricted_weights)
+
+    def threshold(self, min_weight: float) -> 'CodonWeights':
+        """
+        Set codon weights below a minimum value to zero.
+
+        The threshold is applied to the normalised (fractional) weight of each codon within
+        its amino acid. Remaining non-zero weights are then renormalised.
+
+        Parameters
+        ----------
+        min_weight
+            Minimum codon weight to retain, between 0 and 1.
+
+        Returns
+        -------
+        A new ``CodonWeights`` object with weights below the threshold set to
+        zero. If no weights are changed, return this object unchanged.
+        """
+        if min_weight < 0 or min_weight > 1:
+            raise ValueError('min_weight must be between 0 and 1.')
+
+        thresholded_weights: WeightDict = {}
+        changed = False
+
+        for aa, codons in self.aa_to_codons.items():
+            codon_weights = {}
+
+            for codon in codons:
+                weight = self.weights[codon]
+
+                if weight < min_weight:
+                    weight = 0.0
+                    changed = True
+
+                codon_weights[codon] = weight
+
+            thresholded_weights[aa] = codon_weights
+
+        if not changed:
+            return self
+
+        return type(self)(thresholded_weights)
+
     def by_aa(self, aa: str) -> Dict[str, float]:
         """
         Return the codon weights corresponding to a particular AA.
