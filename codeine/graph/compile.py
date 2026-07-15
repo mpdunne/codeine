@@ -1,6 +1,6 @@
 import math
 
-from typing import Dict, NamedTuple, Tuple, List, Optional, TYPE_CHECKING
+from typing import Dict, List, NamedTuple, Optional, Tuple, TYPE_CHECKING
 
 from codeine.constraints.base import ConstraintState, DEAD_STATE, SAFE_STATE
 from codeine.graph.nodes import CodonNode, Node, ContextNode
@@ -97,9 +97,8 @@ class ViewCompiler:
 
         # The cached log-ified codon weights, to avoid repeated log calculations
         self.log_codon_weights = {
-            codon: math.log(weight)
+            codon: math.log(weight) if weight > 0 else -math.inf
             for codon, weight in self.view.codon_weights.weights.items()
-            if weight > 0
         }
 
         # Cached transitions available at each node, taking into account fixed
@@ -287,7 +286,7 @@ class ViewCompiler:
                 continue
 
             if is_coding:
-                codon_log_weight = self.log_codon_weights.get(choice, -math.inf)
+                codon_log_weight = self.log_codon_weights[choice]
                 choice_log_mass = codon_log_weight + subtree_log_mass
             else:
                 choice_log_mass = subtree_log_mass
@@ -303,6 +302,9 @@ class ViewCompiler:
             choice_results[choice] = result
             descendant_count += child_count
 
+            if choice_log_mass == -math.inf:
+                continue
+
             # Incremental log-sum-exp.
             if choice_log_mass <= max_log_mass:
                 relative_mass_sum += math.exp(choice_log_mass - max_log_mass)
@@ -311,9 +313,9 @@ class ViewCompiler:
                     relative_mass_sum = 1.0
                 else:
                     relative_mass_sum = (
-                            relative_mass_sum
-                            * math.exp(max_log_mass - choice_log_mass)
-                            + 1.0
+                        relative_mass_sum
+                        * math.exp(max_log_mass - choice_log_mass)
+                        + 1.0
                     )
 
                 max_log_mass = choice_log_mass
