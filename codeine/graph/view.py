@@ -549,7 +549,7 @@ class CodonGraphView:
             return None
 
         if len(runtime_items) == 1:
-            sampler = SingletonSampler(item=runtime_items[0])   
+            sampler = SingletonSampler(item=runtime_items[0])
         elif len(set(runtime_log_masses)) == 1:
             sampler = UniformSampler(items=runtime_items, rng=self._rng)
         else:
@@ -603,7 +603,7 @@ class CodonGraphView:
             sampler = self._sampler_for_state_id(state_id)
 
             if sampler is None:
-                raise ValueError('Cannot sample from a state with no valid choices or no nonzero sampling weights.')
+                raise ValueError('No valid choices available for sampling.')
 
             choice, is_coding, state_id = sampler.sample()
 
