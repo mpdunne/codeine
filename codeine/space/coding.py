@@ -202,7 +202,7 @@ class CodingSpace:
 
         return '\n'.join(lines)
 
-    def sample(self, n: Optional[int] = None) -> str:
+    def sample(self, n: Optional[int] = None) -> Union[str, List[str]]:
         """
         Sample one or more variants from this coding space.
 
@@ -213,7 +213,7 @@ class CodingSpace:
 
         Returns
         -------
-        A sampled string sequence from this coding space.
+        A sampled sequence, or a list of sampled sequences.
         """
         return self.view.sample(n=n)
 
@@ -329,7 +329,7 @@ class CodingSpace:
         """
         self.view.clear_pins()
 
-    def set_forbidden_motifs(self, forbidden_motifs: ForbiddenMotifs) -> None:
+    def set_forbidden_motifs(self, forbidden_motifs: Optional[ForbiddenMotifs]) -> None:
         """
         Set the forbidden motifs for this coding space.
 
@@ -364,6 +364,30 @@ class CodingSpace:
         Remove the maximum homopolymer constraint from this coding space.
         """
         self.set_max_homopolymer(None)
+
+    def set_constraints(self, constraints: Sequence[Constraint]) -> None:
+        """
+        Set any additional constraints.
+
+        Parameters
+        ----------
+        constraints
+            The constraints to set, as ``Constraint`` objects.
+        """
+        self.constraints = tuple(constraints)
+        self._update_constraints()
+
+    def clear_constraints(self) -> None:
+        """
+        Remove custom constraints.
+        """
+        self.set_constraints(())
+
+    def set_codon_weights(self, codon_weights: CodonWeights) -> None:
+        """
+        Set the codon weights used when sampling from this coding space.
+        """
+        self.view.set_weights(codon_weights)
 
     @property
     def n_valid_sequences(self) -> int:
@@ -441,13 +465,6 @@ class CodingSpace:
 
         self.view.set_constraints(constraints)
 
-    def set_constraints(self, constraints: Sequence[Constraint]) -> None:
-        self.constraints = tuple(constraints)
-        self._update_constraints()
-
-    def clear_constraints(self) -> None:
-        self.set_constraints(())
-
     @staticmethod
     def _resolve_tables(
             translation_table: Optional[TranslationTable],
@@ -455,7 +472,7 @@ class CodingSpace:
             rna: Optional[bool],
     ) -> Tuple[TranslationTable, CodonWeights]:
         """
-        Resolve user-submited (or not) translation table, codon weights, and RNA flag.
+        Resolve user-submitted (or not) translation table, codon weights, and RNA flag.
         """
 
         if translation_table is None:

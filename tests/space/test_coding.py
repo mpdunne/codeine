@@ -174,19 +174,19 @@ def test_coding_space_mutants_passes_constraints():
         max_codons=2,
     )
 
-    assert set(muts.free_positions) == set([2, 3])
+    assert set(muts.free_positions) == {2, 3}
     assert muts.min_nts == 1
     assert muts.max_nts == 3
     assert muts.min_codons == 1
     assert muts.max_codons == 2
 
 
-def test_sequence_space_getitem():
+def test_coding_space_getitem():
     space = CodingSpace('MM')
     assert space[0] == 'ATGATG'
 
 
-def test_view_iter():
+def test_coding_space_iter():
     space = CodingSpace('MIKEY')
     seqs = [*space]
     assert len(seqs) == len(set(seqs)) == 24
@@ -479,6 +479,16 @@ def test_coding_space_forbidden_motifs_and_max_homopolymer_combine():
     space.clear_max_homopolymer()
     banned_sequences = helper_get_banned_sequences_from_constraints(space)
     assert banned_sequences == set()
+
+
+def test_coding_space_can_set_codon_weights():
+    space = CodingSpace('MIKEY')
+    weights = CodonWeights.ecoli()
+
+    space.set_codon_weights(weights)
+
+    assert space.codon_weights is weights
+    assert space.view.codon_weights is weights
 
 
 def test_resolve_tables_defaults_to_dna():
