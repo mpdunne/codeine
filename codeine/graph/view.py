@@ -523,7 +523,7 @@ class CodonGraphView:
         -------
         Sampler or None
             The cached sampler for this state, or None if the state has no
-            valid choices.
+            choices with positive sampling mass.
         """
         sampler = self.samplers_by_state_id[state_id]
 
@@ -547,6 +547,14 @@ class CodonGraphView:
 
         if not runtime_items:
             return None
+
+        if len(runtime_items) == 1:
+            sampler = SingletonSampler(item=runtime_items[0])   
+        elif len(set(runtime_log_masses)) == 1:
+            sampler = UniformSampler(items=runtime_items, rng=self._rng)
+        else:
+            runtime_weights = self._convert_log_masses_to_sampler_weights(runtime_log_masses)
+            sampler = WeightedSampler(items=runtime_items, weights=runtime_weights, rng=self._rng,)
 
         self.samplers_by_state_id[state_id] = sampler
 
