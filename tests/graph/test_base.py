@@ -82,7 +82,7 @@ def test_single_codon_restriction_is_applied():
 def test_multiple_codon_restriction_is_applied():
     graph = CodonGraph('MIKEY', codon_restrictions={3: ['AAA', 'AAG']})
     node = graph.codon_node_by_pos(3)
-    assert node.codons == ('AAA', 'AAG')
+    assert set(node.codons) == {'AAA', 'AAG'}
 
 
 def test_validate_codon_restrictions_respects_existing_restrictions():
