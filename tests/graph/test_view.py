@@ -915,7 +915,6 @@ def test_copy_preserves_weights():
     assert copied.codon_weights is weights
 
 
-
 def test_sample_respects_pins():
     view = CodonGraph('MIKEY').view(seed=8675309)
     view.pin_codons({2: 'ATT'})
@@ -1577,3 +1576,15 @@ def test_codon_distributions_roughly_match_weights_banned_sequences(name, aa_seq
 
     assert sum(p >= 0.001 for p in pvalues) / len(pvalues) >= 0.99
     assert min(pvalues, default=1.0) >= 1e-6
+
+
+def test_sequence_at_raises_on_unexpected_dead_end():
+    view = CodonGraph('M').view()
+    view.compile()
+
+    choice_results = list(view.choice_results_by_state_id)
+    choice_results[view.initial_state_id] = ()
+    view.choice_results_by_state_id = tuple(choice_results)
+
+    with pytest.raises(RuntimeError):
+        view.sequence_at(0)
