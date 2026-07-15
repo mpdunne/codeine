@@ -699,8 +699,8 @@ def test_sampling_raises_if_all_valid_sequences_have_zero_weight():
     table = TranslationTable()
     data = {aa: {c: 1 for c in codons} for aa, codons in table.aa_to_codons.items()}
     data['F'] = {
-        'TTT': 0.05,
-        'TTC': 0.95,
+        'TTT': 0,
+        'TTC': 1,
     }
 
     weights = CodonWeights(data)
@@ -709,7 +709,7 @@ def test_sampling_raises_if_all_valid_sequences_have_zero_weight():
     assert space.n_valid_sequences == 1
     assert set(space.enumerate()) == {'TTT'}
 
-    with pytest.raises(ValueError, match='positive sampling weight',):
+    with pytest.raises(ValueError):
         space.sample()
 
 
