@@ -75,3 +75,5 @@ For example, these are equivalent:
 
    {'TTT': 0.8, 'TTC': 0.2}
    {'TTT': 80, 'TTC': 20}
+
+Weights can be specified using RNA or DNA codons, they will be converted internally.

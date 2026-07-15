@@ -1,5 +1,8 @@
+import pytest
+
 from codeine.constraints.mutations import MutationDistanceConstraint
 from codeine.constraints.base import DEAD_STATE, SAFE_STATE
+from codeine.graph.base import CodonGraph
 
 
 def test_mutation_distance_ignores_non_codon_positions():
@@ -30,7 +33,7 @@ def test_mutation_distance_accumulates_across_codons():
     constraint = MutationDistanceConstraint('AAAATGTTAAAT', min_nts=1, min_codons=1, max_nts=3, max_codons=2)
     state = constraint.initial_state
 
-    state = constraint.advance(state, 1, 'AAT',)
+    state = constraint.advance(state, 1, 'AAT')
     state = constraint.advance(state, 2, 'ATA')
 
     assert state == (2, 2)
@@ -38,16 +41,16 @@ def test_mutation_distance_accumulates_across_codons():
 
 def test_mutation_distance_dead_when_max_nts_exceeded():
     constraint = MutationDistanceConstraint('ATG', max_nts=0)
-    state = constraint.advance(constraint.initial_state, 1, 'ATA',)
+    state = constraint.advance(constraint.initial_state, 1, 'ATA')
 
-    assert state is DEAD_STATE
+    assert state == DEAD_STATE
 
 
 def test_mutation_distance_dead_when_max_codons_exceeded():
     constraint = MutationDistanceConstraint('ATG', max_codons=0)
     state = constraint.advance(constraint.initial_state, 1, 'ATA')
 
-    assert state is DEAD_STATE
+    assert state == DEAD_STATE
 
 
 def test_mutation_distance_dead_when_min_nts_unreachable():
@@ -101,6 +104,7 @@ def test_mutation_distance_safe_at_valid_final_state():
 
     assert state == SAFE_STATE
 
+
 def test_mutation_distance_remains_live_until_minimum_becomes_unreachable():
     constraint = MutationDistanceConstraint('ATGAAATTAGGC', min_nts=4)
     state = constraint.initial_state
@@ -115,7 +119,7 @@ def test_mutation_distance_remains_live_until_minimum_becomes_unreachable():
     assert state == (1, None)
 
     state = constraint.advance(state, 4, 'GGC')  # Still only 1 nt diff
-    assert state is DEAD_STATE
+    assert state == DEAD_STATE
 
 
 def test_mutation_distance_becomes_safe_partway_through_sequence():
@@ -126,7 +130,7 @@ def test_mutation_distance_becomes_safe_partway_through_sequence():
     assert state == (1, 1)
 
     state = constraint.advance(state, 2, 'TTT')  # +3 nt, +1 codon
-    assert state is SAFE_STATE
+    assert state == SAFE_STATE
 
 
 def test_mutation_distance_tracks_nt_and_codon_limits_independently():
@@ -140,7 +144,7 @@ def test_mutation_distance_tracks_nt_and_codon_limits_independently():
     assert state == (2, 2)
 
     state = constraint.advance(state, 3, 'TTA')  # +1 nt, +1 codon
-    assert state is DEAD_STATE
+    assert state == DEAD_STATE
 
 
 def test_mutation_distance_becomes_safe_when_maxima_cannot_be_exceeded():
@@ -154,4 +158,16 @@ def test_mutation_distance_becomes_safe_when_maxima_cannot_be_exceeded():
     assert state == (1, 1)
 
     state = constraint.advance(state, 3, 'TTA')  # unchanged
-    assert state is SAFE_STATE
+    assert state == SAFE_STATE
+
+
+def test_mutation_distance_rejects_incomplete_reference_codon():
+    with pytest.raises(ValueError, match='Reference CDS length must be a multiple of three.'):
+        MutationDistanceConstraint('AT')
+
+
+def test_mutation_distance_rejects_mismatched_graph_length():
+    constraint = MutationDistanceConstraint('ATG')
+
+    with pytest.raises(ValueError, match='Length of linked graph does not match number of codons'):
+        constraint.link(CodonGraph('MI'))

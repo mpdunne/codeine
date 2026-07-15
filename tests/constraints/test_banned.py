@@ -3,28 +3,13 @@ import pytest
 from itertools import product
 
 from codeine.graph.base import CodonGraph
-from codeine.translation.tables import TranslationTable
-from codeine.constraints.base import DEAD_STATE
+from codeine.constraints.base import DEAD_STATE, SAFE_STATE
 from codeine.constraints.banned import BannedSequenceConstraint, _find_matching_subpaths
 
 
-def test_empty_banned_sequence_raises():
-    with pytest.raises(ValueError):
-        BannedSequenceConstraint([''])
-
-
-def test_banned_sequence_constraint_finds_ban_inside_left_context():
-    graph = CodonGraph('REGINALD', context_l='aaggaaggaagg')
-    banned_seqs = (
-        'ATG',
-        'TAAAAG',
-        'AAGGAA',
-        'ATTAAGG',
-        'GAATAC',
-    )
-    bsc = BannedSequenceConstraint(banned_seqs)
-    bsc.link(graph)
-    assert bsc.paths
+###############################
+# Helpers
+###############################
 
 
 def helper_find_first_path_for(bsc, sequence):
@@ -55,6 +40,16 @@ def helper_walk_path(bsc, path):
         state_id = result
 
     return result
+
+
+###############################
+# Construction and linking
+###############################
+
+
+def test_empty_banned_sequence_raises():
+    with pytest.raises(ValueError):
+        BannedSequenceConstraint([''])
 
 
 def test_banned_sequence_constraint_is_trivial_without_banned_sequences():
@@ -89,6 +84,19 @@ def test_banned_sequence_constraint_has_no_paths_for_impossible_banned_sequence(
     assert bsc.starts == {}
 
 
+def test_banned_sequence_constraint_finds_ban_inside_left_context():
+    graph = CodonGraph('REGINALD', context_l='aaggaaggaagg')
+    banned_seqs = ('ATG',
+        'TAAAAG',
+        'AAGGAA',
+        'ATTAAGG',
+        'GAATAC',
+    )
+    bsc = BannedSequenceConstraint(banned_seqs)
+    bsc.link(graph)
+    assert bsc.paths
+
+
 def test_starts_are_built_from_first_path_step():
     graph = CodonGraph(aa_seq='MIKEY')
     bsc = BannedSequenceConstraint(['TCAAA'])
@@ -98,6 +106,43 @@ def test_starts_are_built_from_first_path_step():
 
     assert first_step in bsc.starts
     assert bsc.starts[first_step]
+
+
+def test_banned_sequence_constraint_relink_resets_internal_state():
+    constraint = BannedSequenceConstraint(['AAA'])
+
+    graph1 = CodonGraph('KKK')
+    graph2 = CodonGraph('MMMM')
+
+    constraint.link(graph1)
+
+    # Populate the registry/cache.
+    constraint.advance(constraint.initial_state, 1, next(iter(graph1.initial_node.transitions)))
+
+    assert len(constraint.states) > 1 or constraint.advance_cache
+
+    constraint.link(graph2)
+
+    assert constraint.states == [frozenset()]
+    assert constraint.state_ids == {frozenset(): 0}
+    assert constraint.advance_cache == {}
+
+
+def test_banned_sequence_constraint_is_trivial_before_linking():
+    constraint = BannedSequenceConstraint(['AAA'])
+    assert constraint.is_trivial
+
+
+def test_banned_sequence_constraint_preserves_terminal_states():
+    constraint = BannedSequenceConstraint(['AAA'])
+
+    assert constraint.advance(DEAD_STATE, 1, 'AAA') == DEAD_STATE
+    assert constraint.advance(SAFE_STATE, 1, 'AAA') == SAFE_STATE
+
+
+###############################
+# State transitions
+###############################
 
 
 def test_safe_choice_returns_empty_state():
@@ -211,89 +256,6 @@ def test_state_is_a_frozenset():
     assert isinstance(bsc.states[result], frozenset)
 
 
-def test_banned_sequence_constraint_finds_banned_sequence_crossing_left_context():
-    graph = CodonGraph(aa_seq='MIKEY', context_l='TCA')
-    bsc = BannedSequenceConstraint(['TCAATG'])
-    bsc.link(graph)
-    assert not bsc.is_trivial
-
-
-def test_left_context_can_immediately_complete_ban():
-    graph = CodonGraph(aa_seq='MIKEY', context_l='TCA')
-    bsc = BannedSequenceConstraint(['TCAATG'])
-    bsc.link(graph)
-    path = helper_find_first_path_for(bsc, 'TCAATG')
-    result = helper_walk_path(bsc, path)
-
-    assert result == DEAD_STATE
-
-
-def test_banned_sequence_constraint_finds_banned_sequence_crossing_right_context():
-    graph = CodonGraph(aa_seq='MIKEY', context_r='AAA')
-    bsc = BannedSequenceConstraint(['ATACAAA'])
-    bsc.link(graph)
-    assert not bsc.is_trivial
-
-    graph = CodonGraph(aa_seq='MIKEY', context_r='AAA')
-    bsc = BannedSequenceConstraint(['GGGAAA'])
-    bsc.link(graph)
-    assert bsc.is_trivial
-
-
-def test_existing_watch_can_complete_in_right_context():
-    graph = CodonGraph(aa_seq='MIKEY', context_r='AAA')
-    bsc = BannedSequenceConstraint(['ATACAAA'])
-    bsc.link(graph)
-    path = helper_find_first_path_for(bsc, 'ATACAAA')
-    result = helper_walk_path(bsc, path)
-
-    assert result == DEAD_STATE
-
-
-@pytest.mark.parametrize(
-    'context_l,context_r,sequence',
-    [
-        ('', '', 'A'),
-        ('', '', 'AT'),
-        ('', '', 'ATG'),
-        ('', '', 'TG'),
-        ('', '', 'ATTAAG'),
-        ('', '', 'ATTAAGG'),
-        ('', '', 'TTAAG'),
-        ('', '', 'GATA'),
-        ('AAGG', '', 'GGAT'),
-        ('AAGGTT', '', 'GG'),
-        ('AAGGTT', '', 'GGTTATG'),
-        ('', 'AAGG', 'ACAAG'),
-        ('', 'AAGGTT', 'TACAAG'),
-    ],
-)
-def test_found_paths_are_walkable(context_l, context_r, sequence):
-    graph = CodonGraph('MIKEY', context_l=context_l, context_r=context_r)
-    bsc = BannedSequenceConstraint([sequence])
-    bsc.link(graph)
-    path = helper_find_first_path_for(bsc, sequence)
-
-    assert helper_walk_path(bsc, path) == DEAD_STATE
-
-
-@pytest.mark.parametrize(
-    'sequence,expected_offset',
-    [
-        ('ATG', 0),
-        ('TG', 1),
-        ('G', 2),
-    ],
-)
-def test_offsets_are_correct(sequence, expected_offset):
-    graph = CodonGraph('MIKEY')
-    bsc = BannedSequenceConstraint([sequence])
-    bsc.link(graph)
-    path = helper_find_first_path_for(bsc, sequence)
-
-    assert path.offset == expected_offset
-
-
 def test_watch_survives_until_partial_final_codon_match():
     graph = CodonGraph('MIKEY')
     bsc = BannedSequenceConstraint(['ATTAAG'])
@@ -389,6 +351,71 @@ def test_unrelated_active_watch_does_not_prevent_new_watch_starting():
     assert result_2 == DEAD_STATE
 
 
+def test_safe_walk_drops_all_active_watches():
+    graph = CodonGraph('MIKEY')
+    bsc = BannedSequenceConstraint(['TCAAA'])
+    bsc.link(graph)
+    path = helper_find_first_path_for(bsc, 'TCAAA')
+
+    pos_2, _choice_2 = path.steps[1]
+
+    pos_1, choice_1 = path.steps[0]
+    result_1 = bsc.advance(bsc.initial_state_id, pos_1, choice_1)
+    result_2 = bsc.advance(result_1, pos_2, 'GAG')
+
+    assert result_1 != 0
+    assert result_2 == 0
+
+
+###############################
+# Path invariants
+###############################
+
+
+@pytest.mark.parametrize(
+    'context_l,context_r,sequence',
+    [
+        ('', '', 'A'),
+        ('', '', 'AT'),
+        ('', '', 'ATG'),
+        ('', '', 'TG'),
+        ('', '', 'ATTAAG'),
+        ('', '', 'ATTAAGG'),
+        ('', '', 'TTAAG'),
+        ('', '', 'GATA'),
+        ('AAGG', '', 'GGAT'),
+        ('AAGGTT', '', 'GG'),
+        ('AAGGTT', '', 'GGTTATG'),
+        ('', 'AAGG', 'ACAAG'),
+        ('', 'AAGGTT', 'TACAAG'),
+    ],
+)
+def test_found_paths_are_walkable(context_l, context_r, sequence):
+    graph = CodonGraph('MIKEY', context_l=context_l, context_r=context_r)
+    bsc = BannedSequenceConstraint([sequence])
+    bsc.link(graph)
+    path = helper_find_first_path_for(bsc, sequence)
+
+    assert helper_walk_path(bsc, path) == DEAD_STATE
+
+
+@pytest.mark.parametrize(
+    'sequence,expected_offset',
+    [
+        ('ATG', 0),
+        ('TG', 1),
+        ('G', 2),
+    ],
+)
+def test_offsets_are_correct(sequence, expected_offset):
+    graph = CodonGraph('MIKEY')
+    bsc = BannedSequenceConstraint([sequence])
+    bsc.link(graph)
+    path = helper_find_first_path_for(bsc, sequence)
+
+    assert path.offset == expected_offset
+
+
 def test_path_steps_are_never_empty():
     graph = CodonGraph('MIKEY')
     bsc = BannedSequenceConstraint(['A', 'AT', 'ATG', 'TCAAA'])
@@ -444,22 +471,6 @@ def test_walking_every_found_path_completes_ban():
         assert result == DEAD_STATE
 
 
-def test_safe_walk_drops_all_active_watches():
-    graph = CodonGraph('MIKEY')
-    bsc = BannedSequenceConstraint(['TCAAA'])
-    bsc.link(graph)
-    path = helper_find_first_path_for(bsc, 'TCAAA')
-
-    pos_2, _choice_2 = path.steps[1]
-
-    pos_1, choice_1 = path.steps[0]
-    result_1 = bsc.advance(bsc.initial_state_id, pos_1, choice_1)
-    result_2 = bsc.advance(result_1, pos_2, 'GAG')
-
-    assert result_1 != 0
-    assert result_2 == 0
-
-
 def test_every_bsc_path_is_walkable_from_initial_state():
     graph = CodonGraph('MIKEY', context_l='AAGGTT', context_r='CCAAGG')
     banned = ['A', 'AT', 'ATG', 'TGATA', 'GGTTATG', 'TACCCA']
@@ -471,11 +482,138 @@ def test_every_bsc_path_is_walkable_from_initial_state():
         assert result == DEAD_STATE
 
 
+###############################
+# Context-spanning bans
+###############################
+
+
+def test_banned_sequence_constraint_finds_banned_sequence_crossing_left_context():
+    graph = CodonGraph(aa_seq='MIKEY', context_l='TCA')
+    bsc = BannedSequenceConstraint(['TCAATG'])
+    bsc.link(graph)
+    assert not bsc.is_trivial
+
+
+def test_left_context_can_immediately_complete_ban():
+    graph = CodonGraph(aa_seq='MIKEY', context_l='TCA')
+    bsc = BannedSequenceConstraint(['TCAATG'])
+    bsc.link(graph)
+    path = helper_find_first_path_for(bsc, 'TCAATG')
+    result = helper_walk_path(bsc, path)
+
+    assert result == DEAD_STATE
+
+
+def test_banned_sequence_constraint_finds_banned_sequence_crossing_right_context():
+    graph = CodonGraph(aa_seq='MIKEY', context_r='AAA')
+    bsc = BannedSequenceConstraint(['ATACAAA'])
+    bsc.link(graph)
+    assert not bsc.is_trivial
+
+    graph = CodonGraph(aa_seq='MIKEY', context_r='AAA')
+    bsc = BannedSequenceConstraint(['GGGAAA'])
+    bsc.link(graph)
+    assert bsc.is_trivial
+
+
+def test_existing_watch_can_complete_in_right_context():
+    graph = CodonGraph(aa_seq='MIKEY', context_r='AAA')
+    bsc = BannedSequenceConstraint(['ATACAAA'])
+    bsc.link(graph)
+    path = helper_find_first_path_for(bsc, 'ATACAAA')
+    result = helper_walk_path(bsc, path)
+
+    assert result == DEAD_STATE
+
+
+@pytest.mark.parametrize(
+    'banned_sequence',
+    (
+        'GAATTC',
+        'AATTC',
+        'GAATT',
+    ),
+)
+def test_banned_sequence_entirely_in_left_context_is_dead(banned_sequence):
+    graph = CodonGraph('MIKEY', context_l='GAATTC')
+    bsc = BannedSequenceConstraint([banned_sequence])
+    bsc.link(graph)
+    state = bsc.advance(bsc.initial_state, 0, graph.left_context_node.sequence)
+    assert state == DEAD_STATE
+
+
+@pytest.mark.parametrize(
+    'banned_sequence',
+    (
+        'GAATTC',
+        'AATTC',
+        'GAATT',
+    ),
+)
+def test_banned_sequence_entirely_in_right_context_gives_empty_space(banned_sequence):
+    graph = CodonGraph('MIKEY', context_r='GAATTC')
+    bsc = BannedSequenceConstraint([banned_sequence])
+    bsc.link(graph)
+    state = bsc.advance(bsc.initial_state, graph.right_context_node.pos, graph.right_context_node.sequence)
+    assert state == DEAD_STATE
+
+
+def test_banned_sequence_spanning_left_context_and_first_codon_is_dead():
+    graph = CodonGraph('ELEPHANT', context_l='AAGGATGATG')
+    constraint = BannedSequenceConstraint(['AAGGATGATGGAA'])
+    constraint.link(graph)
+
+    state = constraint.advance(constraint.initial_state, graph.left_context_node.pos, graph.left_context_node.sequence)
+    state = constraint.advance(state, graph.codon_nodes[0].pos, 'GAA')
+
+    assert state == DEAD_STATE
+
+
+def test_banned_sequence_spanning_last_codon_and_right_context_is_dead():
+    graph = CodonGraph('ELEPHANT', context_r='AAGGATGATG')
+    constraint = BannedSequenceConstraint(['CGAAGGATGATG'])
+    constraint.link(graph)
+
+    state = constraint.advance(constraint.initial_state, graph.codon_nodes[-1].pos, 'ACG')
+    state = constraint.advance(state, graph.right_context_node.pos, graph.right_context_node.sequence)
+
+    assert state == DEAD_STATE
+
+
+def test_banned_sequence_spanning_both_contexts_is_dead():
+    coding_sequence = 'GAGCTTGAGCCGCATGCCAATACG'
+
+    graph = CodonGraph('ELEPHANT', context_l='TTAA', context_r='AAGG')
+    constraint = BannedSequenceConstraint(['AA' + coding_sequence + 'AA'])
+    constraint.link(graph)
+
+    state = constraint.advance(
+        constraint.initial_state,
+        graph.left_context_node.pos,
+        graph.left_context_node.sequence
+    )
+
+    for node, i in zip(graph.codon_nodes, range(0, len(coding_sequence), 3)):
+        state = constraint.advance(state, node.pos, coding_sequence[i:i + 3])
+
+    state = constraint.advance(
+        state,
+        graph.right_context_node.pos,
+        graph.right_context_node.sequence
+    )
+
+    assert state == DEAD_STATE
+
+
+###############################
+# Subpath finding
+###############################
+
+
 def test_find_matching_subpaths_empty_sequence_raises():
     graph = CodonGraph('MIKEY')
     with pytest.raises(ValueError):
         _find_matching_subpaths(graph, '')
-
 
 def test_find_matching_subpaths_no_match():
     graph = CodonGraph('MIKEY')
@@ -633,6 +771,11 @@ def test_find_matching_subpaths_ends_inside_codon():
         assert ''.join(codons).startswith('ATTAAGG')
 
 
+###############################
+# Regression and scale tests
+###############################
+
+
 SHORT_AA_SEQUENCES = (
     'M',
     'MIKEY',
@@ -679,7 +822,6 @@ standard_codon_table = {
         'G': ['GGT', 'GGC', 'GGA', 'GGG']
     }
 
-
 def helper_yield_sequences(aa_seq):
     codon_choices = [standard_codon_table[aa] for aa in aa_seq]
     for choices in product(*codon_choices):
@@ -721,82 +863,3 @@ def test_find_matching_subpaths_full_sequences(aa_seq, context_l, context_r):
 
         codons = [codon.upper() for _pos, codon in match.steps]
         assert seq.upper() == ''.join(codons)
-
-
-@pytest.mark.parametrize(
-    'banned_sequence',
-    (
-        'GAATTC',
-        'AATTC',
-        'GAATT',
-    ),
-)
-def test_banned_sequence_entirely_in_left_context_is_dead(banned_sequence):
-    graph = CodonGraph('MIKEY', context_l='GAATTC')
-    bsc = BannedSequenceConstraint([banned_sequence])
-    bsc.link(graph)
-    state = bsc.advance(bsc.initial_state, 0, graph.left_context_node.sequence)
-    assert state == DEAD_STATE
-
-
-@pytest.mark.parametrize(
-    'banned_sequence',
-    (
-        'GAATTC',
-        'AATTC',
-        'GAATT',
-    ),
-)
-def test_banned_sequence_entirely_in_right_context_gives_empty_space(banned_sequence):
-    graph = CodonGraph('MIKEY', context_r='GAATTC')
-    bsc = BannedSequenceConstraint([banned_sequence])
-    bsc.link(graph)
-    state = bsc.advance(bsc.initial_state, graph.right_context_node.pos, graph.right_context_node.sequence)
-    assert state == DEAD_STATE
-
-
-def test_banned_sequence_spanning_left_context_and_first_codon_is_dead():
-    graph = CodonGraph('ELEPHANT', context_l='AAGGATGATG')
-    constraint = BannedSequenceConstraint(['AAGGATGATGGAA'])
-    constraint.link(graph)
-
-    state = constraint.advance(constraint.initial_state, graph.left_context_node.pos, graph.left_context_node.sequence)
-    state = constraint.advance(state, graph.codon_nodes[0].pos, 'GAA')
-
-    assert state == DEAD_STATE
-
-
-def test_banned_sequence_spanning_last_codon_and_right_context_is_dead():
-    graph = CodonGraph('ELEPHANT', context_r='AAGGATGATG')
-    constraint = BannedSequenceConstraint(['CGAAGGATGATG'])
-    constraint.link(graph)
-
-    state = constraint.advance(constraint.initial_state, graph.codon_nodes[-1].pos, 'ACG')
-    state = constraint.advance(state, graph.right_context_node.pos, graph.right_context_node.sequence)
-
-    assert state == DEAD_STATE
-
-
-def test_banned_sequence_spanning_both_contexts_is_dead():
-    coding_sequence = 'GAGCTTGAGCCGCATGCCAATACG'
-
-    graph = CodonGraph('ELEPHANT', context_l='TTAA', context_r='AAGG')
-    constraint = BannedSequenceConstraint(['AA' + coding_sequence + 'AA'])
-    constraint.link(graph)
-
-    state = constraint.advance(
-        constraint.initial_state,
-        graph.left_context_node.pos,
-        graph.left_context_node.sequence
-    )
-
-    for node, i in zip(graph.codon_nodes, range(0, len(coding_sequence), 3)):
-        state = constraint.advance(state, node.pos, coding_sequence[i:i + 3])
-
-    state = constraint.advance(
-        state,
-        graph.right_context_node.pos,
-        graph.right_context_node.sequence
-    )
-
-    assert state == DEAD_STATE

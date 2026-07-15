@@ -5,7 +5,6 @@ import pytest
 from codeine.graph.base import CodonGraph
 from codeine.graph.nodes import ContextNode, CodonNode, EndNode
 from codeine.translation.tables import TranslationTable
-from codeine.translation.weights import CodonWeights
 
 
 def test_empty_sequence_raises():
@@ -29,7 +28,7 @@ def test_contexts_are_normalised_to_graph_molecule_type():
     assert graph.left_context_node.sequence == 'AAA'
     assert graph.right_context_node.sequence == 'TTT'
 
-    tt = translation_table = TranslationTable(rna=True)
+    tt = TranslationTable(rna=True)
     graph = CodonGraph('MIKEY', context_l='aaa', context_r='ttt', translation_table=tt)
     assert graph.left_context_node.sequence == 'AAA'
     assert graph.right_context_node.sequence == 'UUU'
@@ -40,6 +39,11 @@ def test_rna_codon_restrictions_are_normalised():
     graph = CodonGraph('MIKEY', codon_restrictions={1: 'ATG'}, translation_table=tt)
     assert graph.codon_restrictions[1] == ['AUG']
     assert graph.codon_node_by_pos(1).codons == ('AUG',)
+
+
+def test_duplicate_codon_restrictions_are_deduplicated():
+    graph = CodonGraph('MIKEY', codon_restrictions={3: ['AAA', 'AAA', 'AAG']})
+    assert set(graph.codon_restrictions[3]) == {'AAA', 'AAG'}
 
 
 def test_invalid_codon_restriction_positions_raises():
@@ -66,7 +70,7 @@ def test_codon_restrictions_are_uppercased():
     assert graph.codon_restrictions[3] == ['AAA']
 
     graph = CodonGraph('MIKEY', codon_restrictions={3: ['aaa', 'aag']})
-    assert graph.codon_restrictions[3] == ['AAA', 'AAG']
+    assert set(graph.codon_restrictions[3]) == {'AAA', 'AAG'}
 
 
 def test_single_codon_restriction_is_applied():
@@ -78,7 +82,7 @@ def test_single_codon_restriction_is_applied():
 def test_multiple_codon_restriction_is_applied():
     graph = CodonGraph('MIKEY', codon_restrictions={3: ['AAA', 'AAG']})
     node = graph.codon_node_by_pos(3)
-    assert node.codons == ('AAA', 'AAG')
+    assert set(node.codons) == {'AAA', 'AAG'}
 
 
 def test_validate_codon_restrictions_respects_existing_restrictions():
@@ -141,7 +145,7 @@ def test_codon_nodes_excludes_context_and_final_nodes():
     graph = CodonGraph('MIKEY')
     codon_nodes = graph.codon_nodes
     assert all(isinstance(node, CodonNode) for node in codon_nodes)
-    assert set([node.pos for node in codon_nodes]) == {1, 2, 3, 4, 5}
+    assert {node.pos for node in codon_nodes} == {1, 2, 3, 4, 5}
     assert graph.left_context_node not in graph.codon_nodes
     assert graph.right_context_node not in graph.codon_nodes
     assert graph.final_node not in graph.codon_nodes
@@ -159,59 +163,32 @@ def test_graph_has_one_end_node():
     assert len(end_nodes) == 1
 
 
-def test_can_instantiate_with_or_without_codon_weights_or_translation_table():
+def test_graph_defaults_to_dna():
+    graph = CodonGraph('MIKEY')
+
+    assert graph.tt.rna is False
+
+
+def test_graph_uses_provided_dna_translation_table():
     tt = TranslationTable()
+
     graph = CodonGraph('MIKEY', translation_table=tt)
-    _ = graph.view()
-    assert not graph.tt.rna
-    assert not graph.cw.rna
 
+    assert graph.tt is tt
+
+
+def test_graph_uses_provided_rna_translation_table():
     tt = TranslationTable(rna=True)
+
     graph = CodonGraph('MIKEY', translation_table=tt)
-    _ = graph.view()
-    assert graph.tt.rna
-    assert graph.cw.rna
 
-    weights = CodonWeights.ecoli()
-    graph = CodonGraph('MIKEY', weights=weights)
-    _ = graph.view()
-    assert not graph.tt.rna
-    assert not graph.cw.rna
-
-    weights = CodonWeights.ecoli(rna=True)
-    graph = CodonGraph('MIKEY', weights=weights)
-    _ = graph.view()
-    assert graph.tt.rna
-    assert graph.cw.rna
-
-    tt = TranslationTable()
-    weights = CodonWeights.ecoli()
-    graph = CodonGraph('MIKEY', translation_table=tt, weights=weights)
-    _ = graph.view()
-    assert not graph.tt.rna
-    assert not graph.cw.rna
-
-    tt = TranslationTable(rna=True)
-    weights = CodonWeights.ecoli(rna=True)
-    graph = CodonGraph('MIKEY', translation_table=tt, weights=weights)
-    _ = graph.view()
-    assert graph.tt.rna
-    assert graph.cw.rna
-
-    tt = TranslationTable()
-    weights = CodonWeights.ecoli(rna=True)
-    with pytest.raises(ValueError):
-        _ = CodonGraph('MIKEY', translation_table=tt, weights=weights)
-
-    tt = TranslationTable(rna=True)
-    weights = CodonWeights.ecoli()
-    with pytest.raises(ValueError):
-        _ = CodonGraph('MIKEY', translation_table=tt, weights=weights)
+    assert graph.tt is tt
 
 
 def test_codon_graph_pickle_preserves_enumeration():
     graph = CodonGraph('MIKEY')
     loaded = pickle.loads(pickle.dumps(graph))
+
     assert loaded.aa_seq == graph.aa_seq
     assert [*loaded.view().enumerate()] == [*graph.view().enumerate()]
 
@@ -219,5 +196,6 @@ def test_codon_graph_pickle_preserves_enumeration():
 def test_codon_graph_pickle_preserves_constraints():
     graph = CodonGraph('MIKEY', codon_restrictions={2: 'ATC'})
     loaded = pickle.loads(pickle.dumps(graph))
+
     assert loaded.codon_restrictions == graph.codon_restrictions
     assert loaded.view().n_valid_sequences == graph.view().n_valid_sequences

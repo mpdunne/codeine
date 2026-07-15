@@ -70,10 +70,10 @@ class RestrictionSite(Enum):
     BbsI = 'GAAGAC'
     SapI = 'GCTCTTC'
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f'RestrictionSite.{self.name}'
 
-    def __str__(self):
+    def __str__(self) -> str:
         if self.forward == self.reverse:
             return f'{self.name} ({self.forward})'
 

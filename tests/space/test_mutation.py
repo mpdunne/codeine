@@ -10,6 +10,7 @@ from codeine.space.mutation import MutationSpace
 from codeine.motifs.restriction import RestrictionSite
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
+from codeine.constraints.banned import BannedSequenceConstraint
 
 
 from tests.data import NORMAL_PROTEINS, DIFFICULT_PROTEINS, ANTIBODIES, LARGE_PROTEINS
@@ -1073,3 +1074,37 @@ def test_mutation_codon_distributions_are_stable_across_sequence(aa_seq, banned,
 
     assert sum(p >= 0.001 for p in pvalues) / len(pvalues) >= 0.99
     assert min(pvalues, default=1.0) >= 1e-8
+
+
+def test_mutation_space_direct_construction_normalises_dna_reference_for_rna_space():
+    space = CodingSpace('M', rna=True)
+
+    mutants = MutationSpace(space, 'ATG')
+
+    assert mutants.cds == 'AUG'
+    assert mutants.contains('AUG')
+
+
+def test_mutation_space_repr_includes_variant_count_with_distance_constraints():
+    space = CodingSpace('F')
+    mutants = MutationSpace(
+        space,
+        'TTT',
+        min_nts=1,
+    )
+
+    text = repr(mutants)
+
+    assert 'Mutation distance:' in text
+    assert 'Num. valid variants:' in text
+
+
+def test_setting_distance_constraints_preserves_base_constraints():
+    constraint = BannedSequenceConstraint(['GAA'])
+    space = CodingSpace('E', constraints=[constraint])
+    mutants = MutationSpace(space, 'GAG')
+
+    mutants.set_distance_constraints(max_nts=1)
+
+    assert constraint in mutants.view.constraints
+    assert set(mutants.enumerate()) == {'GAG'}

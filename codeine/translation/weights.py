@@ -32,20 +32,19 @@ class CodonWeights:
             ...
         }
 
-    Weights are normalised per amino acid.
+    Weights are normalised per amino acid. Weights can be inputted as either
+    RNA or DNA, they will be normalised later.
     """
 
     def __init__(
-        self,
-        weights: WeightDict,
-        rna: Optional[bool] = None,
-        table: Optional[TranslationTable] = None,
+            self,
+            weights: WeightDict,
     ) -> None:
         """
             Parameters
             ----------
             weights
-                Codon weights grouped by amino acid, for codons in the TranslationTable.
+                Codon weights grouped by amino acid.
 
                 Example:
 
@@ -58,65 +57,47 @@ class CodonWeights:
                         ...
                     }
 
-            rna
-                Whether to use rna (default is False, i.e. use DNA).
             """
         self._locked = False
 
-        if table is None:
-            table = TranslationTable(rna=False if rna is None else rna)
-
-        elif rna is not None and table.rna != rna:
-            raise ValueError('table and rna specify inconsistent molecule types.')
-
-        expected_aa = set(table.aa_to_codons)
-        observed_aa = {aa.upper() for aa in weights}
-
-        missing_aa = expected_aa - observed_aa
-        if missing_aa:
-            raise ValueError(f'Missing weights for amino acid(s): {sorted(missing_aa)}')
-
-        extra_aa = observed_aa - expected_aa
-        if extra_aa:
-            raise ValueError(f'Unknown amino acid(s): {sorted(extra_aa)}')
-
         weights_flat: Dict[str, float] = {}
         aa_to_codons: Dict[str, Tuple[str, ...]] = {}
+        observed_codons = set()
 
         for aa, codon_weights in weights.items():
             aa = aa.upper()
 
-            normalised_codon_weights = {
-                table.normalise_sequence(codon): weight
-                for codon, weight in codon_weights.items()
-            }
+            if aa in aa_to_codons:
+                raise ValueError(f'Duplicate weights for amino acid {aa}')
 
-            expected_codons = set(table.aa_to_codons[aa])
-            observed_codons = set(normalised_codon_weights.keys())
+            normalised_codon_weights: Dict[str, Union[float, int]] = {}
 
-            missing_codons = expected_codons - observed_codons
-            if missing_codons:
-                raise ValueError(f'Missing weights for codon(s) for amino acid {aa}: {sorted(missing_codons)}')
+            for codon, weight in codon_weights.items():
+                codon = codon.upper()
 
-            extra_codons = observed_codons - expected_codons
-            if extra_codons:
-                raise ValueError(f'Unknown codon(s) for amino acid {aa}: {sorted(extra_codons)}')
+                if codon in normalised_codon_weights:
+                    raise ValueError(f'Duplicate weight for codon {codon} for amino acid {aa}')
+
+                if codon in observed_codons:
+                    raise ValueError(f'Duplicate weight for codon {codon}')
+
+                if weight < 0:
+                    raise ValueError(f'Weight for codon {codon} cannot be negative')
+
+                normalised_codon_weights[codon] = weight
+                observed_codons.add(codon)
 
             total = sum(normalised_codon_weights.values())
             if total <= 0:
                 raise ValueError(f'Weights for amino acid {aa} must sum to > 0')
 
-            codons = []
-            for codon, weight in normalised_codon_weights.items():
-                if weight < 0:
-                    raise ValueError(f'Weight for codon {codon} cannot be negative')
+            codons = tuple(normalised_codon_weights.keys())
 
-                codons.append(codon)
+            for codon, weight in normalised_codon_weights.items():
                 weights_flat[codon] = float(weight) / total
 
-            aa_to_codons[aa] = tuple(codons)
+            aa_to_codons[aa] = codons
 
-        self.rna = table.rna
         self.aa_to_codons = FrozenDict(aa_to_codons)
         self.weights = FrozenDict(weights_flat)
 
@@ -128,11 +109,8 @@ class CodonWeights:
         super().__setattr__(name, value)
 
     def __repr__(self) -> str:
-        molecule = 'RNA' if self.rna else 'DNA'
-
         lines = [
-            f'CodonWeights',
-            f'Molecule type: {molecule}',
+            'CodonWeights',
             '',
             'Weights:',
         ]
@@ -148,6 +126,68 @@ class CodonWeights:
 
     def __getitem__(self, codon: str) -> float:
         return self.weights[codon]
+
+    def for_table(self, table: TranslationTable) -> 'CodonWeights':
+        """
+        Resolve this CodonWeights class against a translation table, i.e. check that the
+        codons match and normalise to RNA/DNA, and return the resolved version.
+
+        Parameters
+        ----------
+        table
+            The translation table to resolve against.
+
+        Returns
+        -------
+        A resolved ``CodonWeights`` object.
+        """
+        expected_aas = set(table.aa_to_codons.keys())
+        observed_aas = set(self.aa_to_codons.keys())
+
+        missing_aas = expected_aas - observed_aas
+        if missing_aas:
+            raise ValueError(f'Missing weights for amino acid(s): {sorted(missing_aas)}')
+
+        extra_aas = observed_aas - expected_aas
+        if extra_aas:
+            raise ValueError(f'Unknown amino acid(s): {sorted(extra_aas)}')
+
+        resolved_weights: WeightDict = {}
+        resolved_codons = set()
+        changed = False
+
+        for aa, codons in self.aa_to_codons.items():
+            codon_weights: Dict[str, float] = {}
+
+            for codon in codons:
+                resolved_codon = table.normalise_sequence(codon)
+
+                if resolved_codon != codon:
+                    changed = True
+
+                if resolved_codon in resolved_codons:
+                    raise ValueError(f'Duplicate weight for codon {resolved_codon}')
+
+                resolved_codons.add(resolved_codon)
+                codon_weights[resolved_codon] = self.weights[codon]
+
+            expected_codons = set(table.aa_to_codons[aa])
+            observed_codons = set(codon_weights.keys())
+
+            missing_codons = expected_codons - observed_codons
+            if missing_codons:
+                raise ValueError(f'Missing weights for codon(s) for amino acid {aa}: {sorted(missing_codons)}')
+
+            extra_codons = observed_codons - expected_codons
+            if extra_codons:
+                raise ValueError(f'Unknown codon(s) for amino acid {aa}: {sorted(extra_codons)}')
+
+            resolved_weights[aa] = codon_weights
+
+        if not changed:
+            return self
+
+        return type(self)(resolved_weights)
 
     def by_aa(self, aa: str) -> Dict[str, float]:
         """
@@ -167,7 +207,7 @@ class CodonWeights:
         return weights
 
     @classmethod
-    def uniform(cls, table: Optional[TranslationTable] = None, rna: Optional[bool] = None) -> 'CodonWeights':
+    def uniform(cls, table: Optional[TranslationTable] = None) -> 'CodonWeights':
         """
         Construct a ``CodonWeights`` object with uniform codon weights for a given translation table.
 
@@ -176,28 +216,22 @@ class CodonWeights:
         table
             The reference table. If blank, use the standard genetic code.
 
-        rna
-            Whether to use RNA.
-
         Returns
         -------
         A uniform CodonWeights object.
         """
         if table is None:
-            table = TranslationTable(rna=False if rna is None else rna)
-
-        elif rna is not None and table.rna != rna:
-            raise ValueError('table and rna specify inconsistent molecule types.')
+            table = TranslationTable()
 
         uniform_weights: WeightDict = {
             aa: {codon: 1.0 for codon in codons}
             for aa, codons in table.aa_to_codons.items()
         }
 
-        return cls(uniform_weights, table=table)
+        return cls(uniform_weights)
 
     @classmethod
-    def ecoli(cls, rna: Optional[bool] = None) -> 'CodonWeights':
+    def ecoli(cls) -> 'CodonWeights':
         """
         Construct a ``CodonWeights`` object with codon probabilities corresponding to E. coli.
 
@@ -205,20 +239,15 @@ class CodonWeights:
 
         https://www.genscript.com/tools/codon-frequency-table
 
-        Parameters
-        ----------
-        rna
-            Whether to use RNA.
-
         Returns
         -------
         A ``CodonWeights`` object corresponding to E. Coli
         """
         from codeine.translation.data.weights import ECOLI_WEIGHTS
-        return cls(ECOLI_WEIGHTS, rna=rna)
+        return cls(ECOLI_WEIGHTS)
 
     @classmethod
-    def yeast(cls, rna: Optional[bool] = None) -> 'CodonWeights':
+    def yeast(cls) -> 'CodonWeights':
         """
         Construct a ``CodonWeights`` object with codon probabilities corresponding to 'yeast'.
 
@@ -226,20 +255,15 @@ class CodonWeights:
 
         https://www.genscript.com/tools/codon-frequency-table
 
-        Parameters
-        ----------
-        rna
-            Whether to use RNA.
-
         Returns
         -------
         A ``CodonWeights`` object corresponding to S. cerevisiea
         """
         from codeine.translation.data.weights import YEAST_WEIGHTS
-        return cls(YEAST_WEIGHTS, rna=rna)
+        return cls(YEAST_WEIGHTS)
 
     @classmethod
-    def human(cls, rna: Optional[bool] = None) -> 'CodonWeights':
+    def human(cls) -> 'CodonWeights':
         """
         Construct a ``CodonWeights`` object with codon probabilities corresponding to Human.
 
@@ -247,20 +271,15 @@ class CodonWeights:
 
         https://www.genscript.com/tools/codon-frequency-table
 
-        Parameters
-        ----------
-        rna
-            Whether to use RNA.
-
         Returns
         -------
         A ``CodonWeights`` object corresponding to Human.
         """
         from codeine.translation.data.weights import HUMAN_WEIGHTS
-        return cls(HUMAN_WEIGHTS, rna=rna)
+        return cls(HUMAN_WEIGHTS)
 
     @classmethod
-    def mouse(cls, rna: Optional[bool] = None) -> 'CodonWeights':
+    def mouse(cls) -> 'CodonWeights':
         """
         Construct a ``CodonWeights`` object with codon probabilities corresponding to Mouse.
 
@@ -268,20 +287,15 @@ class CodonWeights:
 
         https://www.genscript.com/tools/codon-frequency-table
 
-        Parameters
-        ----------
-        rna
-            Whether to use RNA.
-
         Returns
         -------
         A ``CodonWeights`` object corresponding to Mouse.
         """
         from codeine.translation.data.weights import MOUSE_WEIGHTS
-        return cls(MOUSE_WEIGHTS, rna=rna)
+        return cls(MOUSE_WEIGHTS)
 
     @classmethod
-    def arabidopsis(cls, rna: Optional[bool] = None) -> 'CodonWeights':
+    def arabidopsis(cls) -> 'CodonWeights':
         """
         Construct a ``CodonWeights`` object with codon probabilities corresponding to A. thaliana.
 
@@ -289,20 +303,15 @@ class CodonWeights:
 
         https://www.genscript.com/tools/codon-frequency-table
 
-        Parameters
-        ----------
-        rna
-            Whether to use RNA.
-
         Returns
         -------
         A ``CodonWeights`` object corresponding to Arabidopsis thaliana.
         """
         from codeine.translation.data.weights import ARABIDOPSIS_WEIGHTS
-        return cls(ARABIDOPSIS_WEIGHTS, rna=rna)
+        return cls(ARABIDOPSIS_WEIGHTS)
 
     @classmethod
-    def drosophila(cls, rna: Optional[bool] = None) -> 'CodonWeights':
+    def drosophila(cls) -> 'CodonWeights':
         """
         Construct a ``CodonWeights`` object with codon probabilities corresponding to D. melanogaster.
 
@@ -310,14 +319,9 @@ class CodonWeights:
 
         https://www.genscript.com/tools/codon-frequency-table
 
-        Parameters
-        ----------
-        rna
-            Whether to use RNA.
-
         Returns
         -------
         A ``CodonWeights`` object corresponding to Drosophila melanogaster.
         """
         from codeine.translation.data.weights import DROSOPHILA_WEIGHTS
-        return cls(DROSOPHILA_WEIGHTS, rna=rna)
+        return cls(DROSOPHILA_WEIGHTS)

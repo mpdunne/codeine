@@ -1,4 +1,4 @@
-from typing import Collection, Dict, FrozenSet, List, Generator, Optional, Set, Union
+from typing import Collection, Dict, FrozenSet, List, Iterator, Optional, Set, Union
 
 from codeine.constraints.mutations import MutationDistanceConstraint
 from codeine.graph.base import CodonRestriction
@@ -58,6 +58,11 @@ class MutationSpace:
 
         self.view = space.view.copy()
         self._base_pins = dict(space.view.pinned_codons)
+        self._base_constraints = tuple(
+            constraint
+            for constraint in space.view.constraints
+            if not isinstance(constraint, MutationDistanceConstraint)
+        )
 
         self.cds = self._validate_cds(cds)
 
@@ -95,7 +100,7 @@ class MutationSpace:
         """
         return self.view[index]
 
-    def __iter__(self) -> Generator[str, None, None]:
+    def __iter__(self) -> Iterator[str]:
         """
         Iterate over all valid sequences in this mutation space.
         Be aware that "all valid sequences" can be astronomically many!
@@ -196,14 +201,12 @@ class MutationSpace:
                 f'    codons: {self._format_distance(self.min_codons, self.max_codons)}',
                 '',
             ]
-        else:
-            lines.append(
-                f'Num. valid variants: {format_count(self.n_valid_variants)}'
-            )
+
+        lines.append(f'Num. valid variants: {format_count(self.n_valid_variants)}')
 
         return '\n'.join(lines)
 
-    def sample(self, n: Optional[int] = None) -> str:
+    def sample(self, n: Optional[int] = None) -> Union[str, List[str]]:
         """
         Sample one or more variants from this mutation space.
 
@@ -214,11 +217,11 @@ class MutationSpace:
 
         Returns
         -------
-        A sampled string sequence from this mutation space.
+        A sampled sequence or list of sequences from this mutation space.
         """
         return self.view.sample(n=n)
 
-    def enumerate(self) -> Generator[str, None, None]:
+    def enumerate(self) -> Iterator[str]:
         """
         Generate all sequences in this mutation space.
 
@@ -292,7 +295,7 @@ class MutationSpace:
         """
         Set mutation distance constraints.
 
-        Distances are measured from the reference CDS and can be either nucleotide (Hammming)
+        Distances are measured from the reference CDS and can be either nucleotide (Hamming)
         distances, i.e. the number of nucleotides that are different from the reference CDS,
         or codon distances, i.e. the number of codons that are different.
         """
@@ -406,11 +409,7 @@ class MutationSpace:
         """
         Replace the mutation-distance constraint on the underlying view.
         """
-        constraints = tuple(
-            constraint
-            for constraint in self.view.constraints
-            if not isinstance(constraint, MutationDistanceConstraint)
-        )
+        constraints = self._base_constraints
 
         if self.has_distance_constraints:
             constraints += (
@@ -482,7 +481,7 @@ class MutationSpace:
         -------
         A normalised and validated version of the inputted CDS.
         """
-        cds = cds.upper()
+        cds = self.translation_table.normalise_sequence(cds)
 
         if not self.view.contains(cds):
             raise ValueError('CDS is not contained in this coding space.')

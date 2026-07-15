@@ -1,18 +1,16 @@
 from __future__ import annotations
 
-import random
-
-from collections import Counter
 from typing import TYPE_CHECKING, Dict, List, Optional, Sequence, Tuple, Union
 
 from codeine.graph.nodes import CodonNode, ContextNode, EndNode, Node
 from codeine.translation.tables import TranslationTable
-from codeine.translation.weights import CodonWeights
 from codeine.utils.display import format_restrictions
 from codeine.utils.sampling import Seedable
 
 if TYPE_CHECKING:
+    from codeine.constraints.base import Constraint
     from codeine.graph.view import CodonGraphView
+    from codeine.translation.weights import CodonWeights
 
 CodonRestriction = Union[str, Sequence[str]]
 
@@ -27,24 +25,30 @@ class CodonGraph:
         aa_seq: str,
         codon_restrictions: Optional[Dict[int, CodonRestriction]] = None,
         translation_table: Optional[TranslationTable] = None,
-        weights: Optional[CodonWeights] = None,
         context_l: str = '',
         context_r: str = '',
     ) -> None:
+        """
+        Parameters
+        ----------
+        aa_seq
+            The amino acid sequence.
+        codon_restrictions
+            Any codon restrictions, for example fixed codons or subsets, in the form {3: 'AAA', 6: ['TTT', 'TTC']...}
+        translation_table
+            The translation table to use.
+        context_l
+            The left context sequence.
+        context_r
+            The right context sequence.
+        """
         if len(aa_seq) == 0:
             raise ValueError('Please provide non-empty sequence!')
 
         if translation_table is None:
-            rna = weights.rna if weights is not None else False
-            translation_table = TranslationTable(table_id=1, rna=rna)
-
-        if weights is None:
-            weights = CodonWeights.uniform(table=translation_table, rna=translation_table.rna)
-
-        self.validate_codon_weights(weights, translation_table)
+            translation_table = TranslationTable(table_id=1, rna=False)
 
         self.tt = translation_table
-        self.cw = weights
 
         self.aa_seq = aa_seq.upper()
         self.validate_aa_seq()
@@ -116,7 +120,7 @@ class CodonGraph:
             if isinstance(codon_restriction, str):
                 codons = [codon_restriction]
             else:
-                codons = list(codon_restriction)
+                codons = list(set(codon_restriction))
 
             if len(codons) == 0:
                 raise ValueError(f'Codon restriction at position {pos} cannot be empty.')
@@ -137,38 +141,6 @@ class CodonGraph:
             normalised[pos] = codons
 
         return normalised
-
-    @staticmethod
-    def validate_codon_weights(weights: CodonWeights, translation_table: TranslationTable) -> None:
-        """
-        Check that codon weights are compatible with the provided translation table.
-
-        Parameters
-        ----------
-        weights
-            The codon weights.
-        translation_table
-            The translation table.
-
-        Raises
-        -------
-        Various errors if things aren't good.
-        """
-        if weights.rna != translation_table.rna:
-            raise ValueError('Codon weights and translation table use different molecule types.')
-
-        expected_codons = {
-            aa: Counter(codons)
-            for aa, codons in translation_table.aa_to_codons.items()
-        }
-
-        actual_codons = {
-            aa: Counter(codons)
-            for aa, codons in weights.aa_to_codons.items()
-        }
-
-        if actual_codons != expected_codons:
-            raise ValueError('Codon weights and translation table do not match.')
 
     def codon_node_by_pos(self, pos: int) -> CodonNode:
         """
@@ -252,16 +224,27 @@ class CodonGraph:
             self.end_node,
         )
 
-    def view(self, seed: Optional[Seedable] = None) -> 'CodonGraphView':
+    def view(self,
+             *,
+             constraints: Optional[Sequence[Constraint]] = None,
+             weights: Optional[CodonWeights] = None,
+             seed: Seedable = None,
+             ) -> 'CodonGraphView':
         """
-        Return a constrained view over this graph.
+        Return
 
         Parameters
         ----------
+        constraints
+            Any constraint trackers that we wish to use when traversing coding space.
+        weights
+            The codon weights to use when sampling.
         seed
-            Seed used to initialise the view's random number generator.
-        rng
-            Random number generator used by the view for sampling.
+            Seed used to initialise a random number generator.
+
+        Returns
+        -------
+        A constrained view over this graph.
         """
         from codeine.graph.view import CodonGraphView
-        return CodonGraphView(self, seed=seed)
+        return CodonGraphView(self, seed=seed, weights=weights)

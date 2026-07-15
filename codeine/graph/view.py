@@ -2,7 +2,7 @@ import math
 import random
 
 from itertools import islice
-from typing import Dict, Generator, List, Optional, Sequence, Union, Tuple
+from typing import Dict, Iterator, List, Optional, Sequence, Union, Tuple
 
 from codeine.constraints.base import Constraint
 from codeine.graph.base import CodonGraph, CodonRestriction
@@ -23,7 +23,9 @@ class CodonGraphView:
 
     def __init__(self,
                  graph: CodonGraph,
+                 *,
                  constraints: Optional[Sequence[Constraint]] = None,
+                 weights: Optional[CodonWeights] = None,
                  seed: Seedable = None,
                  ) -> None:
         """
@@ -35,14 +37,23 @@ class CodonGraphView:
             The underlying codon graph.
         constraints
             Any constraint trackers that we wish to use when traversing coding space.
+        weights
+            The codon weights to use when sampling.
         seed
-            Seed used to initialise a random number generator, if not providing an RNG.
+            Seed used to initialise a random number generator.
         """
-        self._rng = random.Random(seed)
 
         self.graph = graph
         self.pinned_codons: Dict[int, List[str]] = {}
         self.constraints: Tuple[Constraint, ...] = tuple(constraints or ())
+
+        if weights is None:
+            weights = CodonWeights.uniform(table=self.graph.tt)
+        else:
+            weights = weights.for_table(self.graph.tt)
+
+        self._codon_weights = weights
+        self._rng = random.Random(seed)
 
         self._compiled = None
         self._requires_compile = True
@@ -71,7 +82,7 @@ class CodonGraphView:
 
         return self.sequence_at(index)
 
-    def __iter__(self) -> Generator[str, None, None]:
+    def __iter__(self) -> Iterator[str]:
         """
         Iterate over all valid sequences in this graph view.
 
@@ -204,7 +215,7 @@ class CodonGraphView:
 
         return [self._sample() for _ in range(n)]
 
-    def enumerate(self) -> Generator[str, None, None]:
+    def enumerate(self) -> Iterator[str]:
         """
         Enumerate all valid sequences in this view.
 
@@ -218,7 +229,7 @@ class CodonGraphView:
 
         yield from self._iter_all_sequences()
 
-    def enumerate_range(self, start: int = 0, stop: Optional[int] = None) -> Generator[str, None, None]:
+    def enumerate_range(self, start: int = 0, stop: Optional[int] = None) -> Iterator[str]:
         """
         Enumerate valid sequences from start up to, but not including, stop.
 
@@ -317,6 +328,7 @@ class CodonGraphView:
         """
         view = self.graph.view()
         view._rng.setstate(self._rng.getstate())
+        view._codon_weights = self._codon_weights
 
         view.pinned_codons = self.pinned_codons.copy()
         view.constraints = self.constraints
@@ -416,6 +428,29 @@ class CodonGraphView:
         """
         self.set_constraints(())
 
+    def set_weights(self, weights: Optional[CodonWeights] = None) -> None:
+        """
+        Set the codon weights used for sampling.
+
+        Parameters
+        ----------
+        weights
+            Codon weights to use. If omitted, use uniform weights.
+        """
+        if weights is None:
+            weights = CodonWeights.uniform(table=self.graph.tt)
+        else:
+            weights = weights.for_table(self.graph.tt)
+
+        self._codon_weights = weights
+        self._requires_compile = True
+
+    def clear_weights(self) -> None:
+        """
+        Reset sampling to uniform codon weights.
+        """
+        self.set_weights()
+
     @property
     def aa_seq(self) -> str:
         """
@@ -439,7 +474,7 @@ class CodonGraphView:
         """
         The codon weights used by the codon graph.
         """
-        return self.graph.cw
+        return self._codon_weights
 
     @property
     def codon_restrictions(self) -> Dict[int, CodonRestriction]:
@@ -612,7 +647,7 @@ class CodonGraphView:
 
         return ''.join(sequence_parts)
 
-    def _iter_all_sequences(self) -> Generator[str, None, None]:
+    def _iter_all_sequences(self) -> Iterator[str]:
         """
         Iterate over all valid sequences. Faster than _iter_sequence_range when
         we're starting at 0.
@@ -660,7 +695,7 @@ class CodonGraphView:
         self,
         start: int,
         stop: int,
-    ) -> Generator[str, None, None]:
+    ) -> Iterator[str]:
         """
         Iterate over valid sequences in a given index range.
 

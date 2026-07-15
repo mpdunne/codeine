@@ -1,6 +1,6 @@
 from typing import Dict, FrozenSet, List, NamedTuple, Optional, Sequence, Tuple
 
-from codeine.constraints.base import Constraint, ConstraintState, DEAD_STATE
+from codeine.constraints.base import Constraint, ConstraintState, DEAD_STATE, SAFE_STATE
 from codeine.graph.base import CodonGraph
 from codeine.graph.nodes import CodonNode
 
@@ -65,8 +65,6 @@ class BannedSequenceConstraint(Constraint):
 
     def __init__(self, banned_sequences: Sequence[str]) -> None:
         """
-        Constructor for the BannedSequenceTracker class.
-
         Parameters
         ----------
         banned_sequences
@@ -88,10 +86,10 @@ class BannedSequenceConstraint(Constraint):
 
         self.advance_cache: Dict[Tuple[Step, BannedTrackerStateId], ConstraintState] = {}
 
-        self.graph = None
-        self.paths = None
-        self.starts = None
-        self.transitions = None
+        self.graph: Optional[CodonGraph] = None
+        self.paths: Tuple[SubPath, ...] = ()
+        self.starts: Dict[Step, Tuple[TransitionValue, ...]] = {}
+        self.transitions: Dict[str, Dict[Watch, TransitionValue]] = {}
 
     @property
     def initial_state(self) -> ConstraintState:
@@ -109,6 +107,88 @@ class BannedSequenceConstraint(Constraint):
         True if and only if the tracker is trivial.
         """
         return len(self.paths) == 0
+
+    def link(self, graph: CodonGraph) -> None:
+        """
+        Link the constraint to a graph.
+        """
+        initial_state: BannedTrackerState = frozenset()
+
+        self.state_ids = {initial_state: self.initial_state_id}
+        self.states = [initial_state]
+        self.advance_cache.clear()
+
+        self.banned_sequences = tuple(graph.tt.normalise_sequence(sequence) for sequence in self.banned_sequences)
+
+        self.graph = graph
+        self.paths = self._find_banned_paths()
+        self.starts = self._build_starts()
+        self.transitions = self._build_transitions()
+
+    def advance(
+            self,
+            state: ConstraintState,
+            pos: int,
+            choice: str,
+    ) -> ConstraintState:
+        """
+        Advance the tracker after taking one graph choice.
+
+        Returns DEAD_STATE if the choice completes a banned sequence; otherwise
+        returns the integer ID of the updated tracker state.
+        """
+        if state == DEAD_STATE:
+            return DEAD_STATE
+
+        if state == SAFE_STATE:
+            return SAFE_STATE
+
+        state_id = state
+        step = (pos, choice)
+        key = (step, state_id)
+
+        cached = self.advance_cache.get(key)
+        if cached is not None:
+            return cached
+
+        tracker_state = self.states[state_id]
+        starts = self.starts.get(step)
+
+        if starts is None and not tracker_state:
+            self.advance_cache[key] = self.initial_state_id
+            return self.initial_state_id
+
+        transitions = self.transitions.get(choice)
+        next_state = set()
+
+        if starts is not None:
+            for watch in starts:
+                if watch is None:
+                    self.advance_cache[key] = DEAD_STATE
+                    return DEAD_STATE
+
+                next_state.add(watch)
+
+        if transitions is not None:
+            for watch in tracker_state:
+                next_watch = transitions.get(watch)
+
+                if next_watch is None:
+                    if watch in transitions:
+                        self.advance_cache[key] = DEAD_STATE
+                        return DEAD_STATE
+
+                    continue
+
+                next_state.add(next_watch)
+
+        if not next_state:
+            self.advance_cache[key] = self.initial_state_id
+            return self.initial_state_id
+
+        next_state_id = self._get_or_register_state_id(frozenset(next_state))
+        self.advance_cache[key] = next_state_id
+        return next_state_id
 
     def _find_banned_paths(self) -> Tuple[SubPath, ...]:
         """
@@ -233,80 +313,10 @@ class BannedSequenceConstraint(Constraint):
 
         return state_id
 
-    def link(self, graph: CodonGraph) -> None:
-        """
-        Link the constraint to a graph.
 
-        The banned tracker is currently constructed with its graph, so there is
-        nothing further to initialise here.
-        """
-        self.banned_sequences = tuple(graph.tt.normalise_sequence(seq) for seq in self.banned_sequences)
-        self.graph = graph
-        self.paths = self._find_banned_paths()
-        self.starts = self._build_starts()
-        self.transitions = self._build_transitions()
-
-    def advance(
-            self,
-            state: ConstraintState,
-            pos: int,
-            choice: str,
-    ) -> ConstraintState:
-        """
-        Advance the tracker after taking one graph choice.
-
-        Returns DEAD_STATE if the choice completes a banned sequence; otherwise
-        returns the integer ID of the updated tracker state.
-        """
-        if state == DEAD_STATE:
-            return DEAD_STATE
-
-        state_id = state
-        step = (pos, choice)
-        key = (step, state_id)
-
-        cached = self.advance_cache.get(key)
-        if cached is not None:
-            return cached
-
-        tracker_state = self.states[state_id]
-        starts = self.starts.get(step)
-
-        if starts is None and not tracker_state:
-            self.advance_cache[key] = self.initial_state_id
-            return self.initial_state_id
-
-        transitions = self.transitions.get(choice)
-        next_state = set()
-
-        if starts is not None:
-            for watch in starts:
-                if watch is None:
-                    self.advance_cache[key] = DEAD_STATE
-                    return DEAD_STATE
-
-                next_state.add(watch)
-
-        if transitions is not None:
-            for watch in tracker_state:
-                next_watch = transitions.get(watch)
-
-                if next_watch is None:
-                    if watch in transitions:
-                        self.advance_cache[key] = DEAD_STATE
-                        return DEAD_STATE
-
-                    continue
-
-                next_state.add(next_watch)
-
-        if not next_state:
-            self.advance_cache[key] = self.initial_state_id
-            return self.initial_state_id
-
-        next_state_id = self._get_or_register_state_id(frozenset(next_state))
-        self.advance_cache[key] = next_state_id
-        return next_state_id
+###############################################################################
+# Algorithm for finding graph subpaths matching a nucleotide sequence.
+###############################################################################
 
 
 def _find_matching_subpaths(
@@ -354,7 +364,7 @@ def _find_matching_subpaths(
         if node is graph.end_node:
             continue
 
-        for choice, child in node.transitions.items():
+        for choice in node.transitions:
             for offset in range(len(choice)):
                 choice_subsequence = choice[offset:]
 

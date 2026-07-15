@@ -1,7 +1,7 @@
 import pickle
 
 from pathlib import Path
-from typing import Dict, Generator, List, Optional, Sequence, Tuple, Union, TYPE_CHECKING
+from typing import Dict, Iterator, List, Optional, Sequence, Tuple, Union, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from codeine.space.mutation import MutationSpace
@@ -70,12 +70,11 @@ class CodingSpace:
             aa_seq,
             codon_restrictions=codon_restrictions,
             translation_table=translation_table,
-            weights=codon_weights,
             context_l=context_l,
             context_r=context_r,
         )
 
-        view = graph.view(seed=seed)
+        view = graph.view(seed=seed, weights=codon_weights)
         self.view = view
 
         self.constraints = tuple(constraints or ())
@@ -115,7 +114,7 @@ class CodingSpace:
         """
         return self.view[index]
 
-    def __iter__(self) -> Generator[str, None, None]:
+    def __iter__(self) -> Iterator[str]:
         """
         Iterate over all valid sequences in this coding space.
         Be aware that "all valid sequences" can be astronomically many!
@@ -203,7 +202,7 @@ class CodingSpace:
 
         return '\n'.join(lines)
 
-    def sample(self, n: Optional[int] = None) -> str:
+    def sample(self, n: Optional[int] = None) -> Union[str, List[str]]:
         """
         Sample one or more variants from this coding space.
 
@@ -214,11 +213,11 @@ class CodingSpace:
 
         Returns
         -------
-        A sampled string sequence from this coding space.
+        A sampled sequence, or a list of sampled sequences.
         """
         return self.view.sample(n=n)
 
-    def enumerate(self) -> Generator[str, None, None]:
+    def enumerate(self) -> Iterator[str]:
         """
         Generate all sequences in this space. If there are many (and often there are
         astronomically many), one would not expect to reach the 'end'. However for smaller
@@ -330,7 +329,7 @@ class CodingSpace:
         """
         self.view.clear_pins()
 
-    def set_forbidden_motifs(self, forbidden_motifs: ForbiddenMotifs) -> None:
+    def set_forbidden_motifs(self, forbidden_motifs: Optional[ForbiddenMotifs]) -> None:
         """
         Set the forbidden motifs for this coding space.
 
@@ -365,6 +364,30 @@ class CodingSpace:
         Remove the maximum homopolymer constraint from this coding space.
         """
         self.set_max_homopolymer(None)
+
+    def set_constraints(self, constraints: Sequence[Constraint]) -> None:
+        """
+        Set any additional constraints.
+
+        Parameters
+        ----------
+        constraints
+            The constraints to set, as ``Constraint`` objects.
+        """
+        self.constraints = tuple(constraints)
+        self._update_constraints()
+
+    def clear_constraints(self) -> None:
+        """
+        Remove custom constraints.
+        """
+        self.set_constraints(())
+
+    def set_codon_weights(self, codon_weights: CodonWeights) -> None:
+        """
+        Set the codon weights used when sampling from this coding space.
+        """
+        self.view.set_weights(codon_weights)
 
     @property
     def n_valid_sequences(self) -> int:
@@ -442,13 +465,6 @@ class CodingSpace:
 
         self.view.set_constraints(constraints)
 
-    def set_constraints(self, constraints: Sequence[Constraint]) -> None:
-        self.constraints = tuple(constraints)
-        self._update_constraints()
-
-    def clear_constraints(self) -> None:
-        self.set_constraints(())
-
     @staticmethod
     def _resolve_tables(
             translation_table: Optional[TranslationTable],
@@ -456,33 +472,19 @@ class CodingSpace:
             rna: Optional[bool],
     ) -> Tuple[TranslationTable, CodonWeights]:
         """
-        Resolve user-submited (or not) translation table, codon weights, and RNA flag.
+        Resolve user-submitted (or not) translation table, codon weights, and RNA flag.
         """
 
-        if rna is None:
-            if translation_table is not None and codon_weights is not None \
-                    and translation_table.rna != codon_weights.rna:
-                raise ValueError('Provided translation table and codon weights must have the same molecule type.')
-
-            if translation_table is not None:
-                rna = translation_table.rna
-            elif codon_weights is not None:
-                rna = codon_weights.rna
-            else:
-                rna = False
-
-        else:
-            if translation_table is not None and translation_table.rna != rna:
-                raise ValueError('Value for rna is inconsistent with the provided translation table.')
-
-            if codon_weights is not None and codon_weights.rna != rna:
-                raise ValueError('Value for rna is inconsistent with the provided codon weights.')
-
         if translation_table is None:
-            translation_table = TranslationTable(table_id=1, rna=rna)
+            translation_table = TranslationTable(table_id=1, rna=False if rna is None else rna)
+
+        elif rna is not None and translation_table.rna != rna:
+            raise ValueError('Value for rna is inconsistent with the provided translation table.')
 
         if codon_weights is None:
             codon_weights = CodonWeights.uniform(table=translation_table)
+        else:
+            codon_weights = codon_weights.for_table(translation_table)
 
         return translation_table, codon_weights
 
