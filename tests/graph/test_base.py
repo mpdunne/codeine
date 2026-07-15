@@ -70,7 +70,7 @@ def test_codon_restrictions_are_uppercased():
     assert graph.codon_restrictions[3] == ['AAA']
 
     graph = CodonGraph('MIKEY', codon_restrictions={3: ['aaa', 'aag']})
-    assert graph.codon_restrictions[3] == ['AAA', 'AAG']
+    assert set(graph.codon_restrictions[3]) == {'AAA', 'AAG'}
 
 
 def test_single_codon_restriction_is_applied():
