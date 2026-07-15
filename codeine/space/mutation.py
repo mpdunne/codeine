@@ -1,4 +1,4 @@
-from typing import Collection, Dict, FrozenSet, List, Generator, Optional, Set, Union
+from typing import Collection, Dict, FrozenSet, List, Iterator, Optional, Set, Union
 
 from codeine.constraints.mutations import MutationDistanceConstraint
 from codeine.graph.base import CodonRestriction
@@ -95,7 +95,7 @@ class MutationSpace:
         """
         return self.view[index]
 
-    def __iter__(self) -> Generator[str, None, None]:
+    def __iter__(self) -> Iterator[str]:
         """
         Iterate over all valid sequences in this mutation space.
         Be aware that "all valid sequences" can be astronomically many!
@@ -218,7 +218,7 @@ class MutationSpace:
         """
         return self.view.sample(n=n)
 
-    def enumerate(self) -> Generator[str, None, None]:
+    def enumerate(self) -> Iterator[str]:
         """
         Generate all sequences in this mutation space.
 

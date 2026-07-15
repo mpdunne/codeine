@@ -2,7 +2,7 @@ import math
 import random
 
 from itertools import islice
-from typing import Dict, Generator, List, Optional, Sequence, Union, Tuple
+from typing import Dict, Iterator, List, Optional, Sequence, Union, Tuple
 
 from codeine.constraints.base import Constraint
 from codeine.graph.base import CodonGraph, CodonRestriction
@@ -82,7 +82,7 @@ class CodonGraphView:
 
         return self.sequence_at(index)
 
-    def __iter__(self) -> Generator[str, None, None]:
+    def __iter__(self) -> Iterator[str]:
         """
         Iterate over all valid sequences in this graph view.
 
@@ -215,7 +215,7 @@ class CodonGraphView:
 
         return [self._sample() for _ in range(n)]
 
-    def enumerate(self) -> Generator[str, None, None]:
+    def enumerate(self) -> Iterator[str]:
         """
         Enumerate all valid sequences in this view.
 
@@ -229,7 +229,7 @@ class CodonGraphView:
 
         yield from self._iter_all_sequences()
 
-    def enumerate_range(self, start: int = 0, stop: Optional[int] = None) -> Generator[str, None, None]:
+    def enumerate_range(self, start: int = 0, stop: Optional[int] = None) -> Iterator[str]:
         """
         Enumerate valid sequences from start up to, but not including, stop.
 
@@ -647,7 +647,7 @@ class CodonGraphView:
 
         return ''.join(sequence_parts)
 
-    def _iter_all_sequences(self) -> Generator[str, None, None]:
+    def _iter_all_sequences(self) -> Iterator[str]:
         """
         Iterate over all valid sequences. Faster than _iter_sequence_range when
         we're starting at 0.
@@ -695,7 +695,7 @@ class CodonGraphView:
         self,
         start: int,
         stop: int,
-    ) -> Generator[str, None, None]:
+    ) -> Iterator[str]:
         """
         Iterate over valid sequences in a given index range.
 

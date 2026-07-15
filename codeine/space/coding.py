@@ -1,7 +1,7 @@
 import pickle
 
 from pathlib import Path
-from typing import Dict, Generator, List, Optional, Sequence, Tuple, Union, TYPE_CHECKING
+from typing import Dict, Iterator, List, Optional, Sequence, Tuple, Union, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from codeine.space.mutation import MutationSpace
@@ -114,7 +114,7 @@ class CodingSpace:
         """
         return self.view[index]
 
-    def __iter__(self) -> Generator[str, None, None]:
+    def __iter__(self) -> Iterator[str]:
         """
         Iterate over all valid sequences in this coding space.
         Be aware that "all valid sequences" can be astronomically many!
@@ -217,7 +217,7 @@ class CodingSpace:
         """
         return self.view.sample(n=n)
 
-    def enumerate(self) -> Generator[str, None, None]:
+    def enumerate(self) -> Iterator[str]:
         """
         Generate all sequences in this space. If there are many (and often there are
         astronomically many), one would not expect to reach the 'end'. However for smaller
