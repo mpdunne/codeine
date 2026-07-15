@@ -559,7 +559,8 @@ class CodonGraphView:
 
         return sampler
 
-    def _convert_log_masses_to_sampler_weights(self, log_masses: List[float]) -> List[float]:
+    @staticmethod
+    def _convert_log_masses_to_sampler_weights(log_masses: Sequence[float]) -> List[float]:
         """
         Convert subtree log masses into relative weights for sampling.
 
@@ -577,14 +578,7 @@ class CodonGraphView:
         list of float
             Relative non-log weights suitable for weighted sampling.
         """
-        if not log_masses:
-            return log_masses
-
         max_log_mass = max(log_masses)
-
-        if max_log_mass == -math.inf:
-            return [1.0] * len(log_masses)
-
         return [math.exp(log_mass - max_log_mass) for log_mass in log_masses]
 
     def _sample(self) -> str:
