@@ -206,6 +206,15 @@ class MutationSpace:
 
         return '\n'.join(lines)
 
+    def compile(self) -> None:
+        """
+        Compile this mutation space.
+
+        If ``compile()`` has not been called manually, it will automatically be
+        called before sampling, enumeration, or counting.
+        """
+        self.view.compile()
+
     def sample(self, n: Optional[int] = None) -> Union[str, List[str]]:
         """
         Sample one or more variants from this mutation space.

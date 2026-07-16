@@ -8,11 +8,12 @@ from unittest.mock import MagicMock
 from scipy.stats import chisquare, chi2_contingency
 
 from codeine.constraints.base import Constraint, DEAD_STATE, SAFE_STATE
+from codeine.constraints.gc import GCConstraint
 from codeine.constraints.banned import BannedSequenceConstraint
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
 from codeine.graph.base import CodonGraph
-from codeine.graph.view import CodonGraphView
+from codeine.graph.view import CodonGraphView, COMPILE_SHALLOW, COMPILE_DEEP
 
 from tests.data import NORMAL_PROTEINS
 
@@ -640,14 +641,14 @@ def test_codon_graph_view_pickle_preserves_pins():
 
 def test_view_doesnt_compile_immediately():
     view = CodonGraph('MIKEY').view()
-    assert view._requires_compile
+    assert view._compile_status
 
 
 def test_n_valid_sequences_compiles_view():
     view = CodonGraph('MIKEY').view()
 
     assert view.n_valid_sequences == 24
-    assert not view._requires_compile
+    assert not view._compile_status
 
 
 def test_set_pinned_codons_marks_view_for_compile():
@@ -658,7 +659,7 @@ def test_set_pinned_codons_marks_view_for_compile():
     view.set_pinned_codons({1: 'ATG'})
 
     view.compile.assert_not_called()
-    assert view._requires_compile
+    assert view._compile_status
 
 
 def test_pin_codons_marks_view_for_compile():
@@ -667,9 +668,9 @@ def test_pin_codons_marks_view_for_compile():
 
     view.pin_codons({2: 'ATC'})
 
-    assert view._requires_compile
+    assert view._compile_status
     assert view.n_valid_sequences == 8
-    assert not view._requires_compile
+    assert not view._compile_status
 
 
 def test_unpin_codons_marks_view_for_compile():
@@ -679,7 +680,7 @@ def test_unpin_codons_marks_view_for_compile():
 
     view.unpin_codons([2])
 
-    assert view._requires_compile
+    assert view._compile_status
     assert view.n_valid_sequences == 24
 
 
@@ -690,29 +691,29 @@ def test_clear_pins_marks_view_for_compile():
 
     view.clear_pins()
 
-    assert view._requires_compile
+    assert view._compile_status
     assert view.n_valid_sequences == 24
 
 
 def test_public_methods_compile_if_required():
     view = CodonGraph('MIKEY').view()
     view.pin_codons({2: 'ATC'})
-    assert view._requires_compile
+    assert view._compile_status
 
     view = CodonGraph('MIKEY').view()
-    assert view._requires_compile
+    assert view._compile_status
     _ = view.sample()
-    assert not view._requires_compile
+    assert not view._compile_status
 
     view = CodonGraph('MIKEY').view()
-    assert view._requires_compile
+    assert view._compile_status
     _ = view[0]
-    assert not view._requires_compile
+    assert not view._compile_status
 
     view = CodonGraph('MIKEY').view()
-    assert view._requires_compile
+    assert view._compile_status
     assert 'ATGATCAAAGAGTAT' in view
-    assert not view._requires_compile
+    assert not view._compile_status
 
 
 def test_changing_copied_view_pins_leaves_original_untouched():
@@ -749,21 +750,21 @@ def test_copied_view_recompiles_independently_after_change():
     view = CodonGraph('M').view()
     copied = view.copy()
 
-    assert view._requires_compile
-    assert copied._requires_compile
+    assert view._compile_status
+    assert copied._compile_status
 
     assert view.n_valid_sequences == copied.n_valid_sequences
-    assert not view._requires_compile
-    assert not copied._requires_compile
+    assert not view._compile_status
+    assert not copied._compile_status
 
     copied.set_constraints([RejectChoiceConstraint('ATG')])
-    assert not view._requires_compile
-    assert copied._requires_compile
+    assert not view._compile_status
+    assert copied._compile_status
 
     assert copied.n_valid_sequences == 0
     assert view.n_valid_sequences > 0
-    assert not view._requires_compile
-    assert not copied._requires_compile
+    assert not view._compile_status
+    assert not copied._compile_status
 
 
 def test_copy_preserves_compile_state():
@@ -773,7 +774,7 @@ def test_copy_preserves_compile_state():
 
     copied = view.copy()
 
-    assert not copied._requires_compile
+    assert not copied._compile_status
     assert copied._compiled is view._compiled
     assert copied.n_valid_sequences == view.n_valid_sequences
     assert [*copied.enumerate()] == [*view.enumerate()]
@@ -785,7 +786,7 @@ def test_copy_preserves_uncompiled_state():
 
     copied = view.copy()
 
-    assert copied._requires_compile
+    assert copied._compile_status
     assert copied.pinned_codons == view.pinned_codons
     assert copied.n_valid_sequences == 8
 
@@ -885,13 +886,13 @@ def test_set_weights_updates_weights_and_requires_compile():
     view = graph.view()
 
     view.compile()
-    assert view._requires_compile is False
+    assert not view._compile_status
 
     weights = CodonWeights.ecoli()
     view.set_weights(weights)
 
     assert view.codon_weights is weights
-    assert view._requires_compile is True
+    assert view._compile_status
 
 
 def test_clear_weights_restores_uniform_weights():
@@ -1109,14 +1110,14 @@ def test_clear_banned_sequences_removes_bans_and_marks_stale():
     bsc = BannedSequenceConstraint(['aaa', 'AAA', 'ttt'])
     view = CodonGraphView(graph, constraints=[bsc])
     assert view.constraints == (bsc,)
-    assert view._requires_compile
+    assert view._compile_status
 
     view.compile()
-    assert not view._requires_compile
+    assert not view._compile_status
 
     view.clear_constraints()
     assert view.constraints == ()
-    assert view._requires_compile
+    assert view._compile_status
 
 
 def test_view_exposes_graph_properties():
@@ -1588,3 +1589,124 @@ def test_sequence_at_raises_on_unexpected_dead_end():
 
     with pytest.raises(RuntimeError):
         view.sequence_at(0)
+
+
+def test_set_weights_marks_view_for_sampler_update():
+    view = CodonGraph('MIKEY').view()
+    view.compile()
+
+    view.set_weights(CodonWeights.ecoli())
+
+    assert view._compile_status == COMPILE_SHALLOW
+
+
+def test_set_pinned_codons_marks_view_for_results_update():
+    view = CodonGraph('MIKEY').view()
+    view.compile()
+
+    view.set_pinned_codons({2: 'ATC'})
+
+    assert view._compile_status == COMPILE_SHALLOW
+
+
+def test_set_constraints_marks_view_for_topology_update():
+    view = CodonGraph('MIKEY').view()
+    view.compile()
+
+    view.set_constraints([GCConstraint(min_perc=40)])
+
+    assert view._compile_status == COMPILE_DEEP
+
+
+def test_compile_requirement_is_not_downgraded():
+    view = CodonGraph('MIKEY').view()
+
+    view.set_constraints([GCConstraint(min_perc=40)])
+    assert view._compile_status == COMPILE_DEEP
+
+    view.set_weights(CodonWeights.ecoli())
+    assert view._compile_status == COMPILE_DEEP
+
+
+def test_compile_requirement_is_upgraded():
+    view = CodonGraph('MIKEY').view()
+    view.compile()
+
+    view.set_weights(CodonWeights.ecoli())
+    assert view._compile_status == COMPILE_SHALLOW
+
+    view.set_pinned_codons({2: 'ATC'})
+    assert view._compile_status == COMPILE_SHALLOW
+
+
+def test_pin_codons_preserves_deep_topology():
+    graph = CodonGraph('MIKEY')
+    view = graph.view()
+
+    view.compile()
+
+    states = view._compiled.states
+    child_results = view._compiled.child_results_by_state_id
+
+    view.pin_codons({1: 'ATG'})
+    view.compile()
+
+    assert view._compiled.states == states
+    assert view._compiled.child_results_by_state_id == child_results
+
+
+
+def test_unpin_codons_restores_sequence_count():
+    graph = CodonGraph('FF')
+    view = graph.view()
+
+    original_count = view.n_valid_sequences
+
+    view.pin_codons({1: 'TTT'})
+    pinned_count = view.n_valid_sequences
+
+    view.clear_pins()
+
+    assert pinned_count < original_count
+    assert view.n_valid_sequences == original_count
+
+
+def test_set_weights_preserves_deep_topology():
+    graph = CodonGraph('MIKEY')
+    view = graph.view()
+
+    view.compile()
+
+    states = view._compiled.states
+    child_results = view._compiled.child_results_by_state_id
+
+    view.set_weights(CodonWeights.ecoli())
+    view.compile()
+
+    assert view._compiled.states == states
+    assert view._compiled.child_results_by_state_id == child_results
+
+
+def test_shallow_compile_clears_cached_samplers():
+    graph = CodonGraph('MIKEY')
+    view = graph.view()
+
+    view.sample()
+    assert any(sampler is not None for sampler in view.samplers_by_state_id)
+
+    view.set_weights(CodonWeights.ecoli())
+    view.compile()
+
+    assert all(sampler is None for sampler in view.samplers_by_state_id)
+
+
+def test_pins_are_applied_on_top_of_constraints():
+    graph = CodonGraph('MIKEY')
+    view = graph.view(constraints=[GCConstraint(min_perc=40)])
+
+    unconstrained_count = view.n_valid_sequences
+
+    view.pin_codons({2: 'ATT'})
+
+    assert view.n_valid_sequences < unconstrained_count
+    assert all(sequence[3:6] == 'ATT' for sequence in view)

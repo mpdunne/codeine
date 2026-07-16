@@ -14,6 +14,13 @@ from codeine.utils.display import format_count, format_restrictions
 from codeine.utils.sampling import Seedable, Sampler, SingletonSampler, UniformSampler, WeightedSampler
 
 
+# Sentinels for compile status, indicating what, if
+# anything, needs compiling/recompiling.
+COMPILED = 0
+COMPILE_SHALLOW = 1
+COMPILE_DEEP = 2
+
+
 class CodonGraphView:
     """
     View of a codon graph with optional constraints and temporary codon pins.
@@ -56,7 +63,7 @@ class CodonGraphView:
         self._rng = random.Random(seed)
 
         self._compiled = None
-        self._requires_compile = True
+        self._compile_status = COMPILE_DEEP
 
         self.initial_state_id = None
         self.choices_by_state_id = ()
@@ -103,7 +110,7 @@ class CodonGraphView:
         return self.contains(seq)
 
     def __repr__(self) -> str:
-        if self._requires_compile:
+        if self._compile_status:
             self.compile()
 
         molecule = 'RNA' if self.graph.tt.rna else 'DNA'
@@ -156,7 +163,7 @@ class CodonGraphView:
         -------
         True if and only if the sequence is contained in this coding space.
         """
-        if self._requires_compile:
+        if self._compile_status:
             self.compile()
 
         seq = self.translation_table.normalise_sequence(seq)
@@ -168,12 +175,21 @@ class CodonGraphView:
         choices_by_state_id = self.choices_by_state_id
         states = self._compiled.states
 
+        left_context_pos = self.graph.left_context_node.pos
+        right_context_pos = self.graph.right_context_node.pos
+
         while state_id is not None:
 
-            node, _constraint_states = states[state_id]
+            pos, _constraint_states = states[state_id]
+            if pos == left_context_pos:
+                node = self.graph.left_context_node
+            elif pos == right_context_pos:
+                node = self.graph.right_context_node
+            else:
+                node = self.graph.codon_node_by_pos(pos)
 
             if isinstance(node, CodonNode):
-                start = (node.pos - 1) * 3
+                start = (pos - 1) * 3
                 choice = seq[start:start + 3]
             else:
                 choice = node.sequence
@@ -201,7 +217,7 @@ class CodonGraphView:
         str or list of str
             One sampled coding sequence, or a list of sampled coding sequences.
         """
-        if self._requires_compile:
+        if self._compile_status:
             self.compile()
 
         if self.n_valid_sequences == 0:
@@ -224,7 +240,7 @@ class CodonGraphView:
         str
             All valid coding sequences, one by one.
         """
-        if self._requires_compile:
+        if self._compile_status:
             self.compile()
 
         yield from self._iter_all_sequences()
@@ -245,7 +261,7 @@ class CodonGraphView:
         str
             Sequences in the range, one by one.
         """
-        if self._requires_compile:
+        if self._compile_status:
             self.compile()
 
         n_sequences = self.n_valid_sequences
@@ -283,7 +299,7 @@ class CodonGraphView:
         str
             The indexed valid coding sequence.
         """
-        if self._requires_compile:
+        if self._compile_status:
             self.compile()
 
         if index < 0 or index >= self.n_valid_sequences:
@@ -298,7 +314,7 @@ class CodonGraphView:
         """
         Return valid sequences from a slice.
         """
-        if self._requires_compile:
+        if self._compile_status:
             self.compile()
 
         n_sequences = self.n_valid_sequences
@@ -334,7 +350,7 @@ class CodonGraphView:
         view.constraints = self.constraints
 
         view._compiled = self._compiled
-        view._requires_compile = self._requires_compile
+        view._compile_status = self._compile_status
 
         view.initial_state_id = self.initial_state_id
         view.choices_by_state_id = self.choices_by_state_id
@@ -345,19 +361,31 @@ class CodonGraphView:
 
     def compile(self) -> None:
         """
-        Calculate graph properties derived from its structure, constraints, and pins.
-
+        Compile or recompile the view as required.
         """
+        if self._compile_status == COMPILED:
+            return
+
         compiler = ViewCompiler(self)
-        compiled = compiler.compile()
+
+        if self._compile_status == COMPILE_SHALLOW and self._compiled is not None:
+            compiled = compiler.compile_shallow(self._compiled)
+        else:
+            compiled = compiler.compile()
 
         self._compiled = compiled
-        self._requires_compile = False
+        self._compile_status = COMPILED
 
         self.initial_state_id = compiled.initial_state_id
         self.choices_by_state_id = compiled.choices_by_state_id
         self.choice_results_by_state_id = compiled.choice_results_by_state_id
         self.samplers_by_state_id = [None] * len(compiled.states)
+
+    def _update_compile_status(self, status: int) -> None:
+        """
+        Mark this view as requiring at least the specified compile phase.
+        """
+        self._compile_status = max(self._compile_status, status)
 
     def pin_codons(self, pinned_codons: Dict[int, CodonRestriction]) -> None:
         """
@@ -370,7 +398,7 @@ class CodonGraphView:
         """
         pinned_codons = self.graph.validate_codon_restrictions(pinned_codons)
         self.pinned_codons.update(pinned_codons)
-        self._requires_compile = True
+        self._update_compile_status(COMPILE_SHALLOW)
 
     def unpin_codons(self, positions: Sequence[int]) -> None:
         """
@@ -387,7 +415,7 @@ class CodonGraphView:
 
             self.pinned_codons.pop(pos, None)
 
-        self._requires_compile = True
+        self._update_compile_status(COMPILE_SHALLOW)
 
     def set_pinned_codons(self, pinned_codons: Dict[int, CodonRestriction]) -> None:
         """
@@ -400,14 +428,14 @@ class CodonGraphView:
         """
         pinned_codons = self.graph.validate_codon_restrictions(pinned_codons)
         self.pinned_codons = dict(pinned_codons)
-        self._requires_compile = True
+        self._update_compile_status(COMPILE_SHALLOW)
 
     def clear_pins(self) -> None:
         """
         Remove all codon pins from this graph view
         """
         self.pinned_codons.clear()
-        self._requires_compile = True
+        self._update_compile_status(COMPILE_SHALLOW)
 
     def set_constraints(self, constraints: Sequence[Constraint]) -> None:
         """
@@ -419,7 +447,7 @@ class CodonGraphView:
             Constraints to apply during graph traversal.
         """
         self.constraints = tuple(constraints)
-        self._requires_compile = True
+        self._update_compile_status(COMPILE_DEEP)
 
     def clear_constraints(self) -> None:
         """
@@ -442,7 +470,7 @@ class CodonGraphView:
             weights = weights.for_table(self.graph.tt)
 
         self._codon_weights = weights
-        self._requires_compile = True
+        self._update_compile_status(COMPILE_SHALLOW)
 
     def clear_weights(self) -> None:
         """
@@ -501,7 +529,7 @@ class CodonGraphView:
         """
         Number of valid coding sequences in this view given all constraints.
         """
-        if self._requires_compile:
+        if self._compile_status:
             self.compile()
 
         return self._compiled.n_valid_sequences
