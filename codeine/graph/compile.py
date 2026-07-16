@@ -23,7 +23,7 @@ class ChoiceResult(NamedTuple):
 
     Each ChoiceResult is specific to its location in the graph. The descendant
     counts and log mass are calculated iteratively by summing the values of
-    downstream nodes.
+    downstream states.
     """
     choice: str
     descendant_count: int
@@ -41,7 +41,7 @@ class CompiledView(NamedTuple):
     states: Tuple[TraversalState, ...]
 
     # Deep compiled transitions:
-    # state ID -> (choice, child state ID)
+    # state ID -> ((choice, child state ID), ...)
     # These include every transition allowed by the graph and constraints,
     # before temporary view pins are applied.
     child_results_by_state_id: Tuple[Tuple[Tuple[str, int], ...], ...]
@@ -61,7 +61,7 @@ class CompiledView(NamedTuple):
 
 class ViewCompiler:
     """
-    Compile a CodonGraphView into cached choice, count, and sampling data.
+    Compile a CodonGraphView into cached topology, choice, count, and sampling-mass data.
     """
 
     def __init__(self, view: 'CodonGraphView') -> None:
@@ -106,7 +106,7 @@ class ViewCompiler:
         self.positions = tuple(node.pos for node in self.graph.nodes)
         self.coding_positions = {node.pos for node in self.graph.nodes if isinstance(node, CodonNode)}
 
-        # Graph transitions available at each node. Permanent graph-level codon
+        # Graph transitions available at each position. Permanent graph-level codon
         # restrictions are already reflected in node.transitions. Temporary view
         # pins are applied later, during the shallow calculation pass.
         self.transitions_by_pos = {
@@ -132,7 +132,7 @@ class ViewCompiler:
         )
 
         self._compile_topology(initial_state_id)
-        self._calculate_results()
+        self._compile_choices()
 
         child_results_by_state_id = tuple(
             tuple(results or ())
@@ -164,8 +164,8 @@ class ViewCompiler:
 
     def compile_shallow(self, compiled: CompiledView) -> CompiledView:
         """
-        Recalculate counts, probability masses, and choice results using an
-        existing deep topology.
+        Recompile choices, counts, and probability masses using an existing
+        deep topology.
 
         Parameters
         ----------
@@ -183,7 +183,7 @@ class ViewCompiler:
         self.totals_by_state_id = [None] * len(self.states)
         self.choices_by_state_id = [None] * len(self.states)
 
-        self._calculate_results()
+        self._compile_choices()
 
         choices_by_state_id = tuple(
             choices or {}
@@ -273,14 +273,14 @@ class ViewCompiler:
 
             stack.extend(child_id for child_id, _expanded in self._uncompiled_children(state_id))
 
-    def _calculate_results(self) -> None:
+    def _compile_choices(self) -> None:
         """
-        Resolve descendant counts, probability masses, and choice results.
+        Compile active choices, descendant counts, and probability masses.
 
         Temporary view pins and codon weights are applied during this pass.
 
         States are processed from right to left through the graph, ensuring
-        that every child has been resolved before its parent.
+        that every child has been compiled before its parent.
         """
         state_ids_by_pos = {pos: [] for pos in self.positions}
 
@@ -316,8 +316,8 @@ class ViewCompiler:
 
         For each outgoing graph choice allowed by the current pins, combine the
         previously compiled child state with the contribution from the current
-        node to produce a ChoiceResult. The total descendant count and log mass
-        are then cached for the current state.
+        graph position to produce a ChoiceResult. The total descendant count and
+        log mass are then cached for the current state.
 
         Parameters
         ----------
@@ -338,7 +338,6 @@ class ViewCompiler:
         pinned_codons = (self.view.pinned_codons.get(pos) if is_coding else None)
 
         for choice, child_id in child_results:
-
             if pinned_codons is not None and choice not in pinned_codons:
                 continue
 
@@ -446,9 +445,9 @@ class ViewCompiler:
         constraint_states
             Current state of each constraint.
         pos
-            Position of the current graph node.
+            Current graph position.
         choice
-            Graph choice taken from the current node.
+            Graph choice taken from the current position.
 
         Returns
         -------
