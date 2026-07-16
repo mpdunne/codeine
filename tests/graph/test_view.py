@@ -8,11 +8,12 @@ from unittest.mock import MagicMock
 from scipy.stats import chisquare, chi2_contingency
 
 from codeine.constraints.base import Constraint, DEAD_STATE, SAFE_STATE
+from codeine.constraints.gc import GCConstraint
 from codeine.constraints.banned import BannedSequenceConstraint
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
 from codeine.graph.base import CodonGraph
-from codeine.graph.view import CodonGraphView
+from codeine.graph.view import CodonGraphView, CALCS, WEIGHTS, TOPOLOGY
 
 from tests.data import NORMAL_PROTEINS
 
@@ -1588,3 +1589,51 @@ def test_sequence_at_raises_on_unexpected_dead_end():
 
     with pytest.raises(RuntimeError):
         view.sequence_at(0)
+
+
+def test_set_weights_marks_view_for_sampler_update():
+    view = CodonGraph('MIKEY').view()
+    view.compile()
+
+    view.set_weights(CodonWeights.ecoli())
+
+    assert view._requires_compile == WEIGHTS
+
+
+def test_set_pinned_codons_marks_view_for_results_update():
+    view = CodonGraph('MIKEY').view()
+    view.compile()
+
+    view.set_pinned_codons({2: 'ATC'})
+
+    assert view._requires_compile == CALCS
+
+
+def test_set_constraints_marks_view_for_topology_update():
+    view = CodonGraph('MIKEY').view()
+    view.compile()
+
+    view.set_constraints([GCConstraint(min_perc=40)])
+
+    assert view._requires_compile == TOPOLOGY
+
+
+def test_compile_requirement_is_not_downgraded():
+    view = CodonGraph('MIKEY').view()
+
+    view.set_constraints([GCConstraint(min_perc=40)])
+    assert view._requires_compile == TOPOLOGY
+
+    view.set_weights(CodonWeights.ecoli())
+    assert view._requires_compile == TOPOLOGY
+
+
+def test_compile_requirement_is_upgraded():
+    view = CodonGraph('MIKEY').view()
+    view.compile()
+
+    view.set_weights(CodonWeights.ecoli())
+    assert view._requires_compile == WEIGHTS
+
+    view.set_pinned_codons({2: 'ATC'})
+    assert view._requires_compile == CALCS
