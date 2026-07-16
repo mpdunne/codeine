@@ -175,10 +175,18 @@ class CodonGraphView:
         choices_by_state_id = self.choices_by_state_id
         states = self._compiled.states
 
+        left_context_pos = self.graph.left_context_node.pos
+        right_context_pos = self.graph.right_context_node.pos
+
         while state_id is not None:
 
             pos, _constraint_states = states[state_id]
-            node = self.graph.codon_node_by_pos(pos)
+            if pos == left_context_pos:
+                node = self.graph.left_context_node
+            elif pos == right_context_pos:
+                node = self.graph.right_context_node
+            else:
+                node = self.graph.codon_node_by_pos(pos)
 
             if isinstance(node, CodonNode):
                 start = (pos - 1) * 3
