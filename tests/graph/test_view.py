@@ -1637,3 +1637,76 @@ def test_compile_requirement_is_upgraded():
 
     view.set_pinned_codons({2: 'ATC'})
     assert view._compile_status == COMPILE_SHALLOW
+
+
+def test_pin_codons_preserves_deep_topology():
+    graph = CodonGraph('MIKEY')
+    view = graph.view()
+
+    view.compile()
+
+    states = view._compiled.states
+    child_results = view._compiled.child_results_by_state_id
+
+    view.pin_codons({1: 'ATG'})
+    view.compile()
+
+    assert view._compiled.states == states
+    assert view._compiled.child_results_by_state_id == child_results
+
+
+
+def test_unpin_codons_restores_sequence_count():
+    graph = CodonGraph('FF')
+    view = graph.view()
+
+    original_count = view.n_valid_sequences
+
+    view.pin_codons({1: 'TTT'})
+    pinned_count = view.n_valid_sequences
+
+    view.clear_pins()
+
+    assert pinned_count < original_count
+    assert view.n_valid_sequences == original_count
+
+
+def test_set_weights_preserves_deep_topology():
+    graph = CodonGraph('MIKEY')
+    view = graph.view()
+
+    view.compile()
+
+    states = view._compiled.states
+    child_results = view._compiled.child_results_by_state_id
+
+    view.set_weights(CodonWeights.ecoli())
+    view.compile()
+
+    assert view._compiled.states == states
+    assert view._compiled.child_results_by_state_id == child_results
+
+
+def test_shallow_compile_clears_cached_samplers():
+    graph = CodonGraph('MIKEY')
+    view = graph.view()
+
+    view.sample()
+    assert any(sampler is not None for sampler in view.samplers_by_state_id)
+
+    view.set_weights(CodonWeights.ecoli())
+    view.compile()
+
+    assert all(sampler is None for sampler in view.samplers_by_state_id)
+
+
+def test_pins_are_applied_on_top_of_constraints():
+    graph = CodonGraph('MIKEY')
+    view = graph.view(constraints=[GCConstraint(min_perc=40)])
+
+    unconstrained_count = view.n_valid_sequences
+
+    view.pin_codons({2: 'ATT'})
+
+    assert view.n_valid_sequences < unconstrained_count
+    assert all(sequence[3:6] == 'ATT' for sequence in view)
