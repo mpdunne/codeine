@@ -885,13 +885,13 @@ def test_set_weights_updates_weights_and_requires_compile():
     view = graph.view()
 
     view.compile()
-    assert view._requires_compile is False
+    assert not view._requires_compile
 
     weights = CodonWeights.ecoli()
     view.set_weights(weights)
 
     assert view.codon_weights is weights
-    assert view._requires_compile is True
+    assert view._requires_compile
 
 
 def test_clear_weights_restores_uniform_weights():

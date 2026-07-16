@@ -14,6 +14,13 @@ from codeine.utils.display import format_count, format_restrictions
 from codeine.utils.sampling import Seedable, Sampler, SingletonSampler, UniformSampler, WeightedSampler
 
 
+# Sentinels for compile status, indicating what, if
+# anything, needs compiling/recompiling.
+COMPILED = 0
+CALCULATIONS = 1
+TOPOLOGY = 2
+
+
 class CodonGraphView:
     """
     View of a codon graph with optional constraints and temporary codon pins.
@@ -56,7 +63,7 @@ class CodonGraphView:
         self._rng = random.Random(seed)
 
         self._compiled = None
-        self._requires_compile = True
+        self._requires_compile = TOPOLOGY
 
         self.initial_state_id = None
         self.choices_by_state_id = ()
@@ -352,7 +359,7 @@ class CodonGraphView:
         compiled = compiler.compile()
 
         self._compiled = compiled
-        self._requires_compile = False
+        self._requires_compile = COMPILED
 
         self.initial_state_id = compiled.initial_state_id
         self.choices_by_state_id = compiled.choices_by_state_id
@@ -370,7 +377,7 @@ class CodonGraphView:
         """
         pinned_codons = self.graph.validate_codon_restrictions(pinned_codons)
         self.pinned_codons.update(pinned_codons)
-        self._requires_compile = True
+        self._requires_compile = TOPOLOGY
 
     def unpin_codons(self, positions: Sequence[int]) -> None:
         """
@@ -387,7 +394,7 @@ class CodonGraphView:
 
             self.pinned_codons.pop(pos, None)
 
-        self._requires_compile = True
+        self._requires_compile = TOPOLOGY
 
     def set_pinned_codons(self, pinned_codons: Dict[int, CodonRestriction]) -> None:
         """
@@ -400,14 +407,14 @@ class CodonGraphView:
         """
         pinned_codons = self.graph.validate_codon_restrictions(pinned_codons)
         self.pinned_codons = dict(pinned_codons)
-        self._requires_compile = True
+        self._requires_compile = TOPOLOGY
 
     def clear_pins(self) -> None:
         """
         Remove all codon pins from this graph view
         """
         self.pinned_codons.clear()
-        self._requires_compile = True
+        self._requires_compile = TOPOLOGY
 
     def set_constraints(self, constraints: Sequence[Constraint]) -> None:
         """
@@ -419,7 +426,7 @@ class CodonGraphView:
             Constraints to apply during graph traversal.
         """
         self.constraints = tuple(constraints)
-        self._requires_compile = True
+        self._requires_compile = TOPOLOGY
 
     def clear_constraints(self) -> None:
         """
@@ -442,7 +449,7 @@ class CodonGraphView:
             weights = weights.for_table(self.graph.tt)
 
         self._codon_weights = weights
-        self._requires_compile = True
+        self._requires_compile = TOPOLOGY
 
     def clear_weights(self) -> None:
         """
