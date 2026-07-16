@@ -162,6 +162,48 @@ class ViewCompiler:
             n_valid_sequences=initial_total[0],
         )
 
+    def compile_shallow(self, compiled: CompiledView) -> CompiledView:
+        """
+        Recalculate counts, probability masses, and choice results using an
+        existing deep topology.
+
+        Parameters
+        ----------
+        compiled
+            The existing compiled view whose states and transitions should be reused.
+
+        Returns
+        -------
+        CompiledView
+            The compiled view with updated shallow data.
+        """
+        self.states = list(compiled.states)
+        self.child_results_by_state_id = list(compiled.child_results_by_state_id)
+
+        self.totals_by_state_id = [None] * len(self.states)
+        self.choices_by_state_id = [None] * len(self.states)
+
+        self._calculate_results()
+
+        choices_by_state_id = tuple(
+            choices or {}
+            for choices in self.choices_by_state_id
+        )
+
+        choice_results_by_state_id = tuple(
+            tuple(choices.values()) if choices else ()
+            for choices in self.choices_by_state_id
+        )
+
+        initial_total = self.totals_by_state_id[compiled.initial_state_id]
+        assert initial_total is not None
+
+        return compiled._replace(
+            choices_by_state_id=choices_by_state_id,
+            choice_results_by_state_id=choice_results_by_state_id,
+            n_valid_sequences=initial_total[0],
+        )
+
     def _get_or_register_state_id(
             self,
             pos: int,

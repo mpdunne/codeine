@@ -1597,7 +1597,7 @@ def test_set_weights_marks_view_for_sampler_update():
 
     view.set_weights(CodonWeights.ecoli())
 
-    assert view._compile_status == WEIGHTS
+    assert view._compile_status == COMPILE_SHALLOW
 
 
 def test_set_pinned_codons_marks_view_for_results_update():
@@ -1633,7 +1633,7 @@ def test_compile_requirement_is_upgraded():
     view.compile()
 
     view.set_weights(CodonWeights.ecoli())
-    assert view._compile_status == WEIGHTS
+    assert view._compile_status == COMPILE_SHALLOW
 
     view.set_pinned_codons({2: 'ATC'})
     assert view._compile_status == COMPILE_SHALLOW

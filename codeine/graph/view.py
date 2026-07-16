@@ -353,11 +353,17 @@ class CodonGraphView:
 
     def compile(self) -> None:
         """
-        Calculate graph properties derived from its structure, constraints, and pins.
-
+        Compile or recompile the view as required.
         """
+        if self._compile_status == COMPILED:
+            return
+
         compiler = ViewCompiler(self)
-        compiled = compiler.compile()
+
+        if self._compile_status == COMPILE_SHALLOW and self._compiled is not None:
+            compiled = compiler.compile_shallow(self._compiled)
+        else:
+            compiled = compiler.compile()
 
         self._compiled = compiled
         self._compile_status = COMPILED
