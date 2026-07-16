@@ -177,10 +177,11 @@ class CodonGraphView:
 
         while state_id is not None:
 
-            node, _constraint_states = states[state_id]
+            pos, _constraint_states = states[state_id]
+            node = self.graph.codon_node_by_pos(pos)
 
             if isinstance(node, CodonNode):
-                start = (node.pos - 1) * 3
+                start = (pos - 1) * 3
                 choice = seq[start:start + 3]
             else:
                 choice = node.sequence

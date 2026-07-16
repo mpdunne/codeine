@@ -3,17 +3,17 @@ import math
 from typing import Dict, List, NamedTuple, Optional, Tuple, TYPE_CHECKING
 
 from codeine.constraints.base import ConstraintState, DEAD_STATE, SAFE_STATE
-from codeine.graph.nodes import CodonNode, Node
+from codeine.graph.nodes import CodonNode
 
 if TYPE_CHECKING:
     from codeine.graph.view import CodonGraphView
 
 
-# The traversal state consists of the current graph node and the current state
+# The traversal state consists of the current graph position and the current state
 # of each active constraint. Plain tuples are immutable and hashable, while
 # avoiding NamedTuple construction in the compiler's hottest path.
-TraversalState = Tuple[Node, Tuple[ConstraintState, ...]]
-TraversalStateKey = Tuple[int, Tuple[ConstraintState, ...]]
+TraversalState = Tuple[int, Tuple[ConstraintState, ...]]
+TraversalStateKey = TraversalState
 
 
 class ChoiceResult(NamedTuple):
@@ -101,11 +101,16 @@ class ViewCompiler:
             for codon, weight in self.view.codon_weights.weights.items()
         }
 
+        self.initial_pos = self.graph.initial_node.pos
+        self.final_pos = self.graph.final_node.pos
+        self.positions = tuple(node.pos for node in self.graph.nodes)
+        self.coding_positions = {node.pos for node in self.graph.nodes if isinstance(node, CodonNode)}
+
         # Graph transitions available at each node. Permanent graph-level codon
         # restrictions are already reflected in node.transitions. Temporary view
         # pins are applied later, during the shallow calculation pass.
-        self.transitions_by_node = {
-            node: tuple(node.transitions.items())
+        self.transitions_by_pos = {
+            node.pos: tuple((choice, child.pos) for choice, child in node.transitions.items())
             for node in self.graph.nodes
             if node is not self.graph.final_node
         }
@@ -120,9 +125,9 @@ class ViewCompiler:
             A compiled view.
         """
         initial_state = self._initial_state()
-        initial_node, initial_constraint_states = initial_state
+        initial_pos, initial_constraint_states = initial_state
         initial_state_id, _ = self._get_or_register_state_id(
-            initial_node,
+            initial_pos,
             initial_constraint_states,
         )
 
@@ -159,17 +164,16 @@ class ViewCompiler:
 
     def _get_or_register_state_id(
             self,
-            node: Node,
+            pos: int,
             constraint_states: Tuple[ConstraintState, ...],
     ) -> Tuple[int, bool]:
         """
         Return the state ID and whether the state was newly registered.
 
-        State lookup uses the node position rather than the node object, keeping
-        the hot dictionary key compact. The full node is stored only when a state
-        is genuinely new.
+        State lookup uses the graph position rather than the node object, keeping
+        the hot dictionary key compact.
         """
-        key = (node.pos, constraint_states)
+        key = (pos, constraint_states)
         state_id = self.state_ids.get(key)
 
         if state_id is not None:
@@ -177,7 +181,7 @@ class ViewCompiler:
 
         state_id = len(self.states)
         self.state_ids[key] = state_id
-        self.states.append((node, constraint_states))
+        self.states.append(key)
         self.totals_by_state_id.append(None)
         self.choices_by_state_id.append(None)
         self.child_results_by_state_id.append(None)
@@ -188,7 +192,7 @@ class ViewCompiler:
         """
         Return the starting traversal state.
 
-        The initial state starts at the graph's initial node, with fresh
+        The initial state starts at the graph's initial position, with fresh
         constraint states.
 
         Returns
@@ -198,7 +202,7 @@ class ViewCompiler:
         """
         constraint_states = tuple(constraint.initial_state for constraint in self.constraints)
 
-        return self.graph.initial_node, constraint_states
+        return self.initial_pos, constraint_states
 
     def _compile_topology(self, initial_state_id: int) -> None:
         """
@@ -219,9 +223,9 @@ class ViewCompiler:
             if self.child_results_by_state_id[state_id] is not None:
                 continue
 
-            node, _constraint_states = self.states[state_id]
+            pos, _constraint_states = self.states[state_id]
 
-            if node is self.graph.final_node:
+            if pos == self.final_pos:
                 self.child_results_by_state_id[state_id] = []
                 continue
 
@@ -236,14 +240,14 @@ class ViewCompiler:
         States are processed from right to left through the graph, ensuring
         that every child has been resolved before its parent.
         """
-        state_ids_by_node = {node: [] for node in self.graph.nodes}
+        state_ids_by_pos = {pos: [] for pos in self.positions}
 
-        for state_id, (node, _constraint_states) in enumerate(self.states):
-            state_ids_by_node[node].append(state_id)
+        for state_id, (pos, _constraint_states) in enumerate(self.states):
+            state_ids_by_pos[pos].append(state_id)
 
-        for node in reversed(self.graph.nodes):
-            for state_id in state_ids_by_node[node]:
-                if node is self.graph.final_node:
+        for pos in reversed(self.positions):
+            for state_id in state_ids_by_pos[pos]:
+                if pos == self.final_pos:
                     self._compile_final_state(state_id)
                 else:
                     self._compile_state(state_id)
@@ -278,8 +282,7 @@ class ViewCompiler:
         state_id
             ID of the traversal state being compiled.
         """
-        state = self.states[state_id]
-        node, _constraint_states = state
+        pos, _constraint_states = self.states[state_id]
 
         choice_results = {}
         descendant_count = 0
@@ -287,17 +290,17 @@ class ViewCompiler:
         max_log_mass = -math.inf
         relative_mass_sum = 0.0
 
-        is_coding = isinstance(node, CodonNode)
+        is_coding = pos in self.coding_positions
         child_results = self.child_results_by_state_id[state_id] or ()
 
-        pinned_codons = (self.view.pinned_codons.get(node.pos) if is_coding else None)
+        pinned_codons = (self.view.pinned_codons.get(pos) if is_coding else None)
 
         for choice, child_id in child_results:
 
             if pinned_codons is not None and choice not in pinned_codons:
                 continue
 
-            child, _child_constraint_states = self.states[child_id]
+            child_pos, _child_constraint_states = self.states[child_id]
             child_total = self.totals_by_state_id[child_id]
 
             if child_total is None:
@@ -318,7 +321,7 @@ class ViewCompiler:
                 choice=choice,
                 descendant_count=child_count,
                 descendant_log_mass=choice_log_mass,
-                next_state_id= None if child is self.graph.final_node else child_id,
+                next_state_id=None if child_pos == self.final_pos else child_id,
                 is_coding=is_coding,
             )
 
@@ -368,16 +371,15 @@ class ViewCompiler:
         child_results = []
         uncompiled_children = []
 
-        node, constraint_states = self.states[state_id]
-        pos = node.pos
+        pos, constraint_states = self.states[state_id]
 
-        for choice, child in self.transitions_by_node[node]:
+        for choice, child_pos in self.transitions_by_pos[pos]:
             next_constraint_states = self._advance_constraints(constraint_states, pos, choice)
 
             if next_constraint_states is None:
                 continue
 
-            child_id, is_new = self._get_or_register_state_id(child, next_constraint_states)
+            child_id, is_new = self._get_or_register_state_id(child_pos, next_constraint_states)
 
             child_results.append((choice, child_id))
 
