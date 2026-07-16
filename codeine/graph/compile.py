@@ -3,7 +3,7 @@ import math
 from typing import Dict, List, NamedTuple, Optional, Tuple, TYPE_CHECKING
 
 from codeine.constraints.base import ConstraintState, DEAD_STATE, SAFE_STATE
-from codeine.graph.nodes import CodonNode, Node, ContextNode
+from codeine.graph.nodes import CodonNode, Node
 
 if TYPE_CHECKING:
     from codeine.graph.view import CodonGraphView
@@ -40,6 +40,12 @@ class CompiledView(NamedTuple):
     initial_state_id: int
     states: Tuple[TraversalState, ...]
 
+    # Deep compiled transitions:
+    # state ID -> (choice, child state ID)
+    # These include every transition allowed by the graph and constraints,
+    # before temporary view pins are applied.
+    child_results_by_state_id: Tuple[Tuple[Tuple[str, int], ...], ...]
+
     # Compiled graph choices (lookup):
     # state ID -> choice -> ChoiceResult
     # Used for fast sequence validation and graph traversal in the graph view.
@@ -68,10 +74,7 @@ class ViewCompiler:
             constraint.link(self.graph)
 
         self.constraints = tuple(constraint for constraint in constraints if not constraint.is_trivial)
-        self.constraint_advancers = tuple(
-            constraint.advance
-            for constraint in self.constraints
-        )
+        self.constraint_advancers = tuple(constraint.advance for constraint in self.constraints)
 
         self.state_ids: Dict[TraversalStateKey, int] = {}
         self.states: List[TraversalState] = []
@@ -81,42 +84,35 @@ class ViewCompiler:
         # Avoids repeatedly recomputing subtree sizes and probability masses.
         self.totals_by_state_id: List[Optional[Tuple[int, float]]] = []
 
-        # Traversal transition table:
+        # Deep compiled transitions:
         # state ID -> [(choice, child state ID), ...]
-        # Avoids rediscovering successor states during compilation.
-        self.child_results_by_state_id: List[
-            Optional[List[Tuple[str, int]]]
-        ] = []
+        # These account for graph restrictions and constraints, but not
+        # temporary view pins.
+        self.child_results_by_state_id: List[Optional[List[Tuple[str, int]]]] = []
 
         # Compiled graph choices (lookup):
         # state ID -> choice -> ChoiceResult
         # Used for fast sequence validation and graph traversal in the graph view.
-        self.choices_by_state_id: List[
-            Optional[Dict[str, ChoiceResult]]
-        ] = []
+        self.choices_by_state_id: List[Optional[Dict[str, ChoiceResult]]] = []
 
-        # The cached log-ified codon weights, to avoid repeated log calculations
+        # The cached log-ified codon weights, to avoid repeated log calculations.
         self.log_codon_weights = {
             codon: math.log(weight) if weight > 0 else -math.inf
             for codon, weight in self.view.codon_weights.weights.items()
         }
 
-        # Cached transitions available at each node, taking into account fixed
-        # codons and pins. Storing the child alongside each choice avoids a
-        # dictionary lookup in the compiler's hottest traversal loop.
+        # Graph transitions available at each node. Permanent graph-level codon
+        # restrictions are already reflected in node.transitions. Temporary view
+        # pins are applied later, during the shallow calculation pass.
         self.transitions_by_node = {
-            node: tuple(
-                (choice, node.transitions[choice])
-                for choice in self._get_choices_for_node(node)
-                if choice in node.transitions
-            )
+            node: tuple(node.transitions.items())
             for node in self.graph.nodes
             if node is not self.graph.final_node
         }
 
     def compile(self) -> CompiledView:
         """
-        Compile descendant counts, graph choices, and samplers.
+        Compile descendant counts, graph choices, and sampling masses.
 
         Returns
         -------
@@ -132,6 +128,11 @@ class ViewCompiler:
 
         self._compile_topology(initial_state_id)
         self._calculate_results()
+
+        child_results_by_state_id = tuple(
+            tuple(results or ())
+            for results in self.child_results_by_state_id
+        )
 
         choices_by_state_id = tuple(
             choices or {}
@@ -150,9 +151,10 @@ class ViewCompiler:
             initial_state=initial_state,
             initial_state_id=initial_state_id,
             states=tuple(self.states),
-            n_valid_sequences=initial_total[0],
+            child_results_by_state_id=child_results_by_state_id,
             choices_by_state_id=choices_by_state_id,
             choice_results_by_state_id=choice_results_by_state_id,
+            n_valid_sequences=initial_total[0],
         )
 
     def _get_or_register_state_id(
@@ -186,7 +188,8 @@ class ViewCompiler:
         """
         Return the starting traversal state.
 
-        The initial state starts at the graph's initial node, with fresh constraint states.
+        The initial state starts at the graph's initial node, with fresh
+        constraint states.
 
         Returns
         -------
@@ -195,14 +198,13 @@ class ViewCompiler:
         """
         constraint_states = tuple(constraint.initial_state for constraint in self.constraints)
 
-        return (
-            self.graph.initial_node,
-            constraint_states,
-        )
+        return self.graph.initial_node, constraint_states
 
     def _compile_topology(self, initial_state_id: int) -> None:
         """
         Discover every reachable traversal state and transition.
+
+        Temporary view pins are not applied during this pass.
 
         Parameters
         ----------
@@ -229,6 +231,8 @@ class ViewCompiler:
         """
         Resolve descendant counts, probability masses, and choice results.
 
+        Temporary view pins and codon weights are applied during this pass.
+
         States are processed from right to left through the graph, ensuring
         that every child has been resolved before its parent.
         """
@@ -249,8 +253,8 @@ class ViewCompiler:
         Compile a terminal traversal state.
 
         By the time a terminal state is reached, all graph choices have already
-        been processed, including the right context. Choices rejected by the constraint
-        would not have reached this state.
+        been processed, including the right context. Choices rejected by the
+        constraints would not have reached this state.
 
         Parameters
         ----------
@@ -264,9 +268,10 @@ class ViewCompiler:
         """
         Compile one non-final traversal state.
 
-        For each outgoing graph choice, combine the previously compiled child state
-        with the contribution from the current node to produce a ChoiceResult.
-        The total descendant count and log mass are then cached for the current state.
+        For each outgoing graph choice allowed by the current pins, combine the
+        previously compiled child state with the contribution from the current
+        node to produce a ChoiceResult. The total descendant count and log mass
+        are then cached for the current state.
 
         Parameters
         ----------
@@ -285,7 +290,13 @@ class ViewCompiler:
         is_coding = isinstance(node, CodonNode)
         child_results = self.child_results_by_state_id[state_id] or ()
 
+        pinned_codons = (self.view.pinned_codons.get(node.pos) if is_coding else None)
+
         for choice, child_id in child_results:
+
+            if pinned_codons is not None and choice not in pinned_codons:
+                continue
+
             child, _child_constraint_states = self.states[child_id]
             child_total = self.totals_by_state_id[child_id]
 
@@ -307,7 +318,7 @@ class ViewCompiler:
                 choice=choice,
                 descendant_count=child_count,
                 descendant_log_mass=choice_log_mass,
-                next_state_id=None if child is self.graph.final_node else child_id,
+                next_state_id= None if child is self.graph.final_node else child_id,
                 is_coding=is_coding,
             )
 
@@ -324,11 +335,7 @@ class ViewCompiler:
                 if max_log_mass == -math.inf:
                     relative_mass_sum = 1.0
                 else:
-                    relative_mass_sum = (
-                        relative_mass_sum
-                        * math.exp(max_log_mass - choice_log_mass)
-                        + 1.0
-                    )
+                    relative_mass_sum = relative_mass_sum * math.exp(max_log_mass - choice_log_mass) + 1.0
 
                 max_log_mass = choice_log_mass
 
@@ -338,16 +345,15 @@ class ViewCompiler:
             descendant_log_mass = max_log_mass + math.log(relative_mass_sum)
 
         self.choices_by_state_id[state_id] = choice_results
-        self.totals_by_state_id[state_id] = (
-            descendant_count,
-            descendant_log_mass,
-        )
+        self.totals_by_state_id[state_id] = (descendant_count, descendant_log_mass)
 
     def _uncompiled_children(self, state_id: int) -> List[Tuple[int, bool]]:
         """
         Return child state IDs reached by taking each outgoing graph choice.
 
-        Choices rejected by constraints are skipped. Only child states that have not yet been compiled are returned.
+        Choices rejected by constraints are skipped. Temporary view pins are not
+        applied during this pass. Only child states that have not yet been
+        compiled are returned.
 
         Parameters
         ----------
@@ -366,19 +372,12 @@ class ViewCompiler:
         pos = node.pos
 
         for choice, child in self.transitions_by_node[node]:
-            next_constraint_states = self._advance_constraints(
-                constraint_states,
-                pos,
-                choice,
-            )
+            next_constraint_states = self._advance_constraints(constraint_states, pos, choice)
 
             if next_constraint_states is None:
                 continue
 
-            child_id, is_new = self._get_or_register_state_id(
-                child,
-                next_constraint_states,
-            )
+            child_id, is_new = self._get_or_register_state_id(child, next_constraint_states)
 
             child_results.append((choice, child_id))
 
@@ -388,32 +387,6 @@ class ViewCompiler:
         self.child_results_by_state_id[state_id] = child_results
 
         return uncompiled_children
-
-    def _get_choices_for_node(self, node: Node) -> List[str]:
-        """
-        Return the graph choices available from a node in this view.
-
-        Codon nodes respect any pinned codons defined by the view. Context nodes
-        always have a single fixed sequence.
-
-        Parameters
-        ----------
-        node
-            Graph node whose available choices are required.
-
-        Returns
-        -------
-        list of str
-            The choices that may be taken from this node in the current view.
-        """
-        if isinstance(node, CodonNode):
-            if node.pos in self.view.pinned_codons:
-                return self.view.pinned_codons[node.pos]
-            else:
-                return node.codons
-
-        elif isinstance(node, ContextNode):
-            return [node.sequence]
 
     def _advance_constraints(
             self,
