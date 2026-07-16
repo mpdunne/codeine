@@ -130,7 +130,8 @@ class ViewCompiler:
             initial_constraint_states,
         )
 
-        self._compile_from(initial_state_id)
+        self._compile_topology(initial_state_id)
+        self._calculate_results()
 
         choices_by_state_id = tuple(
             choices or {}
@@ -199,38 +200,49 @@ class ViewCompiler:
             constraint_states,
         )
 
-    def _compile_from(self, initial_state_id: int) -> None:
+    def _compile_topology(self, initial_state_id: int) -> None:
         """
-        Compile every reachable traversal state starting from an initial state ID.
-
-        Uses an explicit depth-first stack so that each non-final state is compiled
-        only after its child states have been compiled.
+        Discover every reachable traversal state and transition.
 
         Parameters
         ----------
         initial_state_id
             ID of the state from which graph compilation should begin.
         """
-        stack = [(initial_state_id, False)]
+        stack = [initial_state_id]
 
         while stack:
-            state_id, expanded = stack.pop()
-            state = self.states[state_id]
-            node, _constraint_states = state
+            state_id = stack.pop()
 
-            if self.totals_by_state_id[state_id] is not None:
+            if self.child_results_by_state_id[state_id] is not None:
                 continue
+
+            node, _constraint_states = self.states[state_id]
 
             if node is self.graph.final_node:
-                self._compile_final_state(state_id)
+                self.child_results_by_state_id[state_id] = []
                 continue
 
-            if not expanded:
-                stack.append((state_id, True))
-                stack.extend(self._uncompiled_children(state_id))
-                continue
+            stack.extend(child_id for child_id, _expanded in self._uncompiled_children(state_id))
 
-            self._compile_state(state_id)
+    def _calculate_results(self) -> None:
+        """
+        Resolve descendant counts, probability masses, and choice results.
+
+        States are processed from right to left through the graph, ensuring
+        that every child has been resolved before its parent.
+        """
+        state_ids_by_node = {node: [] for node in self.graph.nodes}
+
+        for state_id, (node, _constraint_states) in enumerate(self.states):
+            state_ids_by_node[node].append(state_id)
+
+        for node in reversed(self.graph.nodes):
+            for state_id in state_ids_by_node[node]:
+                if node is self.graph.final_node:
+                    self._compile_final_state(state_id)
+                else:
+                    self._compile_state(state_id)
 
     def _compile_final_state(self, state_id: int) -> None:
         """
