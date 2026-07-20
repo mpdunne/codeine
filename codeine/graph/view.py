@@ -18,7 +18,8 @@ from codeine.utils.sampling import Seedable, Sampler, SingletonSampler, UniformS
 # anything, needs compiling/recompiling.
 COMPILED = 0
 COMPILE_SHALLOW = 1
-COMPILE_DEEP = 2
+COMPILE_EXTEND = 2
+COMPILE_DEEP = 3
 
 
 class CodonGraphView:
@@ -64,6 +65,7 @@ class CodonGraphView:
 
         self._compiled = None
         self._compile_status = COMPILE_DEEP
+        self._pending_constraints: Tuple[Constraint, ...] = ()
 
         self.initial_state_id = None
         self.choices_by_state_id = ()
@@ -351,6 +353,7 @@ class CodonGraphView:
 
         view._compiled = self._compiled
         view._compile_status = self._compile_status
+        view._pending_constraints = self._pending_constraints
 
         view.initial_state_id = self.initial_state_id
         view.choices_by_state_id = self.choices_by_state_id
@@ -368,13 +371,18 @@ class CodonGraphView:
 
         compiler = ViewCompiler(self)
 
-        if self._compile_status == COMPILE_SHALLOW and self._compiled is not None:
-            compiled = compiler.compile_shallow(self._compiled)
-        else:
+        if self._compiled is None or self._compile_status == COMPILE_DEEP:
             compiled = compiler.compile()
+
+        elif self._compile_status == COMPILE_EXTEND:
+            compiled = compiler.extend(self._compiled, self._pending_constraints)
+
+        else:
+            compiled = compiler.compile_shallow(self._compiled)
 
         self._compiled = compiled
         self._compile_status = COMPILED
+        self._pending_constraints = ()
 
         self.initial_state_id = compiled.initial_state_id
         self.choices_by_state_id = compiled.choices_by_state_id
@@ -437,6 +445,27 @@ class CodonGraphView:
         self.pinned_codons.clear()
         self._update_compile_status(COMPILE_SHALLOW)
 
+    def add_constraints(self, constraints: Union[Constraint, Sequence[Constraint]]) -> None:
+        """
+        Add one or more constraints to this view.
+
+        Parameters
+        ----------
+        constraints
+            Constraints to add.
+        """
+        if isinstance(constraints, Constraint):
+            constraints = [constraints]
+
+        constraints = tuple(constraints)
+
+        if not constraints:
+            return
+
+        self.constraints += constraints
+        self._pending_constraints += constraints
+        self._update_compile_status(COMPILE_EXTEND)
+
     def set_constraints(self, constraints: Sequence[Constraint]) -> None:
         """
         Set the constraints for this view.
@@ -447,6 +476,7 @@ class CodonGraphView:
             Constraints to apply during graph traversal.
         """
         self.constraints = tuple(constraints)
+        self._pending_constraints = ()
         self._update_compile_status(COMPILE_DEEP)
 
     def clear_constraints(self) -> None:

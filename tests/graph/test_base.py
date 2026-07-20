@@ -1,6 +1,7 @@
 import pickle
-
 import pytest
+
+from unittest.mock import MagicMock
 
 from codeine.graph.base import CodonGraph
 from codeine.graph.nodes import ContextNode, CodonNode, EndNode
@@ -199,3 +200,23 @@ def test_codon_graph_pickle_preserves_constraints():
 
     assert loaded.codon_restrictions == graph.codon_restrictions
     assert loaded.view().n_valid_sequences == graph.view().n_valid_sequences
+
+
+def test_view_passes_constraints():
+    graph = CodonGraph("MIKEY")
+
+    constraint = MagicMock()
+
+    view = graph.view(constraints=[constraint])
+
+    assert view.constraints == (constraint,)
+
+
+def test_view_passes_seed():
+    graph = CodonGraph("MIKEY")
+
+    view1 = graph.view(seed=8675309)
+    view2 = graph.view(seed=8675309)
+    
+    for _ in range(100):
+        assert view1.sample() == view2.sample()

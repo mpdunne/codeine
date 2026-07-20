@@ -1,17 +1,16 @@
 import math
 
-from typing import Dict, List, NamedTuple, Optional, Tuple, TYPE_CHECKING
+from typing import Dict, List, NamedTuple, Optional, Sequence, Tuple, TYPE_CHECKING
 
-from codeine.constraints.base import ConstraintState, DEAD_STATE, SAFE_STATE
+from codeine.constraints.base import Constraint, ConstraintState, DEAD_STATE, SAFE_STATE
 from codeine.graph.nodes import CodonNode
 
 if TYPE_CHECKING:
     from codeine.graph.view import CodonGraphView
 
 
-# The traversal state consists of the current graph position and the current state
-# of each active constraint. Plain tuples are immutable and hashable, while
-# avoiding NamedTuple construction in the compiler's hottest path.
+# The traversal state consists of the current graph position
+# and the current state of each active constraint.
 TraversalState = Tuple[int, Tuple[ConstraintState, ...]]
 TraversalStateKey = TraversalState
 
@@ -68,13 +67,8 @@ class ViewCompiler:
         self.view = view
         self.graph = view.graph
 
-        constraints = view.constraints
-
-        for constraint in constraints:
-            constraint.link(self.graph)
-
-        self.constraints = tuple(constraint for constraint in constraints if not constraint.is_trivial)
-        self.constraint_advancers = tuple(constraint.advance for constraint in self.constraints)
+        self.constraints: Tuple[Constraint, ...] = ()
+        self.constraint_advancers = ()
 
         self.state_ids: Dict[TraversalStateKey, int] = {}
         self.states: List[TraversalState] = []
@@ -115,6 +109,31 @@ class ViewCompiler:
             if node is not self.graph.final_node
         }
 
+    def _set_constraints(self, constraints: Sequence[Constraint]) -> None:
+        """
+        Link and configure the constraints used by this compilation pass.
+
+        Parameters
+        ----------
+        constraints
+            Constraints whose states should be represented in the compiled
+            topology.
+        """
+        constraints = tuple(constraints)
+
+        for constraint in constraints:
+            constraint.link(self.graph)
+
+        self.constraints = tuple(
+            constraint
+            for constraint in constraints
+            if not constraint.is_trivial
+        )
+        self.constraint_advancers = tuple(
+            constraint.advance
+            for constraint in self.constraints
+        )
+
     def compile(self) -> CompiledView:
         """
         Compile descendant counts, graph choices, and sampling masses.
@@ -124,6 +143,8 @@ class ViewCompiler:
         CompiledView
             A compiled view.
         """
+        self._set_constraints(self.view.constraints)
+
         initial_state = self._initial_state()
         initial_pos, initial_constraint_states = initial_state
         initial_state_id, _ = self._get_or_register_state_id(
@@ -134,33 +155,7 @@ class ViewCompiler:
         self._compile_topology(initial_state_id)
         self._compile_choices()
 
-        child_results_by_state_id = tuple(
-            tuple(results or ())
-            for results in self.child_results_by_state_id
-        )
-
-        choices_by_state_id = tuple(
-            choices or {}
-            for choices in self.choices_by_state_id
-        )
-
-        choice_results_by_state_id = tuple(
-            tuple(choices.values()) if choices else ()
-            for choices in self.choices_by_state_id
-        )
-
-        initial_total = self.totals_by_state_id[initial_state_id]
-        assert initial_total is not None
-
-        return CompiledView(
-            initial_state=initial_state,
-            initial_state_id=initial_state_id,
-            states=tuple(self.states),
-            child_results_by_state_id=child_results_by_state_id,
-            choices_by_state_id=choices_by_state_id,
-            choice_results_by_state_id=choice_results_by_state_id,
-            n_valid_sequences=initial_total[0],
-        )
+        return self._compiled_view(initial_state_id)
 
     def compile_shallow(self, compiled: CompiledView) -> CompiledView:
         """
@@ -203,6 +198,44 @@ class ViewCompiler:
             choice_results_by_state_id=choice_results_by_state_id,
             n_valid_sequences=initial_total[0],
         )
+
+    def extend(
+            self,
+            compiled: CompiledView,
+            constraints: Sequence[Constraint],
+    ) -> CompiledView:
+        """
+        Extend an existing compiled topology with additional constraints.
+
+        The existing compiled states and transitions already encode all previous
+        constraints. Extension therefore traverses that topology directly and
+        advances only the newly supplied constraints.
+
+        Parameters
+        ----------
+        compiled
+            The existing compiled view.
+        constraints
+            Additional constraints to compile.
+
+        Returns
+        -------
+        CompiledView
+            An updated compiled view.
+        """
+        self._set_constraints(constraints)
+
+        if not self.constraints:
+            return self.compile_shallow(compiled)
+
+        initial_new_states = tuple(constraint.initial_state for constraint in self.constraints)
+        initial_pos, old_initial_states = compiled.initial_state
+        initial_state_id, _ = self._get_or_register_state_id(initial_pos, old_initial_states + initial_new_states)
+
+        self._compile_extended_topology(compiled, initial_state_id)
+        self._compile_choices()
+
+        return self._compiled_view(initial_state_id)
 
     def _get_or_register_state_id(
             self,
@@ -272,6 +305,57 @@ class ViewCompiler:
                 continue
 
             stack.extend(child_id for child_id, _expanded in self._uncompiled_children(state_id))
+
+    def _compile_extended_topology(self, compiled: CompiledView, initial_state_id: int) -> None:
+        """
+        Compile additional constraints over an existing compiled topology.
+
+        Parameters
+        ----------
+        compiled
+            The existing compiled view on which to build.
+        initial_state_id
+            The initial state ID.
+        """
+        n_new_constraints = len(self.constraints)
+
+        old_state_ids = [compiled.initial_state_id]
+
+        stack = [initial_state_id]
+
+        while stack:
+            state_id = stack.pop()
+
+            if self.child_results_by_state_id[state_id] is not None:
+                continue
+
+            old_state_id = old_state_ids[state_id]
+            pos, constraint_states = self.states[state_id]
+
+            if pos == self.final_pos:
+                self.child_results_by_state_id[state_id] = []
+                continue
+
+            new_constraint_states = constraint_states[-n_new_constraints:]
+            child_results = []
+
+            for choice, old_child_id in compiled.child_results_by_state_id[old_state_id]:
+                next_new_states = self._advance_constraints(new_constraint_states, pos,  choice)
+
+                if next_new_states is None:
+                    continue
+
+                child_pos, old_child_states = compiled.states[old_child_id]
+
+                child_id, is_new = self._get_or_register_state_id(child_pos, old_child_states + next_new_states)
+
+                child_results.append((choice, child_id))
+
+                if is_new:
+                    old_state_ids.append(old_child_id)
+                    stack.append(child_id)
+
+            self.child_results_by_state_id[state_id] = child_results
 
     def _compile_choices(self) -> None:
         """
@@ -390,6 +474,30 @@ class ViewCompiler:
 
         self.choices_by_state_id[state_id] = choice_results
         self.totals_by_state_id[state_id] = (descendant_count, descendant_log_mass)
+
+    def _compiled_view(self, initial_state_id: int) -> CompiledView:
+        """
+        Build an immutable CompiledView from the compiler's current state.
+
+        Parameters
+        ----------
+        initial_state_id
+            The initial state ID.
+        """
+        initial_total = self.totals_by_state_id[initial_state_id]
+        assert initial_total is not None
+
+        choices_by_state_id = tuple(choices or {} for choices in self.choices_by_state_id)
+
+        return CompiledView(
+            initial_state=self.states[initial_state_id],
+            initial_state_id=initial_state_id,
+            states=tuple(self.states),
+            child_results_by_state_id=tuple(tuple(results or ()) for results in self.child_results_by_state_id),
+            choices_by_state_id=choices_by_state_id,
+            choice_results_by_state_id=tuple(tuple(choices.values()) for choices in choices_by_state_id),
+            n_valid_sequences=initial_total[0],
+        )
 
     def _uncompiled_children(self, state_id: int) -> List[Tuple[int, bool]]:
         """

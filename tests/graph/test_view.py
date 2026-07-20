@@ -13,7 +13,7 @@ from codeine.constraints.banned import BannedSequenceConstraint
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
 from codeine.graph.base import CodonGraph
-from codeine.graph.view import CodonGraphView, COMPILE_SHALLOW, COMPILE_DEEP
+from codeine.graph.view import CodonGraphView, COMPILED, COMPILE_SHALLOW, COMPILE_DEEP, COMPILE_EXTEND
 
 from tests.data import NORMAL_PROTEINS
 
@@ -1710,3 +1710,168 @@ def test_pins_are_applied_on_top_of_constraints():
 
     assert view.n_valid_sequences < unconstrained_count
     assert all(sequence[3:6] == 'ATT' for sequence in view)
+
+
+class RejectChoicesConstraint(Constraint):
+    """
+    Test constraint that rejects specified graph choices.
+    """
+
+    def __init__(self, rejected_choices):
+        self.rejected_choices = frozenset(rejected_choices)
+
+    @property
+    def initial_state(self):
+        return ()
+
+    @property
+    def is_trivial(self):
+        return not self.rejected_choices
+
+    def link(self, graph):
+        pass
+
+    def advance(self, state, pos, choice):
+        if state == SAFE_STATE:
+            return SAFE_STATE
+
+        if choice in self.rejected_choices:
+            return DEAD_STATE
+
+        return state
+
+
+def test_add_constraint_before_first_compile_matches_full_compile():
+    graph = CodonGraph('MIKEY')
+    constraint = RejectChoicesConstraint({'ATA'})
+
+    view = graph.view()
+    view.add_constraints(constraint)
+    view.compile()
+
+    full_view = graph.view(constraints=[constraint])
+    full_view.compile()
+
+    assert view._compiled == full_view._compiled
+    assert view._compile_status == COMPILED
+    assert view._pending_constraints == ()
+
+
+def test_add_constraint_extends_existing_compile():
+    graph = CodonGraph('MIKEY')
+    constraint = RejectChoicesConstraint({'ATA'})
+
+    view = graph.view()
+    view.compile()
+    base_compiled = view._compiled
+
+    view.add_constraints(constraint)
+
+    assert view.constraints == (constraint,)
+    assert view._pending_constraints == (constraint,)
+    assert view._compile_status == COMPILE_EXTEND
+
+    view.compile()
+
+    full_view = graph.view(constraints=[constraint])
+    full_view.compile()
+
+    assert view._compiled == full_view._compiled
+    assert view._compiled is not base_compiled
+    assert view._compile_status == COMPILED
+    assert view._pending_constraints == ()
+
+
+def test_add_constraints_extends_with_all_new_constraints():
+    graph = CodonGraph('MIKEY')
+    constraints = (
+        RejectChoicesConstraint({'ATA'}),
+        RejectChoicesConstraint({'AAG'}),
+    )
+
+    view = graph.view()
+    view.compile()
+    view.add_constraints(constraints)
+    view.compile()
+
+    full_view = graph.view(constraints=constraints)
+    full_view.compile()
+
+    assert view._compiled == full_view._compiled
+    assert view.constraints == constraints
+
+
+def test_add_constraints_accumulates_before_compile():
+    graph = CodonGraph('MIKEY')
+    first = RejectChoicesConstraint({'ATA'})
+    second = RejectChoicesConstraint({'AAG'})
+
+    view = graph.view()
+    view.compile()
+    view.add_constraints(first)
+    view.add_constraints(second)
+
+    assert view._pending_constraints == (first, second)
+    assert view._compile_status == COMPILE_EXTEND
+
+    view.compile()
+
+    full_view = graph.view(constraints=[first, second])
+    full_view.compile()
+
+    assert view._compiled == full_view._compiled
+
+
+def test_set_constraints_discards_pending_constraints():
+    graph = CodonGraph('MIKEY')
+    pending = RejectChoicesConstraint({'ATA'})
+    replacement = RejectChoicesConstraint({'AAG'})
+
+    view = graph.view()
+    view.compile()
+    view.add_constraints(pending)
+    view.set_constraints([replacement])
+
+    assert view.constraints == (replacement,)
+    assert view._pending_constraints == ()
+    assert view._compile_status == COMPILE_DEEP
+
+    view.compile()
+
+    full_view = graph.view(constraints=[replacement])
+    full_view.compile()
+
+    assert view._compiled == full_view._compiled
+
+
+def test_add_no_constraints_does_not_require_compile():
+    view = CodonGraph('MIKEY').view()
+    view.compile()
+
+    compiled = view._compiled
+    view.add_constraints([])
+
+    assert view._compiled is compiled
+    assert view._compile_status == COMPILED
+    assert view._pending_constraints == ()
+
+
+def test_copy_preserves_pending_constraints():
+    constraint = RejectChoicesConstraint({'ATA'})
+
+    view = CodonGraph('MIKEY').view()
+    view.compile()
+    view.add_constraints(constraint)
+
+    copied = view.copy()
+
+    assert copied.constraints == (constraint,)
+    assert copied._pending_constraints == (constraint,)
+    assert copied._compile_status == COMPILE_EXTEND
+
+    copied.compile()
+
+    full_view = copied.graph.view(constraints=[constraint])
+    full_view.compile()
+
+    assert copied._compiled == full_view._compiled
