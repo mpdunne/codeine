@@ -79,7 +79,8 @@ For example, these are equivalent:
 Weights can be specified using RNA or DNA codons, they will be converted internally.
 
 
-## Zero weights
+Zero weights
+------------
 
 A codon can be assigned a weight of zero. The codon remains part of the valid
 coding space, but it will never be selected during weighted sampling.
@@ -98,7 +99,8 @@ coding space, but it will never be selected during weighted sampling.
 
 At least one codon for each amino acid must have a positive weight.
 
-## Weight thresholds
+Weight thresholds
+-----------------
 
 Low-frequency codons can be excluded from sampling using ``threshold()``.
 

@@ -1,3 +1,5 @@
+import os
+
 from importlib.metadata import PackageNotFoundError, version as get_version
 
 project = 'Codeine'
@@ -9,7 +11,16 @@ try:
 except PackageNotFoundError:
     release = version = 'x.x.x'
 
-html_title = 'Codeine documentation'
+rtd_version = os.environ.get('READTHEDOCS_VERSION')
+
+if rtd_version == 'latest':
+    docs_version = 'development'
+else:
+    docs_version = release
+
+rst_epilog = f'''
+.. |docs_version| replace:: {docs_version}
+'''
 
 extensions = [
     'sphinx.ext.autodoc',
