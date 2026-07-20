@@ -175,14 +175,14 @@ class CodonGraphView:
 
         state_id = self.initial_state_id
         choices_by_state_id = self.choices_by_state_id
-        states = self._compiled.states
+        positions_by_state_id = self._compiled.state_positions
 
         left_context_pos = self.graph.left_context_node.pos
         right_context_pos = self.graph.right_context_node.pos
 
         while state_id is not None:
 
-            pos, _constraint_states = states[state_id]
+            pos = positions_by_state_id[state_id]
             if pos == left_context_pos:
                 node = self.graph.left_context_node
             elif pos == right_context_pos:
@@ -387,7 +387,7 @@ class CodonGraphView:
         self.initial_state_id = compiled.initial_state_id
         self.choices_by_state_id = compiled.choices_by_state_id
         self.choice_results_by_state_id = compiled.choice_results_by_state_id
-        self.samplers_by_state_id = [None] * len(compiled.states)
+        self.samplers_by_state_id = [None] * len(compiled.state_positions)
 
     def _update_compile_status(self, status: int) -> None:
         """
