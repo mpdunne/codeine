@@ -67,13 +67,8 @@ class ViewCompiler:
         self.view = view
         self.graph = view.graph
 
-        constraints = view.constraints
-
-        for constraint in constraints:
-            constraint.link(self.graph)
-
-        self.constraints = tuple(constraint for constraint in constraints if not constraint.is_trivial)
-        self.constraint_advancers = tuple(constraint.advance for constraint in self.constraints)
+        self.constraints: Tuple[Constraint, ...] = ()
+        self.constraint_advancers = ()
 
         self.state_ids: Dict[TraversalStateKey, int] = {}
         self.states: List[TraversalState] = []
@@ -114,6 +109,31 @@ class ViewCompiler:
             if node is not self.graph.final_node
         }
 
+    def _set_constraints(self, constraints: Sequence[Constraint]) -> None:
+        """
+        Link and configure the constraints used by this compilation pass.
+
+        Parameters
+        ----------
+        constraints
+            Constraints whose states should be represented in the compiled
+            topology.
+        """
+        constraints = tuple(constraints)
+
+        for constraint in constraints:
+            constraint.link(self.graph)
+
+        self.constraints = tuple(
+            constraint
+            for constraint in constraints
+            if not constraint.is_trivial
+        )
+        self.constraint_advancers = tuple(
+            constraint.advance
+            for constraint in self.constraints
+        )
+
     def compile(self) -> CompiledView:
         """
         Compile descendant counts, graph choices, and sampling masses.
@@ -123,6 +143,8 @@ class ViewCompiler:
         CompiledView
             A compiled view.
         """
+        self._set_constraints(self.view.constraints)
+
         initial_state = self._initial_state()
         initial_pos, initial_constraint_states = initial_state
         initial_state_id, _ = self._get_or_register_state_id(
@@ -201,17 +223,10 @@ class ViewCompiler:
         CompiledView
             An updated compiled view.
         """
-        constraints = tuple(constraints)
-
-        for constraint in constraints:
-            constraint.link(self.graph)
-
-        self.constraints = tuple(constraint for constraint in constraints if not constraint.is_trivial)
+        self._set_constraints(constraints)
 
         if not self.constraints:
             return self.compile_shallow(compiled)
-
-        self.constraint_advancers = tuple(constraint.advance for constraint in self.constraints)
 
         initial_new_states = tuple(constraint.initial_state for constraint in self.constraints)
         initial_pos, old_initial_states = compiled.initial_state

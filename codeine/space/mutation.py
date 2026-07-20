@@ -56,15 +56,12 @@ class MutationSpace:
         self.forbidden_motifs = space.forbidden_motifs
         self.max_homopolymer = space.max_homopolymer
 
-        self.view = space.view.copy()
-        self._base_pins = dict(space.view.pinned_codons)
-        self._base_constraints = tuple(
-            constraint
-            for constraint in space.view.constraints
-            if not isinstance(constraint, MutationDistanceConstraint)
-        )
+        self._base_view = space.view.copy()
+        self._base_pins = dict(self._base_view.pinned_codons)
 
         self.cds = self._validate_cds(cds)
+
+        self.view = self._base_view.copy()
 
         if free_positions is None:
             free_positions = range(1, len(self.view.aa_seq) + 1)
@@ -416,22 +413,23 @@ class MutationSpace:
 
     def _update_distance_constraint(self) -> None:
         """
-        Replace the mutation-distance constraint on the underlying view.
+        Rebuild the mutation layer over the compiled base view.
         """
-        constraints = self._base_constraints
+        pins = self.view.pinned_codons
+
+        self.view = self._base_view.copy()
+        self.view.set_pinned_codons(pins)
 
         if self.has_distance_constraints:
-            constraints += (
+            self.view.add_constraints(
                 MutationDistanceConstraint(
                     reference_cds=self.cds,
                     min_nts=self.min_nts,
                     max_nts=self.max_nts,
                     min_codons=self.min_codons,
                     max_codons=self.max_codons,
-                ),
+                )
             )
-
-        self.view.set_constraints(constraints)
 
     def _validate_positions(self, positions: Collection[int]) -> Set[int]:
         """
@@ -490,9 +488,9 @@ class MutationSpace:
         -------
         A normalised and validated version of the inputted CDS.
         """
-        cds = self.translation_table.normalise_sequence(cds)
+        cds = self._base_view.translation_table.normalise_sequence(cds)
 
-        if not self.view.contains(cds):
+        if not self._base_view.contains(cds):
             raise ValueError('CDS is not contained in this coding space.')
 
         return cds

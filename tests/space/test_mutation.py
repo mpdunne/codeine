@@ -1108,3 +1108,64 @@ def test_setting_distance_constraints_preserves_base_constraints():
 
     assert constraint in mutants.view.constraints
     assert set(mutants.enumerate()) == {'GAG'}
+
+
+def test_updating_distance_constraints_rebuilds_from_base_view():
+    space = CodingSpace('MIKEY')
+    cds = 'ATGATTAAAGAATAT'
+    muts = MutationSpace(space, cds)
+
+    assert muts.n_valid_variants == 24
+
+    base_compiled = muts._base_view._compiled
+
+    muts.set_distance_constraints(max_nts=0)
+    assert muts.n_valid_variants == 1
+    assert [*muts] == [cds]
+
+    muts.set_distance_constraints(max_nts=1)
+    assert muts.n_valid_variants == 6
+
+    muts.set_distance_constraints(max_nts=2)
+    assert muts.n_valid_variants == 15
+
+    muts.clear_distance_constraints()
+    assert muts.n_valid_variants == 24
+
+    assert muts._base_view._compiled is base_compiled
+
+
+def test_updating_distance_constraints_preserves_frozen_positions():
+    space = CodingSpace('MIKEY')
+    cds = 'ATGATTAAAGAATAT'
+    muts = MutationSpace(space, cds, free_positions=[2, 3])
+
+    expected_pins = {
+        1: ['ATG'],
+        4: ['GAA'],
+        5: ['TAT'],
+    }
+
+    assert muts.pinned_codons == expected_pins
+    assert muts.n_valid_variants == 6
+
+    muts.set_distance_constraints(max_codons=0)
+
+    assert muts.pinned_codons == expected_pins
+    assert [*muts] == [cds]
+
+    muts.set_distance_constraints(max_codons=1)
+
+    assert muts.pinned_codons == expected_pins
+    assert muts.n_valid_variants == 4
+    assert all(
+        seq[0:3] == cds[0:3]
+        and seq[9:12] == cds[9:12]
+        and seq[12:15] == cds[12:15]
+        for seq in muts
+    )
+
+    muts.clear_distance_constraints()
+
+    assert muts.pinned_codons == expected_pins
+    assert muts.n_valid_variants == 6
