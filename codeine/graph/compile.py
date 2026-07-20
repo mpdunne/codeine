@@ -44,11 +44,12 @@ class CompiledView(NamedTuple):
     state_constraint_state_ids: Tuple[ConstraintStateId, ...]
     constraint_states: Tuple[ConstraintStates, ...]
 
-    # Deep compiled transitions:
-    # state ID -> ((choice, child state ID), ...)
-    # These include every transition allowed by the graph and constraints,
-    # before temporary view pins are applied.
-    child_results_by_state_id: Tuple[Tuple[Tuple[str, int], ...], ...]
+    # Flat deep-transition storage. The transitions for a state occupy
+    # child_transition_starts[state_id]:child_transition_ends[state_id].
+    child_transition_starts: Tuple[int, ...]
+    child_transition_ends: Tuple[int, ...]
+    child_transition_choices: Tuple[str, ...]
+    child_transition_state_ids: Tuple[int, ...]
 
     # Compiled graph choices (lookup):
     # state ID -> choice -> ChoiceResult
@@ -89,11 +90,12 @@ class ViewCompiler:
         self.descendant_counts: List[Optional[int]] = []
         self.descendant_log_masses: List[Optional[float]] = []
 
-        # Deep compiled transitions:
-        # state ID -> [(choice, child state ID), ...]
-        # These account for graph restrictions and constraints, but not
-        # temporary view pins.
-        self.child_results_by_state_id: List[Optional[List[Tuple[str, int]]]] = []
+        # Flat deep-transition storage. Each state stores only the start and
+        # end offsets of its contiguous transition slice.
+        self.child_transition_starts: List[int] = []
+        self.child_transition_ends: List[int] = []
+        self.child_transition_choices: List[str] = []
+        self.child_transition_state_ids: List[int] = []
 
         # Compiled graph choices (lookup):
         # state ID -> choice -> ChoiceResult
@@ -185,7 +187,10 @@ class ViewCompiler:
         self.state_positions = list(compiled.state_positions)
         self.state_constraint_state_ids = list(compiled.state_constraint_state_ids)
         self.constraint_states = list(compiled.constraint_states)
-        self.child_results_by_state_id = list(compiled.child_results_by_state_id)
+        self.child_transition_starts = list(compiled.child_transition_starts)
+        self.child_transition_ends = list(compiled.child_transition_ends)
+        self.child_transition_choices = list(compiled.child_transition_choices)
+        self.child_transition_state_ids = list(compiled.child_transition_state_ids)
 
         n_states = len(self.state_positions)
         self.descendant_counts = [None] * n_states
@@ -302,7 +307,8 @@ class ViewCompiler:
         self.descendant_counts.append(None)
         self.descendant_log_masses.append(None)
         self.choices_by_state_id.append(None)
-        self.child_results_by_state_id.append(None)
+        self.child_transition_starts.append(-1)
+        self.child_transition_ends.append(-1)
 
         return state_id, True
 
@@ -338,16 +344,18 @@ class ViewCompiler:
         while stack:
             state_id = stack.pop()
 
-            if self.child_results_by_state_id[state_id] is not None:
+            if self.child_transition_starts[state_id] != -1:
                 continue
 
             pos = self.state_positions[state_id]
 
             if pos == self.final_pos:
-                self.child_results_by_state_id[state_id] = []
+                offset = len(self.child_transition_choices)
+                self.child_transition_starts[state_id] = offset
+                self.child_transition_ends[state_id] = offset
                 continue
 
-            stack.extend(child_id for child_id, _expanded in self._uncompiled_children(state_id))
+            stack.extend(self._compile_state_transitions(state_id))
 
     def _compile_extended_topology(self, compiled: CompiledView, initial_state_id: int) -> None:
         """
@@ -369,7 +377,7 @@ class ViewCompiler:
         while stack:
             state_id = stack.pop()
 
-            if self.child_results_by_state_id[state_id] is not None:
+            if self.child_transition_starts[state_id] != -1:
                 continue
 
             old_state_id = old_state_ids[state_id]
@@ -377,14 +385,21 @@ class ViewCompiler:
             constraint_state_id = self.state_constraint_state_ids[state_id]
 
             if pos == self.final_pos:
-                self.child_results_by_state_id[state_id] = []
+                offset = len(self.child_transition_choices)
+                self.child_transition_starts[state_id] = offset
+                self.child_transition_ends[state_id] = offset
                 continue
 
             constraint_states = self.constraint_states[constraint_state_id]
             new_constraint_states = constraint_states[-n_new_constraints:]
-            child_results = []
+            transition_start = len(self.child_transition_choices)
 
-            for choice, old_child_id in compiled.child_results_by_state_id[old_state_id]:
+            old_start = compiled.child_transition_starts[old_state_id]
+            old_end = compiled.child_transition_ends[old_state_id]
+
+            for transition_id in range(old_start, old_end):
+                choice = compiled.child_transition_choices[transition_id]
+                old_child_id = compiled.child_transition_state_ids[transition_id]
                 next_new_states = self._advance_constraints(new_constraint_states, pos,  choice)
 
                 if next_new_states is None:
@@ -399,13 +414,15 @@ class ViewCompiler:
                     old_child_states + next_new_states,
                 )
 
-                child_results.append((choice, child_id))
+                self.child_transition_choices.append(choice)
+                self.child_transition_state_ids.append(child_id)
 
                 if is_new:
                     old_state_ids.append(old_child_id)
                     stack.append(child_id)
 
-            self.child_results_by_state_id[state_id] = child_results
+            self.child_transition_starts[state_id] = transition_start
+            self.child_transition_ends[state_id] = len(self.child_transition_choices)
 
     def _compile_choices(self) -> None:
         """
@@ -467,12 +484,15 @@ class ViewCompiler:
         max_log_mass = -math.inf
         relative_mass_sum = 0.0
 
+        transition_end = self.child_transition_ends[state_id]
+        transition_start = self.child_transition_starts[state_id]
         is_coding = 1 <= pos <= self.seq_len
-        child_results = self.child_results_by_state_id[state_id] or ()
 
         pinned_codons = (self.view.pinned_codons.get(pos) if is_coding else None)
 
-        for choice, child_id in child_results:
+        for transition_id in range(transition_start, transition_end):
+            choice = self.child_transition_choices[transition_id]
+            child_id = self.child_transition_state_ids[transition_id]
             if pinned_codons is not None and choice not in pinned_codons:
                 continue
 
@@ -547,51 +567,53 @@ class ViewCompiler:
             state_positions=tuple(self.state_positions),
             state_constraint_state_ids=tuple(self.state_constraint_state_ids),
             constraint_states=tuple(self.constraint_states),
-            child_results_by_state_id=tuple(tuple(results or ()) for results in self.child_results_by_state_id),
+            child_transition_starts=tuple(self.child_transition_starts),
+            child_transition_ends=tuple(self.child_transition_ends),
+            child_transition_choices=tuple(self.child_transition_choices),
+            child_transition_state_ids=tuple(self.child_transition_state_ids),
             choices_by_state_id=choices_by_state_id,
             choice_results_by_state_id=tuple(tuple(choices.values()) for choices in choices_by_state_id),
             n_valid_sequences=initial_count,
         )
 
-    def _uncompiled_children(self, state_id: int) -> List[Tuple[int, bool]]:
+    def _compile_state_transitions(self, state_id: int) -> List[int]:
         """
-        Return child state IDs reached by taking each outgoing graph choice.
+        Compile the flat outgoing-transition slice for one traversal state.
 
-        Choices rejected by constraints are skipped. Temporary view pins are not
-        applied during this pass. Only child states that have not yet been
-        compiled are returned.
-
-        Parameters
-        ----------
-        state_id
-            ID of the traversal state whose children should be discovered.
-
-        Returns
-        -------
-        list of tuple
-            Stack entries for child state IDs still needing compilation.
+        Choices rejected by constraints are skipped. Temporary view pins are
+        not applied during this pass. Newly registered child state IDs are
+        returned for topology traversal.
         """
-        child_results = []
         uncompiled_children = []
 
         pos = self.state_positions[state_id]
         constraint_state_id = self.state_constraint_state_ids[state_id]
         constraint_states = self.constraint_states[constraint_state_id]
+        transition_start = len(self.child_transition_choices)
 
         for choice, child_pos in self.transitions_by_pos[pos]:
-            next_constraint_states = self._advance_constraints(constraint_states, pos, choice)
+            next_constraint_states = self._advance_constraints(
+                constraint_states,
+                pos,
+                choice,
+            )
 
             if next_constraint_states is None:
                 continue
 
-            child_id, is_new = self._get_or_register_state_id(child_pos, next_constraint_states)
+            child_id, is_new = self._get_or_register_state_id(
+                child_pos,
+                next_constraint_states,
+            )
 
-            child_results.append((choice, child_id))
+            self.child_transition_choices.append(choice)
+            self.child_transition_state_ids.append(child_id)
 
             if is_new:
-                uncompiled_children.append((child_id, False))
+                uncompiled_children.append(child_id)
 
-        self.child_results_by_state_id[state_id] = child_results
+        self.child_transition_starts[state_id] = transition_start
+        self.child_transition_ends[state_id] = len(self.child_transition_choices)
 
         return uncompiled_children
 
