@@ -43,6 +43,7 @@ class CompiledView(NamedTuple):
     state_positions: Tuple[int, ...]
     state_constraint_state_ids: Tuple[ConstraintStateId, ...]
     constraint_states: Tuple[ConstraintStates, ...]
+    state_ids_by_pos: Tuple[Tuple[int, ...], ...]
 
     # Flat deep-transition storage. The transitions for a state occupy
     # child_transition_starts[state_id]:child_transition_ends[state_id].
@@ -111,6 +112,7 @@ class ViewCompiler:
         self.initial_pos = self.graph.initial_node.pos
         self.final_pos = self.graph.final_node.pos
         self.positions = tuple(node.pos for node in self.graph.nodes)
+        self.state_ids_by_pos: List[List[int]] = [[] for _ in range(self.final_pos + 1)]
         self.seq_len = len(self.graph.aa_seq)
 
         # Graph transitions available at each position. Permanent graph-level codon
@@ -187,6 +189,7 @@ class ViewCompiler:
         self.state_positions = list(compiled.state_positions)
         self.state_constraint_state_ids = list(compiled.state_constraint_state_ids)
         self.constraint_states = list(compiled.constraint_states)
+        self.state_ids_by_pos = [list(state_ids) for state_ids in compiled.state_ids_by_pos]
         self.child_transition_starts = list(compiled.child_transition_starts)
         self.child_transition_ends = list(compiled.child_transition_ends)
         self.child_transition_choices = list(compiled.child_transition_choices)
@@ -304,6 +307,7 @@ class ViewCompiler:
         self.state_ids[key] = state_id
         self.state_positions.append(pos)
         self.state_constraint_state_ids.append(constraint_state_id)
+        self.state_ids_by_pos[pos].append(state_id)
         self.descendant_counts.append(None)
         self.descendant_log_masses.append(None)
         self.choices_by_state_id.append(None)
@@ -433,13 +437,8 @@ class ViewCompiler:
         States are processed from right to left through the graph, ensuring
         that every child has been compiled before its parent.
         """
-        state_ids_by_pos = {pos: [] for pos in self.positions}
-
-        for state_id, pos in enumerate(self.state_positions):
-            state_ids_by_pos[pos].append(state_id)
-
         for pos in reversed(self.positions):
-            for state_id in state_ids_by_pos[pos]:
+            for state_id in self.state_ids_by_pos[pos]:
                 if pos == self.final_pos:
                     self._compile_final_state(state_id)
                 else:
@@ -567,6 +566,7 @@ class ViewCompiler:
             state_positions=tuple(self.state_positions),
             state_constraint_state_ids=tuple(self.state_constraint_state_ids),
             constraint_states=tuple(self.constraint_states),
+            state_ids_by_pos=tuple(tuple(state_ids) for state_ids in self.state_ids_by_pos),
             child_transition_starts=tuple(self.child_transition_starts),
             child_transition_ends=tuple(self.child_transition_ends),
             child_transition_choices=tuple(self.child_transition_choices),
