@@ -10,7 +10,9 @@ if TYPE_CHECKING:
 
 # The traversal state consists of the current graph position
 # and the current state of each active constraint.
-TraversalState = Tuple[int, Tuple[ConstraintState, ...]]
+ConstraintStates = Tuple[ConstraintState, ...]
+ConstraintStateId = int
+TraversalState = Tuple[int, ConstraintStateId]
 TraversalStateKey = TraversalState
 
 
@@ -37,6 +39,7 @@ class CompiledView(NamedTuple):
     initial_state: TraversalState
     initial_state_id: int
     states: Tuple[TraversalState, ...]
+    constraint_states: Tuple[ConstraintStates, ...]
 
     # Deep compiled transitions:
     # state ID -> ((choice, child state ID), ...)
@@ -68,6 +71,9 @@ class ViewCompiler:
 
         self.constraints: Tuple[Constraint, ...] = ()
         self.constraint_advancers = ()
+
+        self.constraint_state_ids: Dict[ConstraintStates, ConstraintStateId] = {}
+        self.constraint_states: List[ConstraintStates] = []
 
         self.state_ids: Dict[TraversalStateKey, int] = {}
         self.states: List[TraversalState] = []
@@ -146,8 +152,7 @@ class ViewCompiler:
         """
         self._set_constraints(self.view.constraints)
 
-        initial_state = self._initial_state()
-        initial_pos, initial_constraint_states = initial_state
+        initial_pos, initial_constraint_states = self._initial_state()
         initial_state_id, _ = self._get_or_register_state_id(
             initial_pos,
             initial_constraint_states,
@@ -174,6 +179,7 @@ class ViewCompiler:
             The compiled view with updated shallow data.
         """
         self.states = list(compiled.states)
+        self.constraint_states = list(compiled.constraint_states)
         self.child_results_by_state_id = list(compiled.child_results_by_state_id)
 
         self.descendant_counts = [None] * len(self.states)
@@ -231,26 +237,52 @@ class ViewCompiler:
             return self.compile_shallow(compiled)
 
         initial_new_states = tuple(constraint.initial_state for constraint in self.constraints)
-        initial_pos, old_initial_states = compiled.initial_state
-        initial_state_id, _ = self._get_or_register_state_id(initial_pos, old_initial_states + initial_new_states)
+        initial_pos, old_initial_constraint_state_id = compiled.initial_state
+        old_initial_states = compiled.constraint_states[old_initial_constraint_state_id]
+        initial_state_id, _ = self._get_or_register_state_id(
+            initial_pos,
+            old_initial_states + initial_new_states,
+        )
 
         self._compile_extended_topology(compiled, initial_state_id)
         self._compile_choices()
 
         return self._compiled_view(initial_state_id)
 
+    def _get_or_register_constraint_state_id(
+            self,
+            constraint_states: ConstraintStates,
+    ) -> ConstraintStateId:
+        """
+        Return the dense ID for a tuple of constraint states, registering it if
+        necessary.
+        """
+        constraint_state_id = self.constraint_state_ids.get(constraint_states)
+
+        if constraint_state_id is not None:
+            return constraint_state_id
+
+        constraint_state_id = len(self.constraint_states)
+        self.constraint_state_ids[constraint_states] = constraint_state_id
+        self.constraint_states.append(constraint_states)
+
+        return constraint_state_id
+
     def _get_or_register_state_id(
             self,
             pos: int,
-            constraint_states: Tuple[ConstraintState, ...],
+            constraint_states: ConstraintStates,
     ) -> Tuple[int, bool]:
         """
         Return the state ID and whether the state was newly registered.
 
-        State lookup uses the graph position rather than the node object, keeping
-        the hot dictionary key compact.
+        Traversal-state lookup uses only the graph position and a dense integer
+        ID for the full constraint-state tuple.
         """
-        key = (pos, constraint_states)
+        constraint_state_id = self._get_or_register_constraint_state_id(
+            constraint_states,
+        )
+        key = (pos, constraint_state_id)
         state_id = self.state_ids.get(key)
 
         if state_id is not None:
@@ -266,7 +298,7 @@ class ViewCompiler:
 
         return state_id, True
 
-    def _initial_state(self) -> TraversalState:
+    def _initial_state(self) -> Tuple[int, ConstraintStates]:
         """
         Return the starting traversal state.
 
@@ -301,7 +333,7 @@ class ViewCompiler:
             if self.child_results_by_state_id[state_id] is not None:
                 continue
 
-            pos, _constraint_states = self.states[state_id]
+            pos, _constraint_state_id = self.states[state_id]
 
             if pos == self.final_pos:
                 self.child_results_by_state_id[state_id] = []
@@ -333,12 +365,13 @@ class ViewCompiler:
                 continue
 
             old_state_id = old_state_ids[state_id]
-            pos, constraint_states = self.states[state_id]
+            pos, constraint_state_id = self.states[state_id]
 
             if pos == self.final_pos:
                 self.child_results_by_state_id[state_id] = []
                 continue
 
+            constraint_states = self.constraint_states[constraint_state_id]
             new_constraint_states = constraint_states[-n_new_constraints:]
             child_results = []
 
@@ -348,9 +381,13 @@ class ViewCompiler:
                 if next_new_states is None:
                     continue
 
-                child_pos, old_child_states = compiled.states[old_child_id]
+                child_pos, old_child_constraint_state_id = compiled.states[old_child_id]
+                old_child_states = compiled.constraint_states[old_child_constraint_state_id]
 
-                child_id, is_new = self._get_or_register_state_id(child_pos, old_child_states + next_new_states)
+                child_id, is_new = self._get_or_register_state_id(
+                    child_pos,
+                    old_child_states + next_new_states,
+                )
 
                 child_results.append((choice, child_id))
 
@@ -371,7 +408,7 @@ class ViewCompiler:
         """
         state_ids_by_pos = {pos: [] for pos in self.positions}
 
-        for state_id, (pos, _constraint_states) in enumerate(self.states):
+        for state_id, (pos, _constraint_state_id) in enumerate(self.states):
             state_ids_by_pos[pos].append(state_id)
 
         for pos in reversed(self.positions):
@@ -412,7 +449,7 @@ class ViewCompiler:
         state_id
             ID of the traversal state being compiled.
         """
-        pos, _constraint_states = self.states[state_id]
+        pos, _constraint_state_id = self.states[state_id]
 
         choice_results = {}
         descendant_count = 0
@@ -429,7 +466,7 @@ class ViewCompiler:
             if pinned_codons is not None and choice not in pinned_codons:
                 continue
 
-            child_pos, _child_constraint_states = self.states[child_id]
+            child_pos, _child_constraint_state_id = self.states[child_id]
             child_count = self.descendant_counts[child_id]
             subtree_log_mass = self.descendant_log_masses[child_id]
 
@@ -497,6 +534,7 @@ class ViewCompiler:
             initial_state=self.states[initial_state_id],
             initial_state_id=initial_state_id,
             states=tuple(self.states),
+            constraint_states=tuple(self.constraint_states),
             child_results_by_state_id=tuple(tuple(results or ()) for results in self.child_results_by_state_id),
             choices_by_state_id=choices_by_state_id,
             choice_results_by_state_id=tuple(tuple(choices.values()) for choices in choices_by_state_id),
@@ -524,7 +562,8 @@ class ViewCompiler:
         child_results = []
         uncompiled_children = []
 
-        pos, constraint_states = self.states[state_id]
+        pos, constraint_state_id = self.states[state_id]
+        constraint_states = self.constraint_states[constraint_state_id]
 
         for choice, child_pos in self.transitions_by_pos[pos]:
             next_constraint_states = self._advance_constraints(constraint_states, pos, choice)
@@ -545,10 +584,10 @@ class ViewCompiler:
 
     def _advance_constraints(
             self,
-            constraint_states: Tuple[ConstraintState, ...],
+            constraint_states: ConstraintStates,
             pos: int,
             choice: str,
-    ) -> Optional[Tuple[ConstraintState, ...]]:
+    ) -> Optional[ConstraintStates]:
         """
         Advance all active constraints after taking one graph choice.
 
