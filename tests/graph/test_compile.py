@@ -40,11 +40,12 @@ def test_existing_state_does_not_interrupt_dense_state_ids():
     assert compiler._get_or_register_state_id(compiler.initial_pos, ()) == (0, False)
     assert compiler._get_or_register_state_id(2, ()) == (2, True)
 
-    assert compiler.states == [
-        (compiler.initial_pos, ()),
-        (1, ()),
-        (2, ()),
+    assert compiler.state_positions == [
+        compiler.initial_pos,
+        1,
+        2,
     ]
+    assert compiler.state_constraint_state_ids == [0, 0, 0]
 
 
 def test_extend_matches_full_compile():
@@ -148,14 +149,10 @@ def test_compiled_state_ids_are_dense():
 
     compiled = ViewCompiler(view).compile()
 
-    referenced_state_ids = {
-        child_id
-        for child_results in compiled.child_results_by_state_id
-        for _choice, child_id in child_results
-    }
+    referenced_state_ids = set(compiled.child_transition_state_ids)
 
     assert compiled.initial_state_id == 0
-    assert referenced_state_ids == set(range(1, len(compiled.states)))
+    assert referenced_state_ids == set(range(1, len(compiled.state_positions)))
 
 
 def test_extended_state_ids_are_dense():
@@ -164,11 +161,7 @@ def test_extended_state_ids_are_dense():
     base_compiled = ViewCompiler(view).compile()
     extended_compiled = ViewCompiler(view).extend(base_compiled, [RejectChoicesConstraint({'ATA'})])
 
-    referenced_state_ids = {
-        child_id
-        for child_results in extended_compiled.child_results_by_state_id
-        for _choice, child_id in child_results
-    }
+    referenced_state_ids = set(extended_compiled.child_transition_state_ids)
 
     assert extended_compiled.initial_state_id == 0
-    assert referenced_state_ids == set(range(1, len(extended_compiled.states)))
+    assert referenced_state_ids == set(range(1, len(extended_compiled.state_positions)))

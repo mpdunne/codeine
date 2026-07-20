@@ -1582,9 +1582,9 @@ def test_sequence_at_raises_on_unexpected_dead_end():
     view = CodonGraph('M').view()
     view.compile()
 
-    choice_results = list(view.choice_results_by_state_id)
-    choice_results[view.initial_state_id] = ()
-    view.choice_results_by_state_id = tuple(choice_results)
+    choice_result_ends = list(view._compiled.choice_result_ends)
+    choice_result_ends[view.initial_state_id] = view._compiled.choice_result_starts[view.initial_state_id]
+    view._compiled = view._compiled._replace(choice_result_ends=tuple(choice_result_ends))
 
     with pytest.raises(RuntimeError):
         view.sequence_at(0)
@@ -1644,14 +1644,30 @@ def test_pin_codons_preserves_deep_topology():
 
     view.compile()
 
-    states = view._compiled.states
-    child_results = view._compiled.child_results_by_state_id
+    states = (
+        view._compiled.state_positions,
+        view._compiled.state_constraint_state_ids,
+    )
+    child_results = (
+        view._compiled.child_transition_starts,
+        view._compiled.child_transition_ends,
+        view._compiled.child_transition_choice_ids,
+        view._compiled.child_transition_state_ids,
+    )
 
     view.pin_codons({1: 'ATG'})
     view.compile()
 
-    assert view._compiled.states == states
-    assert view._compiled.child_results_by_state_id == child_results
+    assert (
+        view._compiled.state_positions,
+        view._compiled.state_constraint_state_ids,
+    ) == states
+    assert (
+        view._compiled.child_transition_starts,
+        view._compiled.child_transition_ends,
+        view._compiled.child_transition_choice_ids,
+        view._compiled.child_transition_state_ids,
+    ) == child_results
 
 
 
@@ -1676,14 +1692,30 @@ def test_set_weights_preserves_deep_topology():
 
     view.compile()
 
-    states = view._compiled.states
-    child_results = view._compiled.child_results_by_state_id
+    states = (
+        view._compiled.state_positions,
+        view._compiled.state_constraint_state_ids,
+    )
+    child_results = (
+        view._compiled.child_transition_starts,
+        view._compiled.child_transition_ends,
+        view._compiled.child_transition_choice_ids,
+        view._compiled.child_transition_state_ids,
+    )
 
     view.set_weights(CodonWeights.ecoli())
     view.compile()
 
-    assert view._compiled.states == states
-    assert view._compiled.child_results_by_state_id == child_results
+    assert (
+        view._compiled.state_positions,
+        view._compiled.state_constraint_state_ids,
+    ) == states
+    assert (
+        view._compiled.child_transition_starts,
+        view._compiled.child_transition_ends,
+        view._compiled.child_transition_choice_ids,
+        view._compiled.child_transition_state_ids,
+    ) == child_results
 
 
 def test_shallow_compile_clears_cached_samplers():

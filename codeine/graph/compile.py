@@ -15,22 +15,6 @@ ConstraintStateId = int
 TraversalStateKey = Tuple[int, ConstraintStateId]
 
 
-class ChoiceResult(NamedTuple):
-    """
-    Cached result of taking one graph choice from one compiled state. The
-    "choice" is the graph edge label, i.e. a codon or a context sequence.
-
-    Each ChoiceResult is specific to its location in the graph. The descendant
-    counts and log mass are calculated iteratively by summing the values of
-    downstream states.
-    """
-    choice: str
-    descendant_count: int
-    descendant_log_mass: float
-    next_state_id: Optional[int]
-    is_coding: bool
-
-
 class CompiledView(NamedTuple):
     """
     Cached data for a compiled CodonGraphView, to speed up sampling and enumeration.
@@ -53,15 +37,14 @@ class CompiledView(NamedTuple):
     child_transition_choice_ids: Tuple[int, ...]
     child_transition_state_ids: Tuple[int, ...]
 
-    # Compiled graph choices (lookup):
-    # state ID -> choice -> ChoiceResult
-    # Used for fast sequence validation and graph traversal in the graph view.
-    choices_by_state_id: Tuple[Dict[str, ChoiceResult], ...]
-
-    # Compiled graph choices (iteration):
-    # state ID -> ChoiceResults in graph order
-    # Used for fast sampling and sequence enumeration in the graph view.
-    choice_results_by_state_id: Tuple[Tuple[ChoiceResult, ...], ...]
+    # Flat compiled-choice storage. The active choices for a state occupy
+    # choice_result_starts[state_id]:choice_result_ends[state_id].
+    choice_result_starts: Tuple[int, ...]
+    choice_result_ends: Tuple[int, ...]
+    choice_result_choice_ids: Tuple[int, ...]
+    choice_result_descendant_counts: Tuple[int, ...]
+    choice_result_descendant_log_masses: Tuple[float, ...]
+    choice_result_next_state_ids: Tuple[int, ...]
 
     n_valid_sequences: int
 
@@ -104,10 +87,14 @@ class ViewCompiler:
         self.child_transition_choice_ids: List[int] = []
         self.child_transition_state_ids: List[int] = []
 
-        # Compiled graph choices (lookup):
-        # state ID -> choice -> ChoiceResult
-        # Used for fast sequence validation and graph traversal in the graph view.
-        self.choices_by_state_id: List[Optional[Dict[str, ChoiceResult]]] = []
+        # Flat compiled-choice storage. Each state stores only the start and end
+        # offsets of its contiguous result slice.
+        self.choice_result_starts: List[int] = []
+        self.choice_result_ends: List[int] = []
+        self.choice_result_choice_ids: List[int] = []
+        self.choice_result_descendant_counts: List[int] = []
+        self.choice_result_descendant_log_masses: List[float] = []
+        self.choice_result_next_state_ids: List[int] = []
 
         # The cached log-ified codon weights, to avoid repeated log calculations.
         self.log_codon_weights = {
@@ -185,10 +172,7 @@ class ViewCompiler:
         self._set_constraints(self.view.constraints)
 
         initial_pos, initial_constraint_states = self._initial_state()
-        initial_state_id, _ = self._get_or_register_state_id(
-            initial_pos,
-            initial_constraint_states,
-        )
+        initial_state_id, _ = self._get_or_register_state_id(initial_pos, initial_constraint_states)
 
         self._compile_topology(initial_state_id)
         self._compile_choices()
@@ -217,36 +201,32 @@ class ViewCompiler:
         self.child_transition_starts = list(compiled.child_transition_starts)
         self.child_transition_ends = list(compiled.child_transition_ends)
         self.choices = list(compiled.choices)
-        self.choice_ids = {
-            choice: choice_id
-            for choice_id, choice in enumerate(self.choices)
-        }
+        self.choice_ids = {choice: choice_id for choice_id, choice in enumerate(self.choices)}
         self.child_transition_choice_ids = list(compiled.child_transition_choice_ids)
         self.child_transition_state_ids = list(compiled.child_transition_state_ids)
 
         n_states = len(self.state_positions)
         self.descendant_counts = [None] * n_states
         self.descendant_log_masses = [None] * n_states
-        self.choices_by_state_id = [None] * n_states
+        self.choice_result_starts = [-1] * n_states
+        self.choice_result_ends = [-1] * n_states
+        self.choice_result_choice_ids = []
+        self.choice_result_descendant_counts = []
+        self.choice_result_descendant_log_masses = []
+        self.choice_result_next_state_ids = []
 
         self._compile_choices()
-
-        choices_by_state_id = tuple(
-            choices or {}
-            for choices in self.choices_by_state_id
-        )
-
-        choice_results_by_state_id = tuple(
-            tuple(choices.values()) if choices else ()
-            for choices in self.choices_by_state_id
-        )
 
         initial_count = self.descendant_counts[compiled.initial_state_id]
         assert initial_count is not None
 
         return compiled._replace(
-            choices_by_state_id=choices_by_state_id,
-            choice_results_by_state_id=choice_results_by_state_id,
+            choice_result_starts=tuple(self.choice_result_starts),
+            choice_result_ends=tuple(self.choice_result_ends),
+            choice_result_choice_ids=tuple(self.choice_result_choice_ids),
+            choice_result_descendant_counts=tuple(self.choice_result_descendant_counts),
+            choice_result_descendant_log_masses=tuple(self.choice_result_descendant_log_masses),
+            choice_result_next_state_ids=tuple(self.choice_result_next_state_ids),
             n_valid_sequences=initial_count,
         )
 
@@ -339,7 +319,8 @@ class ViewCompiler:
         self.state_ids_by_pos[pos].append(state_id)
         self.descendant_counts.append(None)
         self.descendant_log_masses.append(None)
-        self.choices_by_state_id.append(None)
+        self.choice_result_starts.append(-1)
+        self.choice_result_ends.append(-1)
         self.child_transition_starts.append(-1)
         self.child_transition_ends.append(-1)
 
@@ -486,18 +467,19 @@ class ViewCompiler:
         state_id
             ID of the terminal traversal state being compiled.
         """
+        offset = len(self.choice_result_choice_ids)
+        self.choice_result_starts[state_id] = offset
+        self.choice_result_ends[state_id] = offset
         self.descendant_counts[state_id] = 1
         self.descendant_log_masses[state_id] = 0.0
-        self.choices_by_state_id[state_id] = {}
 
     def _compile_state(self, state_id: int) -> None:
         """
         Compile one non-final traversal state.
 
-        For each outgoing graph choice allowed by the current pins, combine the
-        previously compiled child state with the contribution from the current
-        graph position to produce a ChoiceResult. The total descendant count and
-        log mass are then cached for the current state.
+        For each outgoing graph choice allowed by the current pins, append its
+        result to the state's contiguous slice in the flat compiled-choice
+        arrays. Descendant counts and log masses are then cached for the state.
 
         Parameters
         ----------
@@ -505,50 +487,48 @@ class ViewCompiler:
             ID of the traversal state being compiled.
         """
         pos = self.state_positions[state_id]
-
-        choice_results = {}
         descendant_count = 0
 
         max_log_mass = -math.inf
         relative_mass_sum = 0.0
 
-        transition_end = self.child_transition_ends[state_id]
-        transition_start = self.child_transition_starts[state_id]
         is_coding = 1 <= pos <= self.seq_len
+        transition_start = self.child_transition_starts[state_id]
+        transition_end = self.child_transition_ends[state_id]
+        result_start = len(self.choice_result_choice_ids)
 
-        pinned_codons = (self.view.pinned_codons.get(pos) if is_coding else None)
+        pinned_codons = self.view.pinned_codons.get(pos) if is_coding else None
 
         for transition_id in range(transition_start, transition_end):
-            choice = self.choices[self.child_transition_choice_ids[transition_id]]
+            choice_id = self.child_transition_choice_ids[transition_id]
+            choice = self.choices[choice_id]
             child_id = self.child_transition_state_ids[transition_id]
+
             if pinned_codons is not None and choice not in pinned_codons:
                 continue
 
-            child_pos = self.state_positions[child_id]
             child_count = self.descendant_counts[child_id]
             subtree_log_mass = self.descendant_log_masses[child_id]
 
-            if child_count is None or subtree_log_mass is None:
-                continue
-
-            if child_count == 0:
+            if child_count is None or subtree_log_mass is None or child_count == 0:
                 continue
 
             if is_coding:
-                codon_log_weight = self.log_codon_weights[choice]
-                choice_log_mass = codon_log_weight + subtree_log_mass
+                choice_log_mass = self.log_codon_weights[choice] + subtree_log_mass
             else:
                 choice_log_mass = subtree_log_mass
 
-            result = ChoiceResult(
-                choice=choice,
-                descendant_count=child_count,
-                descendant_log_mass=choice_log_mass,
-                next_state_id=None if child_pos == self.final_pos else child_id,
-                is_coding=is_coding,
+            next_state_id = (
+                -1
+                if self.state_positions[child_id] == self.final_pos
+                else child_id
             )
 
-            choice_results[choice] = result
+            self.choice_result_choice_ids.append(choice_id)
+            self.choice_result_descendant_counts.append(child_count)
+            self.choice_result_descendant_log_masses.append(choice_log_mass)
+            self.choice_result_next_state_ids.append(next_state_id)
+
             descendant_count += child_count
 
             if choice_log_mass == -math.inf:
@@ -561,7 +541,11 @@ class ViewCompiler:
                 if max_log_mass == -math.inf:
                     relative_mass_sum = 1.0
                 else:
-                    relative_mass_sum = relative_mass_sum * math.exp(max_log_mass - choice_log_mass) + 1.0
+                    relative_mass_sum = (
+                        relative_mass_sum
+                        * math.exp(max_log_mass - choice_log_mass)
+                        + 1.0
+                    )
 
                 max_log_mass = choice_log_mass
 
@@ -570,7 +554,8 @@ class ViewCompiler:
         else:
             descendant_log_mass = max_log_mass + math.log(relative_mass_sum)
 
-        self.choices_by_state_id[state_id] = choice_results
+        self.choice_result_starts[state_id] = result_start
+        self.choice_result_ends[state_id] = len(self.choice_result_choice_ids)
         self.descendant_counts[state_id] = descendant_count
         self.descendant_log_masses[state_id] = descendant_log_mass
 
@@ -586,8 +571,6 @@ class ViewCompiler:
         initial_count = self.descendant_counts[initial_state_id]
         assert initial_count is not None
 
-        choices_by_state_id = tuple(choices or {} for choices in self.choices_by_state_id)
-
         return CompiledView(
             initial_pos=self.state_positions[initial_state_id],
             initial_constraint_state_id=self.state_constraint_state_ids[initial_state_id],
@@ -601,8 +584,12 @@ class ViewCompiler:
             choices=tuple(self.choices),
             child_transition_choice_ids=tuple(self.child_transition_choice_ids),
             child_transition_state_ids=tuple(self.child_transition_state_ids),
-            choices_by_state_id=choices_by_state_id,
-            choice_results_by_state_id=tuple(tuple(choices.values()) for choices in choices_by_state_id),
+            choice_result_starts=tuple(self.choice_result_starts),
+            choice_result_ends=tuple(self.choice_result_ends),
+            choice_result_choice_ids=tuple(self.choice_result_choice_ids),
+            choice_result_descendant_counts=tuple(self.choice_result_descendant_counts),
+            choice_result_descendant_log_masses=tuple(self.choice_result_descendant_log_masses),
+            choice_result_next_state_ids=tuple(self.choice_result_next_state_ids),
             n_valid_sequences=initial_count,
         )
 

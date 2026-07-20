@@ -68,8 +68,6 @@ class CodonGraphView:
         self._pending_constraints: Tuple[Constraint, ...] = ()
 
         self.initial_state_id = None
-        self.choices_by_state_id = ()
-        self.choice_results_by_state_id = ()
         self.samplers_by_state_id = []
 
     def __getitem__(self, index: Union[int, slice]) -> Union[str, List[str]]:
@@ -173,16 +171,15 @@ class CodonGraphView:
         if len(seq) != len(self.graph.aa_seq) * 3:
             return False
 
+        compiled = self._compiled
         state_id = self.initial_state_id
-        choices_by_state_id = self.choices_by_state_id
-        positions_by_state_id = self._compiled.state_positions
 
         left_context_pos = self.graph.left_context_node.pos
         right_context_pos = self.graph.right_context_node.pos
 
         while state_id is not None:
+            pos = compiled.state_positions[state_id]
 
-            pos = positions_by_state_id[state_id]
             if pos == left_context_pos:
                 node = self.graph.left_context_node
             elif pos == right_context_pos:
@@ -196,12 +193,18 @@ class CodonGraphView:
             else:
                 choice = node.sequence
 
-            result = choices_by_state_id[state_id].get(choice)
+            result_start = compiled.choice_result_starts[state_id]
+            result_end = compiled.choice_result_ends[state_id]
 
-            if result is None:
+            for result_id in range(result_start, result_end):
+                choice_id = compiled.choice_result_choice_ids[result_id]
+
+                if compiled.choices[choice_id] == choice:
+                    next_state_id = compiled.choice_result_next_state_ids[result_id]
+                    state_id = None if next_state_id == -1 else next_state_id
+                    break
+            else:
                 return False
-
-            state_id = result.next_state_id
 
         return True
 
@@ -356,8 +359,6 @@ class CodonGraphView:
         view._pending_constraints = self._pending_constraints
 
         view.initial_state_id = self.initial_state_id
-        view.choices_by_state_id = self.choices_by_state_id
-        view.choice_results_by_state_id = self.choice_results_by_state_id
         view.samplers_by_state_id = [None] * len(self.samplers_by_state_id)
 
         return view
@@ -385,8 +386,6 @@ class CodonGraphView:
         self._pending_constraints = ()
 
         self.initial_state_id = compiled.initial_state_id
-        self.choices_by_state_id = compiled.choices_by_state_id
-        self.choice_results_by_state_id = compiled.choice_results_by_state_id
         self.samplers_by_state_id = [None] * len(compiled.state_positions)
 
     def _update_compile_status(self, status: int) -> None:
@@ -587,20 +586,34 @@ class CodonGraphView:
         if sampler is not None:
             return sampler
 
-        choice_results = self.choice_results_by_state_id[state_id]
+        compiled = self._compiled
+        result_start = compiled.choice_result_starts[state_id]
+        result_end = compiled.choice_result_ends[state_id]
 
-        if not choice_results:
+        if result_start == result_end:
             return None
+
+        pos = compiled.state_positions[state_id]
+        is_coding = 1 <= pos <= len(self.graph.aa_seq)
 
         runtime_items = []
         runtime_log_masses = []
 
-        for result in choice_results:
-            if result.descendant_log_mass == -math.inf:
+        for result_id in range(result_start, result_end):
+            log_mass = compiled.choice_result_descendant_log_masses[result_id]
+
+            if log_mass == -math.inf:
                 continue
 
-            runtime_items.append((result.choice, result.is_coding, result.next_state_id))
-            runtime_log_masses.append(result.descendant_log_mass)
+            choice_id = compiled.choice_result_choice_ids[result_id]
+            next_state_id = compiled.choice_result_next_state_ids[result_id]
+
+            runtime_items.append((
+                compiled.choices[choice_id],
+                is_coding,
+                None if next_state_id == -1 else next_state_id,
+            ))
+            runtime_log_masses.append(log_mass)
 
         if not runtime_items:
             return None
@@ -611,7 +624,11 @@ class CodonGraphView:
             sampler = UniformSampler(items=runtime_items, rng=self._rng)
         else:
             runtime_weights = self._convert_log_masses_to_sampler_weights(runtime_log_masses)
-            sampler = WeightedSampler(items=runtime_items, weights=runtime_weights, rng=self._rng,)
+            sampler = WeightedSampler(
+                items=runtime_items,
+                weights=runtime_weights,
+                rng=self._rng,
+            )
 
         self.samplers_by_state_id[state_id] = sampler
 
@@ -676,26 +693,33 @@ class CodonGraphView:
         -------
         The sequence at the desired index.
         """
+        compiled = self._compiled
         state_id = self.initial_state_id
-        choice_results_by_state_id = self.choice_results_by_state_id
         sequence_parts = []
 
         while state_id is not None:
-            results = choice_results_by_state_id[state_id]
+            result_start = compiled.choice_result_starts[state_id]
+            result_end = compiled.choice_result_ends[state_id]
 
-            if not results:
+            if result_start == result_end:
                 raise RuntimeError('Unexpected dead end during sequence index traversal.')
 
-            if not results[0].is_coding:
-                state_id = results[0].next_state_id
+            pos = compiled.state_positions[state_id]
+            is_coding = 1 <= pos <= len(self.graph.aa_seq)
+
+            if not is_coding:
+                next_state_id = compiled.choice_result_next_state_ids[result_start]
+                state_id = None if next_state_id == -1 else next_state_id
                 continue
 
-            for result in results:
-                descendant_count = result.descendant_count
+            for result_id in range(result_start, result_end):
+                descendant_count = compiled.choice_result_descendant_counts[result_id]
 
                 if index < descendant_count:
-                    sequence_parts.append(result.choice)
-                    state_id = result.next_state_id
+                    choice_id = compiled.choice_result_choice_ids[result_id]
+                    next_state_id = compiled.choice_result_next_state_ids[result_id]
+                    sequence_parts.append(compiled.choices[choice_id])
+                    state_id = None if next_state_id == -1 else next_state_id
                     break
 
                 index -= descendant_count
@@ -714,12 +738,7 @@ class CodonGraphView:
         str
             All valid coding sequences, one by one
         """
-        # Stack is:
-        # (
-        #       state,
-        #       coding sequence constructed so far,
-        # )
-        choice_results_by_state_id = self.choice_results_by_state_id
+        compiled = self._compiled
         sequence_parts = [''] * len(self.graph.aa_seq)
 
         stack = [(self.initial_state_id, 0, None)]
@@ -734,19 +753,34 @@ class CodonGraphView:
                 yield ''.join(sequence_parts)
                 continue
 
-            results = choice_results_by_state_id[state_id]
+            result_start = compiled.choice_result_starts[state_id]
+            result_end = compiled.choice_result_ends[state_id]
 
-            if not results:
+            if result_start == result_end:
                 continue
 
-            if not results[0].is_coding:
-                stack.append((results[0].next_state_id, codon_index, None))
+            pos = compiled.state_positions[state_id]
+            is_coding = 1 <= pos <= len(self.graph.aa_seq)
+
+            if not is_coding:
+                next_state_id = compiled.choice_result_next_state_ids[result_start]
+                stack.append((
+                    None if next_state_id == -1 else next_state_id,
+                    codon_index,
+                    None,
+                ))
                 continue
 
             next_codon_index = codon_index + 1
 
-            for result in reversed(results):
-                stack.append((result.next_state_id, next_codon_index, result.choice))
+            for result_id in range(result_end - 1, result_start - 1, -1):
+                choice_id = compiled.choice_result_choice_ids[result_id]
+                next_state_id = compiled.choice_result_next_state_ids[result_id]
+                stack.append((
+                    None if next_state_id == -1 else next_state_id,
+                    next_codon_index,
+                    compiled.choices[choice_id],
+                ))
 
     def _iter_sequence_range(
         self,
@@ -768,13 +802,7 @@ class CodonGraphView:
         str
             Valid coding sequences in the requested range.
         """
-        # Stack is:
-        # (
-        #       state,
-        #       sequence constructed so far,
-        #       0-based index of the first sequence reachable from that state.
-        # )
-        choice_results_by_state_id = self.choice_results_by_state_id
+        compiled = self._compiled
         sequence_parts = [''] * len(self.graph.aa_seq)
 
         stack = [(self.initial_state_id, 0, None, 0)]
@@ -790,31 +818,44 @@ class CodonGraphView:
                     yield ''.join(sequence_parts)
                 continue
 
-            results = choice_results_by_state_id[state_id]
+            result_start = compiled.choice_result_starts[state_id]
+            result_end = compiled.choice_result_ends[state_id]
 
-            if not results:
+            if result_start == result_end:
                 continue
 
-            if not results[0].is_coding:
-                stack.append((results[0].next_state_id, codon_index, None, offset))
+            pos = compiled.state_positions[state_id]
+            is_coding = 1 <= pos <= len(self.graph.aa_seq)
+
+            if not is_coding:
+                next_state_id = compiled.choice_result_next_state_ids[result_start]
+                stack.append((
+                    None if next_state_id == -1 else next_state_id,
+                    codon_index,
+                    None,
+                    offset,
+                ))
                 continue
 
             next_codon_index = codon_index + 1
             child_start = offset
             push = []
 
-            for result in results:
-                child_stop = child_start + result.descendant_count
+            for result_id in range(result_start, result_end):
+                descendant_count = compiled.choice_result_descendant_counts[result_id]
+                child_stop = child_start + descendant_count
 
                 if child_stop > start and child_start < stop:
-                    push.append((result, child_start))
+                    push.append((result_id, child_start))
 
                 child_start = child_stop
 
-            for result, child_start in reversed(push):
+            for result_id, child_start in reversed(push):
+                choice_id = compiled.choice_result_choice_ids[result_id]
+                next_state_id = compiled.choice_result_next_state_ids[result_id]
                 stack.append((
-                    result.next_state_id,
+                    None if next_state_id == -1 else next_state_id,
                     next_codon_index,
-                    result.choice,
+                    compiled.choices[choice_id],
                     child_start,
                 ))
