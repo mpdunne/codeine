@@ -1,6 +1,6 @@
 import math
 
-from typing import Dict, List, NamedTuple, Optional, Tuple, TYPE_CHECKING
+from typing import Dict, List, NamedTuple, Optional, Sequence, Tuple, TYPE_CHECKING
 
 from codeine.constraints.base import Constraint, ConstraintState, DEAD_STATE, SAFE_STATE
 from codeine.graph.nodes import CodonNode
@@ -180,7 +180,7 @@ class ViewCompiler:
     def extend(
             self,
             compiled: CompiledView,
-            constraints: Tuple[Constraint, ...],
+            constraints: Sequence[Constraint],
     ) -> CompiledView:
         """
         Extend an existing compiled topology with additional constraints.
