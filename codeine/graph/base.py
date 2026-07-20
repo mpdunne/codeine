@@ -247,4 +247,4 @@ class CodonGraph:
         A constrained view over this graph.
         """
         from codeine.graph.view import CodonGraphView
-        return CodonGraphView(self, seed=seed, weights=weights)
+        return CodonGraphView(self, seed=seed, weights=weights, constraints=constraints)
