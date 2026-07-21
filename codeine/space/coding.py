@@ -371,7 +371,7 @@ class CodingSpace:
         """
         self.set_max_homopolymer(None)
 
-    def set_constraints(self, constraints: Sequence[Constraint]) -> None:
+    def _set_constraints(self, constraints: Sequence[Constraint]) -> None:
         """
         Set any additional constraints.
 
@@ -383,11 +383,11 @@ class CodingSpace:
         self.constraints = tuple(constraints)
         self._update_constraints()
 
-    def clear_constraints(self) -> None:
+    def _clear_constraints(self) -> None:
         """
         Remove custom constraints.
         """
-        self.set_constraints(())
+        self._set_constraints(())
 
     def set_codon_weights(self, codon_weights: CodonWeights) -> None:
         """
