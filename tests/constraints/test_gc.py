@@ -1,7 +1,7 @@
 import pytest
 
 from codeine.graph.base import CodonGraph
-from codeine.constraints.gc import GC3Constraint, GCConstraint
+from codeine.constraints._gc import _GC3Constraint, _GCConstraint
 
 from tests.data import NORMAL_PROTEINS, LARGE_PROTEINS
 
@@ -17,11 +17,11 @@ def gc3_count(sequence):
 @pytest.mark.parametrize(
     'constraint',
     [
-        GCConstraint(),
-        GCConstraint(min_count=3),
-        GCConstraint(max_count=4),
-        GCConstraint(min_perc=30, max_perc=70),
-        GCConstraint(min_frac=0.3, max_count=5),
+        _GCConstraint(),
+        _GCConstraint(min_count=3),
+        _GCConstraint(max_count=4),
+        _GCConstraint(min_perc=30, max_perc=70),
+        _GCConstraint(min_frac=0.3, max_count=5),
     ],
 )
 @pytest.mark.parametrize('aa_seq', (
@@ -51,11 +51,11 @@ def test_gc_constraint_matches_enumerate_and_reject(aa_seq, constraint):
 @pytest.mark.parametrize(
     'constraint',
     [
-        GC3Constraint(),
-        GC3Constraint(min_count=2),
-        GC3Constraint(max_count=2),
-        GC3Constraint(min_perc=25, max_perc=75),
-        GC3Constraint(min_frac=0.25, max_count=3),
+        _GC3Constraint(),
+        _GC3Constraint(min_count=2),
+        _GC3Constraint(max_count=2),
+        _GC3Constraint(min_perc=25, max_perc=75),
+        _GC3Constraint(min_frac=0.25, max_count=3),
     ],
 )
 @pytest.mark.parametrize('aa_seq', (
@@ -86,8 +86,8 @@ def test_gc3_constraint_matches_enumerate_and_reject(aa_seq, constraint):
 @pytest.mark.parametrize(
     'constraint,count_fn,total_fn',
     [
-        (GCConstraint(min_perc=40, max_perc=60), gc_count, lambda sequence: len(sequence)),
-        (GC3Constraint(min_perc=40, max_perc=60), gc3_count, lambda sequence: len(sequence) // 3)
+        (_GCConstraint(min_perc=40, max_perc=60), gc_count, lambda sequence: len(sequence)),
+        (_GC3Constraint(min_perc=40, max_perc=60), gc3_count, lambda sequence: len(sequence) // 3)
     ],
 )
 @pytest.mark.parametrize('aa_seq', (
@@ -111,7 +111,7 @@ def test_sampled_sequences_satisfy_constraints(aa_seq, constraint, count_fn, tot
 
 def test_gc_constraint_counts_single_final_codon():
     view = CodonGraph('M').view()
-    view.set_constraints([GCConstraint(min_count=2)])
+    view.set_constraints([_GCConstraint(min_count=2)])
 
     assert set(view.enumerate()) == set()
 
@@ -119,8 +119,8 @@ def test_gc_constraint_counts_single_final_codon():
 def test_combined_gc_constraints_match_enumerate_and_reject():
     aa_seq = 'SASSAFRAS'
 
-    gc_constraint = GCConstraint(min_perc=40, max_perc=60)
-    gc3_constraint = GC3Constraint(min_perc=20, max_perc=80)
+    gc_constraint = _GCConstraint(min_perc=40, max_perc=60)
+    gc3_constraint = _GC3Constraint(min_perc=20, max_perc=80)
 
     graph = CodonGraph(aa_seq)
 
