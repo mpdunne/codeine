@@ -73,9 +73,11 @@ class ViewCompiler:
         self.states: List[TraversalState] = []
 
         # Dynamic-programming totals:
-        # state ID -> (descendant count, descendant log mass)
+        # state ID -> descendant count
+        # state ID -> descendant log mass
         # Avoids repeatedly recomputing subtree sizes and probability masses.
-        self.totals_by_state_id: List[Optional[Tuple[int, float]]] = []
+        self.descendant_counts: List[Optional[int]] = []
+        self.descendant_log_masses: List[Optional[float]] = []
 
         # Deep compiled transitions:
         # state ID -> [(choice, child state ID), ...]
@@ -174,7 +176,8 @@ class ViewCompiler:
         self.states = list(compiled.states)
         self.child_results_by_state_id = list(compiled.child_results_by_state_id)
 
-        self.totals_by_state_id = [None] * len(self.states)
+        self.descendant_counts = [None] * len(self.states)
+        self.descendant_log_masses = [None] * len(self.states)
         self.choices_by_state_id = [None] * len(self.states)
 
         self._compile_choices()
@@ -189,13 +192,13 @@ class ViewCompiler:
             for choices in self.choices_by_state_id
         )
 
-        initial_total = self.totals_by_state_id[compiled.initial_state_id]
-        assert initial_total is not None
+        initial_count = self.descendant_counts[compiled.initial_state_id]
+        assert initial_count is not None
 
         return compiled._replace(
             choices_by_state_id=choices_by_state_id,
             choice_results_by_state_id=choice_results_by_state_id,
-            n_valid_sequences=initial_total[0],
+            n_valid_sequences=initial_count,
         )
 
     def extend(
@@ -256,7 +259,8 @@ class ViewCompiler:
         state_id = len(self.states)
         self.state_ids[key] = state_id
         self.states.append(key)
-        self.totals_by_state_id.append(None)
+        self.descendant_counts.append(None)
+        self.descendant_log_masses.append(None)
         self.choices_by_state_id.append(None)
         self.child_results_by_state_id.append(None)
 
@@ -390,7 +394,8 @@ class ViewCompiler:
         state_id
             ID of the terminal traversal state being compiled.
         """
-        self.totals_by_state_id[state_id] = (1, 0.0)
+        self.descendant_counts[state_id] = 1
+        self.descendant_log_masses[state_id] = 0.0
         self.choices_by_state_id[state_id] = {}
 
     def _compile_state(self, state_id: int) -> None:
@@ -425,12 +430,11 @@ class ViewCompiler:
                 continue
 
             child_pos, _child_constraint_states = self.states[child_id]
-            child_total = self.totals_by_state_id[child_id]
+            child_count = self.descendant_counts[child_id]
+            subtree_log_mass = self.descendant_log_masses[child_id]
 
-            if child_total is None:
+            if child_count is None or subtree_log_mass is None:
                 continue
-
-            child_count, subtree_log_mass = child_total
 
             if child_count == 0:
                 continue
@@ -472,7 +476,8 @@ class ViewCompiler:
             descendant_log_mass = max_log_mass + math.log(relative_mass_sum)
 
         self.choices_by_state_id[state_id] = choice_results
-        self.totals_by_state_id[state_id] = (descendant_count, descendant_log_mass)
+        self.descendant_counts[state_id] = descendant_count
+        self.descendant_log_masses[state_id] = descendant_log_mass
 
     def _compiled_view(self, initial_state_id: int) -> CompiledView:
         """
@@ -483,8 +488,8 @@ class ViewCompiler:
         initial_state_id
             The initial state ID.
         """
-        initial_total = self.totals_by_state_id[initial_state_id]
-        assert initial_total is not None
+        initial_count = self.descendant_counts[initial_state_id]
+        assert initial_count is not None
 
         choices_by_state_id = tuple(choices or {} for choices in self.choices_by_state_id)
 
@@ -495,7 +500,7 @@ class ViewCompiler:
             child_results_by_state_id=tuple(tuple(results or ()) for results in self.child_results_by_state_id),
             choices_by_state_id=choices_by_state_id,
             choice_results_by_state_id=tuple(tuple(choices.values()) for choices in choices_by_state_id),
-            n_valid_sequences=initial_total[0],
+            n_valid_sequences=initial_count,
         )
 
     def _uncompiled_children(self, state_id: int) -> List[Tuple[int, bool]]:
