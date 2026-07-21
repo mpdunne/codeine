@@ -3,10 +3,10 @@ import pytest
 from itertools import product
 
 from codeine.constraints.base import DEAD_STATE
-from codeine.constraints.count import CountConstraint, INITIAL_STATE, SAFE_STATE
+from codeine.constraints._count import _CountConstraint, INITIAL_STATE, SAFE_STATE
 
 
-class BinaryCountConstraint(CountConstraint):
+class BinaryCountConstraint(_CountConstraint):
     """
     Count choices equal to 'B'.
 

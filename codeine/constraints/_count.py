@@ -9,7 +9,8 @@ from codeine.graph.base import CodonGraph
 INITIAL_STATE = 0
 
 
-class CountConstraint(Constraint):
+# This constraint is experimental and therefore hidden from the public API
+class _CountConstraint(Constraint):
     """
     Base class for constraints that accumulate a non-negative integer count.
 

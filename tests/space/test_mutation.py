@@ -1101,7 +1101,8 @@ def test_mutation_space_repr_includes_variant_count_with_distance_constraints():
 
 def test_setting_distance_constraints_preserves_base_constraints():
     constraint = BannedSequenceConstraint(['GAA'])
-    space = CodingSpace('E', constraints=[constraint])
+    space = CodingSpace('E')
+    space._set_constraints([constraint])
     mutants = MutationSpace(space, 'GAG')
 
     mutants.set_distance_constraints(max_nts=1)

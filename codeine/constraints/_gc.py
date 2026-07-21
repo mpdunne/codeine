@@ -1,12 +1,13 @@
 from itertools import product
 
-from codeine.constraints.count import CountConstraint
+from codeine.constraints._count import _CountConstraint
 
 
 CODONS = tuple("".join(codon) for codon in product("ACGT", repeat=3))
 
 
-class GCConstraint(CountConstraint):
+# This constraint is experimental and therefore hidden from the public API
+class _GCConstraint(_CountConstraint):
     """
     Constrain the total number or proportion of G/C nucleotides.
     """
@@ -17,7 +18,8 @@ class GCConstraint(CountConstraint):
     }
 
 
-class GC3Constraint(CountConstraint):
+# This constraint is experimental and therefore hidden from the public API
+class _GC3Constraint(_CountConstraint):
     """
     Constrain the number or proportion of codons with G/C as their last nucleotide.
     """
