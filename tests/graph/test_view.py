@@ -8,7 +8,6 @@ from unittest.mock import MagicMock
 from scipy.stats import chisquare, chi2_contingency
 
 from codeine.constraints.base import Constraint, DEAD_STATE, SAFE_STATE
-from codeine.constraints.gc import GCConstraint
 from codeine.constraints.banned import BannedSequenceConstraint
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
@@ -1613,7 +1612,7 @@ def test_set_constraints_marks_view_for_topology_update():
     view = CodonGraph('MIKEY').view()
     view.compile()
 
-    view.set_constraints([GCConstraint(min_perc=40)])
+    view.set_constraints([RejectChoiceConstraint('ATT')])
 
     assert view._compile_status == COMPILE_DEEP
 
@@ -1621,7 +1620,7 @@ def test_set_constraints_marks_view_for_topology_update():
 def test_compile_requirement_is_not_downgraded():
     view = CodonGraph('MIKEY').view()
 
-    view.set_constraints([GCConstraint(min_perc=40)])
+    view.set_constraints([RejectChoiceConstraint('ATT')])
     assert view._compile_status == COMPILE_DEEP
 
     view.set_weights(CodonWeights.ecoli())
@@ -1702,7 +1701,7 @@ def test_shallow_compile_clears_cached_samplers():
 
 def test_pins_are_applied_on_top_of_constraints():
     graph = CodonGraph('MIKEY')
-    view = graph.view(constraints=[GCConstraint(min_perc=40)])
+    view = graph.view(constraints=[RejectChoiceConstraint('ATT')])
 
     unconstrained_count = view.n_valid_sequences
 
