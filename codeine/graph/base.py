@@ -157,9 +157,9 @@ class CodonGraph:
         """
         Initialise the codon graph.
         """
-        left_context_node = ContextNode(0, self.context_l)
-        right_context_node = ContextNode(len(self.aa_seq) + 1, self.context_r)
-        end_node = EndNode()
+        left_context_node = ContextNode(pos=0, sequence=self.context_l)
+        right_context_node = ContextNode(pos=len(self.aa_seq) + 1, sequence=self.context_r)
+        end_node = EndNode(pos=len(self.aa_seq) + 2)
 
         codon_nodes = []
         for ix, aa in enumerate(self.aa_seq):
@@ -170,7 +170,7 @@ class CodonGraph:
             else:
                 codons = self.tt.aa_to_codons[aa]
 
-            node = CodonNode(pos, aa, codons)
+            node = CodonNode(pos=pos, aa=aa, codons=codons)
             codon_nodes.append(node)
 
         # Left context -> first codon node

@@ -3,7 +3,6 @@ import math
 from typing import Dict, List, NamedTuple, Optional, Sequence, Tuple, TYPE_CHECKING
 
 from codeine.constraints.base import Constraint, ConstraintState, DEAD_STATE, SAFE_STATE
-from codeine.graph.nodes import CodonNode
 
 if TYPE_CHECKING:
     from codeine.graph.view import CodonGraphView
@@ -98,7 +97,7 @@ class ViewCompiler:
         self.initial_pos = self.graph.initial_node.pos
         self.final_pos = self.graph.final_node.pos
         self.positions = tuple(node.pos for node in self.graph.nodes)
-        self.coding_positions = {node.pos for node in self.graph.nodes if isinstance(node, CodonNode)}
+        self.seq_len = len(self.graph.aa_seq)
 
         # Graph transitions available at each position. Permanent graph-level codon
         # restrictions are already reflected in node.transitions. Temporary view
@@ -416,7 +415,7 @@ class ViewCompiler:
         max_log_mass = -math.inf
         relative_mass_sum = 0.0
 
-        is_coding = pos in self.coding_positions
+        is_coding = 1 <= pos <= self.seq_len
         child_results = self.child_results_by_state_id[state_id] or ()
 
         pinned_codons = (self.view.pinned_codons.get(pos) if is_coding else None)
