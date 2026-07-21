@@ -303,7 +303,7 @@ class ViewCompiler:
                 self.child_results_by_state_id[state_id] = []
                 continue
 
-            stack.extend(child_id for child_id, _expanded in self._uncompiled_children(state_id))
+            stack.extend(self._uncompiled_children(state_id))
 
     def _compile_extended_topology(self, compiled: CompiledView, initial_state_id: int) -> None:
         """
@@ -498,7 +498,7 @@ class ViewCompiler:
             n_valid_sequences=initial_total[0],
         )
 
-    def _uncompiled_children(self, state_id: int) -> List[Tuple[int, bool]]:
+    def _uncompiled_children(self, state_id: int) -> List[int]:
         """
         Return child state IDs reached by taking each outgoing graph choice.
 
@@ -513,8 +513,8 @@ class ViewCompiler:
 
         Returns
         -------
-        list of tuple
-            Stack entries for child state IDs still needing compilation.
+        list of int
+            Child state IDs still needing compilation.
         """
         child_results = []
         uncompiled_children = []
@@ -532,7 +532,7 @@ class ViewCompiler:
             child_results.append((choice, child_id))
 
             if is_new:
-                uncompiled_children.append((child_id, False))
+                uncompiled_children.append(child_id)
 
         self.child_results_by_state_id[state_id] = child_results
 
