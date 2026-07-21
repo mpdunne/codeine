@@ -31,7 +31,6 @@ class CodingSpace:
         codon_restrictions: Optional[Dict[int, CodonRestriction]] = None,
         forbidden_motifs: Optional[ForbiddenMotifs] = None,
         max_homopolymer: Optional[int] = None,
-        constraints: Optional[Sequence[Constraint]] = None,
         context_l: str = '',
         context_r: str = '',
         codon_weights: Optional[CodonWeights] = None,
@@ -52,8 +51,6 @@ class CodingSpace:
             Forbidden motifs, either as strings or as ``codeine.RestrictionSite``.
         max_homopolymer
             The maximum allowed length of nucleotide homopolymer
-        constraints
-            Any additional constraints.
         context_l
             The context sequence to the left of the coding sequence.
         context_r
@@ -77,7 +74,7 @@ class CodingSpace:
         view = graph.view(seed=seed, weights=codon_weights)
         self.view = view
 
-        self.constraints = tuple(constraints or ())
+        self.constraints = ()
         self.forbidden_motifs = self._normalise_forbidden_motifs(forbidden_motifs)
         self.max_homopolymer = max_homopolymer
 
