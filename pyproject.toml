@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,12 +7,58 @@ name = "codeine"
 version = "0.2.1"
 description = "A Python library for exploring constrained synonymous protein-coding space."
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+
 authors = [
   { name = "Michael Peter Dunne" },
 ]
+
 requires-python = ">=3.8"
-dependencies = [
+
+keywords = [
+  "bioinformatics",
+  "computational biology",
+  "synthetic biology",
+  "gene design",
+  "DNA",
+  "RNA",
+  "coding sequence",
+  "CDS",
+  "codon",
+  "codon optimisation",
+  "codon optimization",
+  "synonymous",
+  "protein",
+  "protein engineering",
+  "sequence optimisation",
 ]
+
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Science/Research",
+  "Intended Audience :: Developers",
+  "Natural Language :: English",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Scientific/Engineering",
+  "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/mpdunne/codeine"
+Documentation = "https://codeine.readthedocs.io/"
+Repository = "https://github.com/mpdunne/codeine"
+Issues = "https://github.com/mpdunne/codeine/issues"
 
 [tool.setuptools.packages.find]
 include = ["codeine", "codeine.*"]
