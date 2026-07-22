@@ -472,6 +472,7 @@ def test_sequences_at_matches_full_enumeration_slice():
     assert view[5:12] == all_seqs[5:12]
     assert view[12:] == all_seqs[12:]
     assert view[:] == all_seqs
+    assert view[-5:] == all_seqs[-5:]
 
 
 def test_sequences_at_with_step_matches_expected_slice():
@@ -496,6 +497,20 @@ def test_large_sequence_at_matches_large_slice():
     index = 10**69
 
     assert view.sequence_at(index) == view[index:index + 1][0]
+
+
+def test_sequence_at_accepts_negative_index():
+    view = CodonGraph('MIKEY' * 1000).view()
+
+    assert view.sequence_at(-1) == view.sequence_at(view.n_valid_sequences - 1)
+    assert view.sequence_at(-view.n_valid_sequences) == view.sequence_at(0)
+
+
+def test_sequence_at_raises_for_negative_index_out_of_range():
+    view = CodonGraph('MIKEY' * 1000).view()
+
+    with pytest.raises(IndexError):
+        view.sequence_at(-view.n_valid_sequences - 1)
 
 
 def test_large_enumerate_range_matches_repeated_sequence_at():
@@ -1664,7 +1679,6 @@ def test_pin_codons_preserves_deep_topology():
 
     assert view._compiled.states == states
     assert view._compiled.child_results_by_state_id == child_results
-
 
 
 def test_unpin_codons_restores_sequence_count():
