@@ -99,6 +99,18 @@ def test_view_getitem():
         assert view[i] == seqs[i]
 
 
+def test_view_getitem_raises_for_bad_index():
+    view = CodonGraph('MF').view()
+    with pytest.raises(ValueError):
+        view['hello']
+
+    with pytest.raises(ValueError):
+        view[None]
+
+    with pytest.raises(ValueError):
+        view[0.1]
+
+
 def test_getitem_works_for_very_large_sequences():
     view = CodonGraph('MIKEY' * 1000).view()
     _ = view[100]

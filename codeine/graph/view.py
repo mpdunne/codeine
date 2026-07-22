@@ -89,7 +89,11 @@ class CodonGraphView:
         if isinstance(index, slice):
             return self.sequences_at(index)
 
-        return self.sequence_at(index)
+        elif isinstance(index, int):
+            return self.sequence_at(index)
+
+        else:
+            raise ValueError(f'Invalid index: {index}')
 
     def __iter__(self) -> Iterator[str]:
         """
