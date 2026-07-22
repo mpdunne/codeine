@@ -23,7 +23,6 @@ Output:
 
    1536 valid coding sequences
 
-
 Sampling
 --------
 Coding sequences for the chosen amino acid sequence can be obtained by randomly sampling the space. For example:

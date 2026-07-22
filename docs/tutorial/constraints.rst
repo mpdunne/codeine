@@ -165,3 +165,24 @@ Constraints can be combined freely!
 
    print(space.n_valid_sequences)
    print(space.sample())
+
+Empty spaces
+------------
+
+It is possible for constraints to combine in such a way that there exist no valid coding sequences satisfying them. In this case, the coding space is considered to be empty, and cannot be sampled from.
+
+For example:
+
+.. code-block:: python
+
+    from codeine import CodingSpace, RestrictionSite
+
+    space = CodingSpace(
+       'MKTLEFQNGSCPRYKKL',
+       forbidden_motifs=[
+           'ATGAAA',
+           'ATGAAG',
+       ],
+    )
+
+    print(f'Num. valid sequences: {space.n_valid_sequences} ')
