@@ -251,6 +251,17 @@ class CodingSpace:
         """
         return self.view.contains(seq)
 
+    def count(self) -> int:
+        """
+        Return the number of valid sequences in this coding space.
+
+        Returns
+        -------
+        int
+            The number of valid sequences.
+        """
+        return self.n_valid_sequences
+
     def mutants(
             self,
             cds: str,
