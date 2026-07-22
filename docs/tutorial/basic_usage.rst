@@ -112,3 +112,19 @@ Output:
     ATGATTTTAAAA
     ATGATTTTAAAG
     ATGATTTTGAAA
+
+
+Membership
+----------
+
+The ``in`` operator can be used to test whether a coding sequence belongs to a coding space. Membership testing automatically accounts for any specified constraints and does not require enumerating the coding space.
+
+.. code-block:: python
+
+    space = CodingSpace('MILK', fixed_codons={2: 'ATC'})
+
+    print('ATGATCCTAAAG' in space)
+    # True
+
+    print('ATGATACTAAAG' in space)
+    # False
