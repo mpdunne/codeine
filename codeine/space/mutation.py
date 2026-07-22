@@ -253,6 +253,17 @@ class MutationSpace:
         """
         return self.view.contains(seq)
 
+    def count(self) -> int:
+        """
+        Return the number of valid variants in this mutation space.
+
+        Returns
+        -------
+        int
+            The number of valid variants.
+        """
+        return self.n_valid_variants
+
     def set_free_positions(self, positions: Collection[int]) -> None:
         """
         Replace the current set of free positions.

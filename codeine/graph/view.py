@@ -89,7 +89,11 @@ class CodonGraphView:
         if isinstance(index, slice):
             return self.sequences_at(index)
 
-        return self.sequence_at(index)
+        elif isinstance(index, int):
+            return self.sequence_at(index)
+
+        else:
+            raise ValueError(f'Invalid index: {index}')
 
     def __iter__(self) -> Iterator[str]:
         """
@@ -304,11 +308,13 @@ class CodonGraphView:
         if self._compile_status:
             self.compile()
 
-        if index < 0 or index >= self.n_valid_sequences:
-            raise IndexError(
-                f'Sequence index {index} out of range for '
-                f'{self.n_valid_sequences} valid sequences.'
-            )
+        n_valid_sequences = self.n_valid_sequences
+
+        if index < -n_valid_sequences or index >= n_valid_sequences:
+            raise IndexError(f'Sequence index {index} out of range for {n_valid_sequences} valid sequences.')
+
+        if index < 0:
+            index += n_valid_sequences
 
         return self._sequence_at(index)
 

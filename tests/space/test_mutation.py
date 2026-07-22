@@ -1170,3 +1170,9 @@ def test_updating_distance_constraints_preserves_frozen_positions():
 
     assert muts.pinned_codons == expected_pins
     assert muts.n_valid_variants == 6
+
+
+def test_coding_space_count():
+    space = CodingSpace('MIKEY')
+    muts = space.mutants(space[0], free_positions=[2, 3, 4])
+    assert muts.count() == muts.n_valid_variants == 12

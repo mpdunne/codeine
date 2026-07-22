@@ -213,6 +213,11 @@ def test_coding_space_sample_many():
     assert all(seq in space for seq in seqs)
 
 
+def test_coding_space_count():
+    space = CodingSpace('MIKEY')
+    assert space.count() == space.n_valid_sequences == 24
+
+
 def helper_get_banned_sequences_from_constraints(space):
     banned_sequence_constraints = [c for c in space.view.constraints if isinstance(c, BannedSequenceConstraint)]
     if len(banned_sequence_constraints) == 0:

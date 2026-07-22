@@ -201,7 +201,7 @@ class CodingSpace:
 
     def compile(self) -> None:
         """
-        Compile this mutation space.
+        Compile this coding space.
 
         If ``compile()`` has not been called manually, it will automatically be
         called before sampling, enumeration, or counting.
@@ -250,6 +250,17 @@ class CodingSpace:
         True if and only if the sequence is contained in this coding space.
         """
         return self.view.contains(seq)
+
+    def count(self) -> int:
+        """
+        Return the number of valid sequences in this coding space.
+
+        Returns
+        -------
+        int
+            The number of valid sequences.
+        """
+        return self.n_valid_sequences
 
     def mutants(
             self,
