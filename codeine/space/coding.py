@@ -201,7 +201,7 @@ class CodingSpace:
 
     def compile(self) -> None:
         """
-        Compile this mutation space.
+        Compile this coding space.
 
         If ``compile()`` has not been called manually, it will automatically be
         called before sampling, enumeration, or counting.
