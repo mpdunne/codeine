@@ -51,7 +51,7 @@ space = CodingSpace('MKTLEFQNGSCPRYKKL')
 print(space.n_valid_sequences)
 ```
 
-Sample a single valid sequences:
+Sample a single valid sequence:
 
 ```python
 from codeine import CodingSpace
