@@ -42,6 +42,8 @@ Output:
 
     TCGGAACAAGTTGAGAACTGCGAA
 
+In the example above, ``seed`` is provided to ensure reproducible sampling across runs.
+
 You can also sample batches of sequences:
 
 .. code-block:: python
