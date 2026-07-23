@@ -37,7 +37,7 @@ For biotechnological applications such as recombinant expression, we typically m
 
 Identifying valid coding sequences under such constraints quickly becomes challenging, especially for longer protein sequences.
 
-**Codeine** represents the complete space of valid coding sequences for a given protein and experimental setup. It enables highly efficient sampling, enumeration and mutation library design while guaranteeing that the generated sequences satisfy user-specified constraints.
+**Codeine** represents the complete space of valid coding sequences for a given protein and experimental setup. It enables efficient sampling, enumeration and mutation library design while guaranteeing that the generated sequences satisfy user-specified constraints.
 
 ## Examples
 
