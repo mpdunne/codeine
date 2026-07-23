@@ -29,7 +29,10 @@ Features
 * Sequence enumeration
 * Local sequence redesign
 * Mutation spaces
+* Fixed codons
+* Sequence contexts
 * Restriction site avoidance
+* Arbitrary forbidden motifs
 * Homopolymer constraints
 * Custom translation tables
 
@@ -41,7 +44,7 @@ Example
     from codeine import CodingSpace, RestrictionSite
 
     space = CodingSpace(
-        'SEQVENCE',
+        'CYIQNCPLG',
         forbidden_motifs=[RestrictionSite.EcoRI],
         max_homopolymer=5
     )

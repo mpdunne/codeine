@@ -134,6 +134,16 @@ class CodingSpace:
 
         return seq in self.view
 
+    def __len__(self) -> int:
+        """
+        This method exists only to provide a helpful error message. Being able to call
+        len(space) is a totally reasonable thing to expect, but python's ``len`` hits a limit
+        for very large spaces.
+
+        Use ``count()`` or ``n_valid_sequences`` instead.
+        """
+        raise TypeError('len() is not supported for CodingSpace; use .count() or .n_valid_sequences instead.')
+
     def __repr__(self) -> str:
         molecule = 'RNA' if self.translation_table.rna else 'DNA'
 

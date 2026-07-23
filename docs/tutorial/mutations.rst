@@ -14,10 +14,10 @@ To sample mutants, start with a ``CodingSpace`` and a reference coding sequence.
 
     from codeine import CodingSpace
 
-    space = CodingSpace('SEQVENCE')
+    space = CodingSpace('CYIQNCPLG')
 
     muts = space.mutants(
-        'AGCGAGCAGGTGGAGAACTGTGAG',
+        'TGTTACATACAAAATTGTCCTCTAGGC',
         max_nts=2,
     )
 
@@ -31,11 +31,11 @@ Alternatively the ``MutationSpace`` can be constructed directly:
 
     from codeine import CodingSpace, MutationSpace
 
-    space = CodingSpace('SEQVENCE')
+    space = CodingSpace('CYIQNCPLG')
 
     muts = MutationSpace(
         space=space,
-        cds='AGCGAGCAGGTGGAGAACTGTGAG',
+        cds='TGTTACATACAAAATTGTCCTCTAGGC',
         max_nts=2,
     )
 
@@ -125,7 +125,7 @@ Mutation spaces can be counted, enumerated, and sampled just like ordinary codin
 
     from codeine import CodingSpace
 
-    space = CodingSpace('SEQVENCE', seed=42)
+    space = CodingSpace('CYIQNCPLG', seed=42)
     muts = space.mutants(
         cds=space.sample(),
         min_nts=2,
