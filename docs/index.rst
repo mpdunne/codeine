@@ -41,7 +41,7 @@ Example
     from codeine import CodingSpace, RestrictionSite
 
     space = CodingSpace(
-        'SEQVENCE',
+        'CYIQNCPLG',
         forbidden_motifs=[RestrictionSite.EcoRI],
         max_homopolymer=5
     )

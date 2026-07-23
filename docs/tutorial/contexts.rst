@@ -19,9 +19,9 @@ Sequence contexts can be supplied to ``CodingSpace`` via the ``context_l`` and
     from codeine import CodingSpace, RestrictionSite
 
     space = CodingSpace(
-        'SEQVENCE',
+        'CYIQNCPLG',
         context_l='GCGGCCGCGAAT',
-        context_r='TTCAGAATTCCT',
+        context_r='ATTCAGAATTCC',
         forbidden_motifs=[RestrictionSite.EcoRI],
     )
 

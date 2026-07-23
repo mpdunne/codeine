@@ -22,7 +22,7 @@ and model organisms.
 
    weights = CodonWeights.ecoli()
 
-   space = CodingSpace('SEQVENCE', codon_weights=weights)
+   space = CodingSpace('CYIQNCPLG', codon_weights=weights)
 
 The species weights currently available in **Codeine** are:
 
@@ -48,23 +48,21 @@ Custom weights can be supplied as a dictionary.
 
    weights = CodonWeights(
        {
-           'F': {
-               'TTT': 0.8,
-               'TTC': 0.2,
+           'A': {
+               'GCA': 0.5,
+               'GCC': 0.2,
+               'GCG': 0.2,
+               'GCT': 0.1,
            },
-           'L': {
-               'TTA': 0.1,
-               'TTG': 0.2,
-               'CTT': 0.2,
-               'CTC': 0.2,
-               'CTA': 0.1,
-               'CTG': 0.2,
+           'C': {
+               'TGC': 0.6,
+               'TGT': 0.4,
            },
            ...
        }
    )
 
-   space = CodingSpace('SEQVENCE', codon_weights=weights)
+   space = CodingSpace('CYIQNCPLG', codon_weights=weights)
 
 The absolute value of the weights does not matter: only the relative weights
 among synonymous codons affect sampling.
@@ -73,8 +71,8 @@ For example, these are equivalent:
 
 .. code-block:: python
 
-   {'TTT': 0.8, 'TTC': 0.2}
-   {'TTT': 80, 'TTC': 20}
+   {'TGC': 0.8, 'TGT': 0.2}
+   {'TGC': 80, 'TGT': 20}
 
 Weights can be specified using RNA or DNA codons, they will be converted internally.
 
@@ -89,9 +87,10 @@ coding space, but it will never be selected during weighted sampling.
 
     weights = CodonWeights(
         {
-            'F': {
-                    'TTT': 0.0,
-                    'TTC': 1.0,
+            ...
+            'C': {
+                    'TGC': 0.0,
+                    'TGT': 1.0,
                 },
             ...
         }
@@ -124,4 +123,4 @@ entirely, generate an updated translation table using the ``restrict()`` method:
 
     table, weights = weights.restrict(table)
 
-    space = CodingSpace('SEQVENCE', translation_table=table, codon_weights=weights)
+    space = CodingSpace('CYIQNCPLG', translation_table=table, codon_weights=weights)

@@ -121,13 +121,13 @@ Fixed codons
 
     from codeine import CodingSpace
 
-    aa_seq = 'SEQVENCE'
+    aa_seq = 'MKTLEFQNGSCPRYKKL'
 
     space = CodingSpace(
        aa_seq,
        codon_restrictions={
-           1: ['TCG', 'TCA'],
-           2: 'GAG',
+           2: 'AAA',
+           3: ['ACA', 'ACG'],
        },
        seed=42,
     )

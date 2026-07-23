@@ -43,7 +43,7 @@ To use a nonstandard genetic code with **Codeine**, simply pass one to the ``Cod
 
    table = TranslationTable(table_id=2)
 
-   space = CodingSpace('SEQVENCE', translation_table=table)
+   space = CodingSpace('CYIQNCPLG', translation_table=table)
 
 Custom tables
 -------------

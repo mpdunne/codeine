@@ -13,7 +13,7 @@ To create a coding space and count sequences:
 
     from codeine import CodingSpace
 
-    space = CodingSpace('SEQVENCE')
+    space = CodingSpace('CYIQNCPLG')
 
     print(f"{space.n_valid_sequences} valid coding sequences")
 
@@ -21,7 +21,7 @@ Output:
 
 .. code-block:: text
 
-   1536 valid coding sequences
+   9216 valid coding sequences
 
 Sampling
 --------
@@ -31,7 +31,7 @@ Coding sequences for the chosen amino acid sequence can be obtained by randomly 
 
     from codeine import CodingSpace
 
-    space = CodingSpace('SEQVENCE', seed=42)
+    space = CodingSpace('CYIQNCPLG', seed=42)
 
     print(space.sample())
 
@@ -39,7 +39,7 @@ Output:
 
 .. code-block:: text
 
-    TCGGAACAAGTTGAGAACTGCGAA
+    TGTTACATACAAAATTGTCCTCTAGGC
 
 In the example above, ``seed`` is provided to ensure reproducible sampling across runs.
 
@@ -54,11 +54,11 @@ Output:
 
 .. code-block:: text
 
-    TCGGAACAAGTTGAGAACTGCGAA
-    TCAGAACAAGTAGAAAATTGCGAG
-    TCCGAGCAGGTTGAGAACTGTGAA
-    AGCGAACAAGTTGAGAACTGCGAG
-    TCGGAGCAAGTAGAGAACTGCGAG
+    TGCTACATCCAAAACTGTCCGCTCGGG
+    TGTTACATTCAGAACTGCCCTCTGGGA
+    TGCTATATCCAGAATTGTCCTCTGGGG
+    TGTTATATTCAGAATTGCCCACTCGGA
+    TGCTACATACAGAACTGCCCACTCGGT
 
 
 Enumeration
@@ -70,7 +70,7 @@ Coding spaces can be iterated over or enumerated. Full enumeration is only pract
 
     from codeine import CodingSpace
 
-    space = CodingSpace('MILK')
+    space = CodingSpace('CYIQNCPLG')
 
     for seq in space.enumerate():
         print(seq)
@@ -86,12 +86,12 @@ Output:
 
 .. code-block:: text
 
-    ATGATTTTAAAA
-    ATGATTTTAAAG
-    ATGATTTTGAAA
-    ATGATTTTGAAG
-    ATGATTCTTAAA
-    ATGATTCTTAAG
+    TGCTACATACAAAACTGCCCACTAGGA
+    TGCTACATACAAAACTGCCCACTAGGC
+    TGCTACATACAAAACTGCCCACTAGGG
+    TGCTACATACAAAACTGCCCACTAGGT
+    TGCTACATACAAAACTGCCCACTCGGA
+    TGCTACATACAAAACTGCCCACTCGGC
    ...
 
 You can also just grab the first few sequences:
@@ -100,7 +100,7 @@ You can also just grab the first few sequences:
 
     from codeine import CodingSpace
 
-    space = CodingSpace('SEQVENCE')
+    space = CodingSpace('CYIQNCPLG')
 
     for seq in space[:3]:
        print(seq)
@@ -109,22 +109,22 @@ Output:
 
 .. code-block:: text
 
-    ATGATTTTAAAA
-    ATGATTTTAAAG
-    ATGATTTTGAAA
+    TGCTACATACAAAACTGCCCACTAGGA
+    TGCTACATACAAAACTGCCCACTAGGC
+    TGCTACATACAAAACTGCCCACTAGGG
 
 
-Membership
+Validation
 ----------
 
 The ``in`` operator can be used to test whether a coding sequence belongs to a coding space. Membership testing automatically accounts for any specified constraints and does not require enumerating the coding space.
 
 .. code-block:: python
 
-    space = CodingSpace('MILK', fixed_codons={2: 'ATC'})
+    space = CodingSpace('CYIQNCPLG', fixed_codons={2: 'TAC'})
 
-    print('ATGATCCTAAAG' in space)
+    print('TGTTACATACAGAACTGCCCTCTTGGG' in space)
     # True
 
-    print('ATGATACTAAAG' in space)
+    print('TGTTATATACAGAACTGCCCTCTTGGG' in space)
     # False
