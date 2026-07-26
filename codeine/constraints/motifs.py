@@ -36,8 +36,8 @@ TrackerStateId = int
 TransitionValue = Optional[Watch]
 
 
-ForbiddenMotif = Union[str, RestrictionSite]
-ForbiddenMotifs = Union[ForbiddenMotif, Sequence[ForbiddenMotif]]
+Motif = Union[str, RestrictionSite]
+Motifs = Union[Motif, Sequence[Motif]]
 
 
 class ForbiddenMotifConstraint(Constraint):
@@ -50,7 +50,7 @@ class ForbiddenMotifConstraint(Constraint):
     sequences during construction.
     """
 
-    def __init__(self, forbidden_motifs: ForbiddenMotifs) -> None:
+    def __init__(self, forbidden_motifs: Motifs) -> None:
         """
         Parameters
         ----------

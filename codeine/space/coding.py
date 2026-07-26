@@ -6,7 +6,7 @@ from typing import Dict, Iterator, List, Optional, Sequence, Tuple, Union, TYPE_
 if TYPE_CHECKING:
     from codeine.space.mutation import MutationSpace
 
-from codeine.constraints.motifs import ForbiddenMotifConstraint, ForbiddenMotifs
+from codeine.constraints.motifs import ForbiddenMotifConstraint, Motifs
 from codeine.constraints.homopolymer import HomopolymerConstraint
 from codeine.constraints.base import Constraint
 from codeine.graph.base import CodonGraph, CodonRestriction
@@ -29,7 +29,7 @@ class CodingSpace:
         translation_table: Optional[TranslationTable] = None,
         rna: Optional[bool] = None,
         codon_restrictions: Optional[Dict[int, CodonRestriction]] = None,
-        forbidden_motifs: Optional[ForbiddenMotifs] = None,
+        forbidden_motifs: Optional[Motifs] = None,
         max_homopolymer: Optional[int] = None,
         context_l: str = '',
         context_r: str = '',
@@ -356,7 +356,7 @@ class CodingSpace:
         """
         self.view.clear_pins()
 
-    def set_forbidden_motifs(self, forbidden_motifs: Optional[ForbiddenMotifs]) -> None:
+    def set_forbidden_motifs(self, forbidden_motifs: Optional[Motifs]) -> None:
         """
         Set the forbidden motifs for this coding space.
 
