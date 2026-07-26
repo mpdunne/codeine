@@ -5,6 +5,8 @@ from itertools import product
 from codeine.graph.base import CodonGraph
 from codeine.constraints.base import DEAD_STATE, SAFE_STATE
 from codeine.constraints.banned import BannedSequenceConstraint, _find_matching_subpaths
+from codeine.motifs.restriction import RestrictionSite
+from codeine.translation.tables import TranslationTable
 
 
 ###############################
@@ -50,6 +52,52 @@ def helper_walk_path(bsc, path):
 def test_empty_banned_sequence_raises():
     with pytest.raises(ValueError):
         BannedSequenceConstraint([''])
+
+
+def test_banned_sequences_must_be_strings():
+    with pytest.raises(TypeError, match='strings or RestrictionSite objects'):
+        BannedSequenceConstraint(['ATG', 123])
+
+
+@pytest.mark.parametrize('sequence', ['ATX', 'HELLO', ' '])
+def test_banned_sequences_must_contain_only_nucleotides(sequence):
+    with pytest.raises(ValueError):
+        BannedSequenceConstraint([sequence])
+
+
+def test_banned_sequences_are_uppercased_and_deduplicated():
+    constraint = BannedSequenceConstraint(['atgc', 'ATGC', 'augg'])
+    assert constraint.banned_sequences == ('ATGC', 'AUGG')
+
+
+def test_banned_sequence_can_be_passed_as_a_string():
+    constraint = BannedSequenceConstraint('atgc')
+    assert constraint.banned_sequences == ('ATGC',)
+
+
+def test_restriction_site_can_be_passed_directly():
+    constraint = BannedSequenceConstraint(RestrictionSite.BsaI)
+    assert constraint.banned_sequences == tuple(sorted(set(RestrictionSite.BsaI.motifs)))
+
+
+def test_restriction_sites_and_strings_can_be_combined():
+    constraint = BannedSequenceConstraint([RestrictionSite.BsaI, 'AAAAAA'])
+
+    assert constraint.banned_sequences == tuple(sorted({*RestrictionSite.BsaI.motifs, 'AAAAAA'}))
+
+
+def test_banned_sequences_are_normalised_to_dna_when_linked():
+    graph = CodonGraph('M')
+    constraint = BannedSequenceConstraint(['AUG'])
+    constraint.link(graph)
+    assert constraint.banned_sequences == ('ATG',)
+
+
+def test_banned_sequences_are_normalised_to_rna_when_linked():
+    graph = CodonGraph('M', translation_table=TranslationTable(rna=True))
+    constraint = BannedSequenceConstraint(['ATG'])
+    constraint.link(graph)
+    assert constraint.banned_sequences == ('AUG',)
 
 
 def test_banned_sequence_constraint_is_trivial_without_banned_sequences():

@@ -1,8 +1,9 @@
-from typing import Dict, FrozenSet, List, NamedTuple, Optional, Sequence, Tuple
+from typing import Dict, FrozenSet, List, NamedTuple, Optional, Sequence, Tuple, Union
 
 from codeine.constraints.base import Constraint, ConstraintState, DEAD_STATE, SAFE_STATE
 from codeine.graph.base import CodonGraph
 from codeine.graph.nodes import CodonNode
+from codeine.motifs.restriction import RestrictionSite
 
 # A step is a decision in the codon graph, i.e. (graph pos, choice)
 Step = Tuple[int, str]
@@ -35,6 +36,10 @@ BannedTrackerStateId = int
 TransitionValue = Optional[Watch]
 
 
+ForbiddenMotif = Union[str, RestrictionSite]
+ForbiddenMotifs = Union[ForbiddenMotif, Sequence[ForbiddenMotif]]
+
+
 class BannedSequenceConstraint(Constraint):
     """
     Tracks progress along concrete banned graph subpaths.
@@ -63,20 +68,37 @@ class BannedSequenceConstraint(Constraint):
         choice -> (path_ix, matched_length) -> banned | next watch | dead
     """
 
-    def __init__(self, banned_sequences: Sequence[str]) -> None:
+    def __init__(self, banned_sequences: ForbiddenMotifs) -> None:
         """
         Parameters
         ----------
         banned_sequences
-            A collection of sequences that must not occur in generated paths.
+            A collection of sequences or RestrictionSites that are not allowed to occur.
         """
-        if isinstance(banned_sequences, str):
+        if isinstance(banned_sequences, (str, RestrictionSite)):
             banned_sequences = [banned_sequences]
 
-        if any(s == '' for s in banned_sequences):
-            raise ValueError('Banned sequences cannot be empty.')
+        sequences = []
 
-        self.banned_sequences = tuple(set(sequence.upper() for sequence in banned_sequences))
+        for sequence in banned_sequences:
+            if isinstance(sequence, RestrictionSite):
+                sequences.extend(sequence.motifs)
+                continue
+
+            if not isinstance(sequence, str):
+                raise TypeError('Banned sequences must be strings or RestrictionSite objects.')
+
+            sequence = sequence.upper()
+
+            if sequence == '':
+                raise ValueError('Banned sequences cannot be empty.')
+
+            if not set(sequence) <= set('ACGTU'):
+                raise ValueError('Banned sequences must contain only A, C, G, T, or U.')
+
+            sequences.append(sequence)
+
+        self.banned_sequences = tuple(sorted(set(sequences)))
 
         initial_tracker_state: BannedTrackerState = frozenset()
         self.initial_state_id: int = 0
@@ -118,7 +140,10 @@ class BannedSequenceConstraint(Constraint):
         self.states = [initial_state]
         self.advance_cache.clear()
 
-        self.banned_sequences = tuple(graph.tt.normalise_sequence(sequence) for sequence in self.banned_sequences)
+        self.banned_sequences = tuple(sorted({
+            graph.tt.normalise_sequence(sequence)
+            for sequence in self.banned_sequences
+        }))
 
         self.graph = graph
         self.paths = self._find_banned_paths()
