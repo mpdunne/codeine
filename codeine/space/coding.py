@@ -7,7 +7,7 @@ if TYPE_CHECKING:
     from codeine.space.mutation import MutationSpace
 
 from codeine.constraints.motifs import ForbiddenMotifConstraint, Motifs
-from codeine.constraints.homopolymer import HomopolymerConstraint
+from codeine.constraints.homopolymers import HomopolymerConstraint
 from codeine.constraints.base import Constraint
 from codeine.graph.base import CodonGraph, CodonRestriction
 from codeine.motifs.restriction import RestrictionSite

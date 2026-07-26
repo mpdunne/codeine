@@ -1,5 +1,5 @@
 from codeine.constraints.motifs import ForbiddenMotifConstraint
-from codeine.constraints.homopolymer import HomopolymerConstraint
+from codeine.constraints.homopolymers import HomopolymerConstraint
 
 __all__ = [
     'ForbiddenMotifConstraint',
