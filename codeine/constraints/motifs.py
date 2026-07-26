@@ -40,7 +40,7 @@ ForbiddenMotif = Union[str, RestrictionSite]
 ForbiddenMotifs = Union[ForbiddenMotif, Sequence[ForbiddenMotif]]
 
 
-class BannedSequenceConstraint(Constraint):
+class ForbiddenMotifConstraint(Constraint):
     """
     Tracks progress along concrete banned graph subpaths.
 

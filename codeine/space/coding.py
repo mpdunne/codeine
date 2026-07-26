@@ -6,7 +6,7 @@ from typing import Dict, Iterator, List, Optional, Sequence, Tuple, Union, TYPE_
 if TYPE_CHECKING:
     from codeine.space.mutation import MutationSpace
 
-from codeine.constraints.banned import BannedSequenceConstraint, ForbiddenMotifs
+from codeine.constraints.motifs import ForbiddenMotifConstraint, ForbiddenMotifs
 from codeine.constraints.homopolymer import HomopolymerConstraint
 from codeine.constraints.base import Constraint
 from codeine.graph.base import CodonGraph, CodonRestriction
@@ -480,7 +480,7 @@ class CodingSpace:
 
         if self.forbidden_motifs is not None:
             constraints = (
-                BannedSequenceConstraint(self.forbidden_motifs),
+                ForbiddenMotifConstraint(self.forbidden_motifs),
                 *constraints,
             )
 

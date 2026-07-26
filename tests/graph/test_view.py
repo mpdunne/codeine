@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 from scipy.stats import chisquare, chi2_contingency
 
 from codeine.constraints.base import Constraint, DEAD_STATE, SAFE_STATE
-from codeine.constraints.banned import BannedSequenceConstraint
+from codeine.constraints.motifs import ForbiddenMotifConstraint
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
 from codeine.graph.base import CodonGraph
@@ -1025,7 +1025,7 @@ def helper_ban_sequences_and_check_enumerate(
     )
     view = graph.view()
 
-    bsc = BannedSequenceConstraint(banned_sequences)
+    bsc = ForbiddenMotifConstraint(banned_sequences)
     view.set_constraints([bsc])
 
     observed_seqs = set(view)
@@ -1076,7 +1076,7 @@ def helper_ban_sequences_and_check_sample(
         translation_table=tt,
     )
     view = graph.view()
-    bsc = BannedSequenceConstraint(banned_sequences)
+    bsc = ForbiddenMotifConstraint(banned_sequences)
     view.set_constraints([bsc])
 
     normalised_banned_sequences = [
@@ -1120,20 +1120,20 @@ def test_view_enumerate_works_without_banned_sequences(aa_seq, context_l, contex
 
 def test_banned_sequences_can_be_set_and_are_normalised():
     graph = CodonGraph('MIKEY')
-    view = CodonGraphView(graph, constraints=[BannedSequenceConstraint(['aaa', 'AAA', 'ttt'])])
+    view = CodonGraphView(graph, constraints=[ForbiddenMotifConstraint(['aaa', 'AAA', 'ttt'])])
     assert len(view.constraints) == 1
-    assert isinstance(view.constraints[0], BannedSequenceConstraint)
+    assert isinstance(view.constraints[0], ForbiddenMotifConstraint)
     assert set(view.constraints[0].banned_sequences) == {'AAA', 'TTT'}
 
-    view = CodonGraphView(graph, constraints=[BannedSequenceConstraint(['ccc', 'CCC', 'ggg'])])
+    view = CodonGraphView(graph, constraints=[ForbiddenMotifConstraint(['ccc', 'CCC', 'ggg'])])
     assert len(view.constraints) == 1
-    assert isinstance(view.constraints[0], BannedSequenceConstraint)
+    assert isinstance(view.constraints[0], ForbiddenMotifConstraint)
     assert set(view.constraints[0].banned_sequences) == {'CCC', 'GGG'}
 
 
 def test_clear_banned_sequences_removes_bans_and_marks_stale():
     graph = CodonGraph('MIKEY')
-    bsc = BannedSequenceConstraint(['aaa', 'AAA', 'ttt'])
+    bsc = ForbiddenMotifConstraint(['aaa', 'AAA', 'ttt'])
     view = CodonGraphView(graph, constraints=[bsc])
     assert view.constraints == (bsc,)
     assert view._compile_status
@@ -1168,7 +1168,7 @@ def test_view_exposes_graph_properties():
 def test_regression_banned_sequence_entirely_in_left_context_gives_empty_space(banned_sequence):
     graph = CodonGraph('MIKEY', context_l='GAATTC')
     view = graph.view()
-    bsc = BannedSequenceConstraint([banned_sequence])
+    bsc = ForbiddenMotifConstraint([banned_sequence])
     view.set_constraints([bsc])
     assert view.n_valid_sequences == 0
 
@@ -1184,14 +1184,14 @@ def test_regression_banned_sequence_entirely_in_left_context_gives_empty_space(b
 def test_regression_banned_sequence_entirely_in_right_context_gives_empty_space(banned_sequence):
     graph = CodonGraph('MIKEY', context_r='GAATTC')
     view = graph.view()
-    bsc = BannedSequenceConstraint([banned_sequence])
+    bsc = ForbiddenMotifConstraint([banned_sequence])
     view.set_constraints([bsc])
     assert view.n_valid_sequences == 0
 
 
 def test_regression_banned_sequence_spanning_left_context_and_first_codon_is_respected():
     view = CodonGraph('ELEPHANT', context_l='AAGGATGATG').view()
-    bsc = BannedSequenceConstraint(['AAGGATGATGAA'])
+    bsc = ForbiddenMotifConstraint(['AAGGATGATGAA'])
     view.set_constraints([bsc])
 
     for seq in view:
@@ -1200,7 +1200,7 @@ def test_regression_banned_sequence_spanning_left_context_and_first_codon_is_res
 
 def test_regression_banned_sequence_spanning_last_codon_and_right_context_is_respected():
     view = CodonGraph('ELEPHANT', context_r='AAGGATGATG').view()
-    bsc = BannedSequenceConstraint(['CGAAGGATGATG'])
+    bsc = ForbiddenMotifConstraint(['CGAAGGATGATG'])
     view.set_constraints([bsc])
 
     for seq in view:
@@ -1209,7 +1209,7 @@ def test_regression_banned_sequence_spanning_last_codon_and_right_context_is_res
 
 def test_regression_banned_sequence_spanning_both_contexts_is_respected():
     view = CodonGraph('ELEPHANT', context_l='TTAA', context_r='AAGG').view()
-    bsc = BannedSequenceConstraint(['AA' + 'GAGCTTGAGCCGCATGCCAATACG' + 'AA'])
+    bsc = ForbiddenMotifConstraint(['AA' + 'GAGCTTGAGCCGCATGCCAATACG' + 'AA'])
     view.set_constraints([bsc])
     assert 'GAGCTTGAGCCGCATGCCAATACG' not in view
 
@@ -1275,7 +1275,7 @@ def test_regression_banned_whole_sequences(aa_seq, context_l, context_r):
 
     view = graph.view()
 
-    bsc = BannedSequenceConstraint([cds])
+    bsc = ForbiddenMotifConstraint([cds])
     view.set_constraints([bsc])
 
     assert cds not in view
@@ -1292,7 +1292,7 @@ def test_regression_banned_whole_sequences(aa_seq, context_l, context_r):
     )
 
     view = graph.view()
-    bsc = BannedSequenceConstraint(seqs)
+    bsc = ForbiddenMotifConstraint(seqs)
     view.set_constraints([bsc])
 
     for seq in seqs:
@@ -1325,7 +1325,7 @@ def test_regression_banned_sequences_that_arent_present_anyway(aa_seq, context_l
 
     view = graph.view()
     banned_sequences = ['CCCCCCCCCCCC', 'GGGGGGGGGGGG', 'TTTTTTTTTTTT']
-    bsc = BannedSequenceConstraint(banned_sequences)
+    bsc = ForbiddenMotifConstraint(banned_sequences)
     view.set_constraints([bsc])
 
     assert view.n_valid_sequences == unconstrained_view.n_valid_sequences
@@ -1581,7 +1581,7 @@ def test_codon_distributions_roughly_match_weights_banned_sequences(name, aa_seq
         if not any(b in seq for b in banned):
             rejection_sampled_seqs.append(seq)
 
-    bsc = BannedSequenceConstraint(banned)
+    bsc = ForbiddenMotifConstraint(banned)
     view.set_constraints([bsc])
 
     smart_seqs = [view.sample() for _ in range(n)]
