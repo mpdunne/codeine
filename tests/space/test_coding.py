@@ -225,7 +225,7 @@ def helper_get_banned_sequences_from_constraints(space):
     else:
         seqs = []
         for c in banned_sequence_constraints:
-            seqs += list(c.banned_sequences)
+            seqs += list(c.forbidden_sequences)
         return set(seqs)
 
 

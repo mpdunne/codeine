@@ -9,7 +9,7 @@ def test_homopolymer_constraint_builds_expected_banned_sequences():
 
     assert constraint.max_length == 6
 
-    assert set(constraint.banned_sequences) == {
+    assert set(constraint.forbidden_sequences) == {
         'AAAAAAA',
         'CCCCCCC',
         'GGGGGGG',

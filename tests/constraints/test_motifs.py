@@ -67,37 +67,37 @@ def test_forbidden_motifs_must_contain_only_nucleotides(sequence):
 
 def test_forbidden_motifs_are_uppercased_and_deduplicated():
     constraint = ForbiddenMotifConstraint(['atgc', 'ATGC', 'augg'])
-    assert constraint.banned_sequences == ('ATGC', 'AUGG')
+    assert constraint.forbidden_sequences == ('ATGC', 'AUGG')
 
 
 def test_forbidden_motif_can_be_passed_as_a_string():
     constraint = ForbiddenMotifConstraint('atgc')
-    assert constraint.banned_sequences == ('ATGC',)
+    assert constraint.forbidden_sequences == ('ATGC',)
 
 
 def test_restriction_site_can_be_passed_directly():
     constraint = ForbiddenMotifConstraint(RestrictionSite.BsaI)
-    assert constraint.banned_sequences == tuple(sorted(set(RestrictionSite.BsaI.motifs)))
+    assert constraint.forbidden_sequences == tuple(sorted(set(RestrictionSite.BsaI.motifs)))
 
 
 def test_restriction_sites_and_strings_can_be_combined():
     constraint = ForbiddenMotifConstraint([RestrictionSite.BsaI, 'AAAAAA'])
 
-    assert constraint.banned_sequences == tuple(sorted({*RestrictionSite.BsaI.motifs, 'AAAAAA'}))
+    assert constraint.forbidden_sequences == tuple(sorted({*RestrictionSite.BsaI.motifs, 'AAAAAA'}))
 
 
 def test_forbidden_motifs_are_normalised_to_dna_when_linked():
     graph = CodonGraph('M')
     constraint = ForbiddenMotifConstraint(['AUG'])
     constraint.link(graph)
-    assert constraint.banned_sequences == ('ATG',)
+    assert constraint.forbidden_sequences == ('ATG',)
 
 
 def test_forbidden_motifs_are_normalised_to_rna_when_linked():
     graph = CodonGraph('M', translation_table=TranslationTable(rna=True))
     constraint = ForbiddenMotifConstraint(['ATG'])
     constraint.link(graph)
-    assert constraint.banned_sequences == ('AUG',)
+    assert constraint.forbidden_sequences == ('AUG',)
 
 
 def test_forbidden_motif_constraint_is_trivial_without_motifs():
