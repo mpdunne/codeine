@@ -604,25 +604,10 @@ def test_coding_space_rna_flag_normalises_inputs_to_rna():
     assert space.context_r == 'UAA'
 
 
-def test_coding_space_normalises_string_forbidden_motif_to_rna():
-    space = CodingSpace('M', forbidden_motifs='ATG', rna=True)
-    assert space.forbidden_motifs == 'AUG'
-
-
-def test_coding_space_normalises_list_forbidden_motifs_to_rna():
-    space = CodingSpace('M', forbidden_motifs=['ATG', 'TTT'], rna=True)
-    assert space.forbidden_motifs == ['AUG', 'UUU']
-
-
-def test_coding_space_leaves_restriction_sites_unexpanded():
-    space = CodingSpace('M', forbidden_motifs=RestrictionSite.EcoRI, rna=True)
-    assert space.forbidden_motifs is RestrictionSite.EcoRI
-
-
 def test_set_forbidden_motifs_normalises_to_space_molecule_type():
     space = CodingSpace('M', rna=True)
-    space.set_forbidden_motifs(['ATG', 'TAA'])
-    assert space.forbidden_motifs == ['AUG', 'UAA']
+    space.set_forbidden_motifs(['ATG'])
+    assert space.n_valid_sequences == 0
 
 
 def test_contains_normalises_dna_input_for_rna_space():

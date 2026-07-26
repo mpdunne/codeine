@@ -7,9 +7,10 @@ if TYPE_CHECKING:
     from codeine.space.mutation import MutationSpace
 
 from codeine.constraints.banned import BannedSequenceConstraint
+from codeine.constraints.homopolymer import HomopolymerConstraint
 from codeine.constraints.base import Constraint
 from codeine.graph.base import CodonGraph, CodonRestriction
-from codeine.motifs.validate import expand_and_validate_sequence_constraints, ForbiddenMotifs
+from codeine.motifs.validate import expand_and_validate_forbidden_motifs, ForbiddenMotifs
 from codeine.motifs.restriction import RestrictionSite
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
@@ -75,7 +76,7 @@ class CodingSpace:
         self.view = view
 
         self.constraints = ()
-        self.forbidden_motifs = self._normalise_forbidden_motifs(forbidden_motifs)
+        self.forbidden_motifs = forbidden_motifs
         self.max_homopolymer = max_homopolymer
 
         self._update_constraints()
@@ -365,7 +366,7 @@ class CodingSpace:
         forbidden_motifs
             Motifs that should be forbidden in generated sequences.
         """
-        self.forbidden_motifs = self._normalise_forbidden_motifs(forbidden_motifs)
+        self.forbidden_motifs = forbidden_motifs
         self._update_constraints()
 
     def clear_forbidden_motifs(self) -> None:
@@ -476,17 +477,22 @@ class CodingSpace:
         """
         Rebuild and apply all constraints for this coding space.
         """
-        forbidden_sequences = expand_and_validate_sequence_constraints(
+        constraints = self.constraints
+
+        forbidden_sequences = expand_and_validate_forbidden_motifs(
             forbidden_motifs=self.forbidden_motifs,
-            max_homopolymer=self.max_homopolymer,
             rna=self.translation_table.rna,
         )
 
-        constraints = self.constraints
-
-        if forbidden_sequences:
+        if self.forbidden_motifs is not None:
             constraints = (
                 BannedSequenceConstraint(forbidden_sequences),
+                *constraints,
+            )
+
+        if self.max_homopolymer is not None:
+            constraints = (
+                HomopolymerConstraint(self.max_homopolymer),
                 *constraints,
             )
 
@@ -514,27 +520,3 @@ class CodingSpace:
             codon_weights = codon_weights.for_table(translation_table)
 
         return translation_table, codon_weights
-
-    def _normalise_forbidden_motifs(
-            self,
-            forbidden_motifs: Optional[ForbiddenMotifs],
-    ) -> Optional[ForbiddenMotifs]:
-        """
-        Normalise string forbidden motifs to the molecule type used by this coding
-        space. RestrictionSite objects are left unchanged.
-        """
-        if forbidden_motifs is None:
-            return None
-
-        if isinstance(forbidden_motifs, str):
-            return self.translation_table.normalise_sequence(forbidden_motifs)
-
-        if isinstance(forbidden_motifs, RestrictionSite):
-            return forbidden_motifs
-
-        return [
-            self.translation_table.normalise_sequence(motif)
-            if isinstance(motif, str)
-            else motif
-            for motif in forbidden_motifs
-        ]

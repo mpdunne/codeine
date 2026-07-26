@@ -1,8 +1,7 @@
 import pytest
 
 from codeine.motifs.restriction import RestrictionSite
-from codeine.motifs.validate import expand_and_validate_forbidden_motifs, \
-    expand_and_validate_max_homopolymer, expand_and_validate_sequence_constraints
+from codeine.motifs.validate import expand_and_validate_forbidden_motifs
 
 
 def test_expand_forbidden_motifs_single_string_dna():
@@ -56,46 +55,6 @@ def test_forbidden_motif_invalid_nucleotide_raises():
 
     with pytest.raises(ValueError, match='Forbidden motifs must be nucleotide sequences'):
         expand_and_validate_forbidden_motifs('MANCHEGO', rna=True)
-
-
-def test_validate_max_homopolymer_int():
-    assert expand_and_validate_max_homopolymer(4) == ['AAAAA', 'CCCCC', 'GGGGG', 'TTTTT']
-
-
-def test_max_homopolymer_rna():
-    assert expand_and_validate_max_homopolymer(2, rna=True) == ['AAA', 'CCC', 'GGG', 'UUU']
-
-
-def test_validate_max_homopolymer_rejects_non_int():
-    with pytest.raises(TypeError, match='max_homopolymer must be an integer'):
-        expand_and_validate_max_homopolymer(4.5)
-
-
-def test_validate_max_homopolymer_rejects_less_than_one():
-    with pytest.raises(ValueError, match='max_homopolymer must be at least 1'):
-        expand_and_validate_max_homopolymer(0)
-
-
-def test_validate_mixed_restrictions():
-    max_homopolymer = 4
-    motifs = [RestrictionSite.BsaI, 'GGTTCC']
-    result = expand_and_validate_sequence_constraints(max_homopolymer=max_homopolymer, forbidden_motifs=motifs)
-    assert set(result) == {'GAGACC', 'GGTCTC', 'GGTTCC', 'AAAAA', 'CCCCC', 'GGGGG', 'TTTTT'}
-
-    max_homopolymer = None
-    motifs = [RestrictionSite.BsaI, 'GGTTCC']
-    result = expand_and_validate_sequence_constraints(max_homopolymer=max_homopolymer, forbidden_motifs=motifs)
-    assert set(result) == {'GAGACC', 'GGTCTC', 'GGTTCC'}
-
-    max_homopolymer = 4
-    motifs = None
-    result = expand_and_validate_sequence_constraints(max_homopolymer=max_homopolymer, forbidden_motifs=motifs)
-    assert set(result) == {'AAAAA', 'CCCCC', 'GGGGG', 'TTTTT'}
-
-
-def test_sequence_constraints_deduplicate_between_sources():
-    result = expand_and_validate_sequence_constraints(forbidden_motifs='AAAAA', max_homopolymer=4)
-    assert result == ['AAAAA', 'CCCCC', 'GGGGG', 'TTTTT']
 
 
 def test_restriction_site_converts_to_rna():
