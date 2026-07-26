@@ -97,7 +97,9 @@ class ForbiddenMotifConstraint(Constraint):
 
     @property
     def initial_state(self) -> ConstraintState:
-        """Return the registered empty tracker-state ID."""
+        """
+        Return the registered empty tracker-state ID.
+        """
         return self.initial_state_id
 
     @property
