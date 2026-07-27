@@ -10,7 +10,7 @@ from codeine.space.mutation import MutationSpace
 from codeine.motifs.restriction import RestrictionSite
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
-from codeine.constraints.banned import BannedSequenceConstraint
+from codeine.constraints.motifs import ForbiddenMotifConstraint
 
 
 from tests.data import NORMAL_PROTEINS, DIFFICULT_PROTEINS, ANTIBODIES, LARGE_PROTEINS
@@ -1100,7 +1100,7 @@ def test_mutation_space_repr_includes_variant_count_with_distance_constraints():
 
 
 def test_setting_distance_constraints_preserves_base_constraints():
-    constraint = BannedSequenceConstraint(['GAA'])
+    constraint = ForbiddenMotifConstraint(['GAA'])
     space = CodingSpace('E')
     space._set_constraints([constraint])
     mutants = MutationSpace(space, 'GAG')

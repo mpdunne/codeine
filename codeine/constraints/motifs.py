@@ -1,8 +1,9 @@
-from typing import Dict, FrozenSet, List, NamedTuple, Optional, Sequence, Tuple
+from typing import Dict, FrozenSet, List, NamedTuple, Optional, Sequence, Tuple, Union
 
 from codeine.constraints.base import Constraint, ConstraintState, DEAD_STATE, SAFE_STATE
 from codeine.graph.base import CodonGraph
 from codeine.graph.nodes import CodonNode
+from codeine.motifs.restriction import RestrictionSite
 
 # A step is a decision in the codon graph, i.e. (graph pos, choice)
 Step = Tuple[int, str]
@@ -22,69 +23,72 @@ class SubPath(NamedTuple):
 # watched path, indicating how much of the path has been seen so far.
 Watch = Tuple[int, int]
 
-# The tracker state is a set of watches. We update the
+# The constraint state is a set of watches. We update the
 # watches every time we make a choice.
-BannedTrackerState = FrozenSet[Watch]
+TrackerState = FrozenSet[Watch]
 
-# Integer ID for a registered banned tracker state.
-BannedTrackerStateId = int
+# Integer ID for a registered tracker state.
+TrackerStateId = int
 
 # Internal transition value:
-#   None   -> banned sequence completed
+#   None   -> forbidden motif completed
 #   Watch  -> continue watching this path
 TransitionValue = Optional[Watch]
 
 
-class BannedSequenceConstraint(Constraint):
+Motif = Union[str, RestrictionSite]
+Motifs = Union[Motif, Sequence[Motif]]
+
+
+class ForbiddenMotifConstraint(Constraint):
     """
-    Tracks progress along concrete banned graph subpaths.
+    A constraint class for preventing specified nucleotide motifs from
+    occurring in graph sequences.
 
-    A SubPath stores:
-
-        sequence
-            The banned sequence being tracked.
-
-        steps
-            Concrete graph emissions as (pos, choice) pairs.
-
-        offset
-            Where sequence starts inside the first choice.
-
-    Internally, a tracker state is a frozenset of watches:
-
-        (path_ix, matched_length)
-
-    meaning that matched_length bases of paths[path_ix].sequence have already
-    matched. States are registered and exposed to the compiler as integer IDs,
-    so traversal states remain compact and cheap to hash.
-
-    Transitions are precomputed as:
-
-        choice -> (path_ix, matched_length) -> banned | next watch | dead
+    Motifs may be provided as nucleotide strings or as ``RestrictionSite``
+    objects. Restriction sites are expanded into their concrete recognition
+    sequences during construction.
     """
 
-    def __init__(self, banned_sequences: Sequence[str]) -> None:
+    def __init__(self, forbidden_motifs: Motifs) -> None:
         """
         Parameters
         ----------
-        banned_sequences
-            A collection of sequences that must not occur in generated paths.
+        forbidden_motifs
+            One or more nucleotide motifs or restriction sites that must not occur.
         """
-        if isinstance(banned_sequences, str):
-            banned_sequences = [banned_sequences]
+        if isinstance(forbidden_motifs, (str, RestrictionSite)):
+            forbidden_motifs = [forbidden_motifs]
 
-        if any(s == '' for s in banned_sequences):
-            raise ValueError('Banned sequences cannot be empty.')
+        sequences = []
 
-        self.banned_sequences = tuple(set(sequence.upper() for sequence in banned_sequences))
+        for motif in forbidden_motifs:
+            if isinstance(motif, RestrictionSite):
+                sequences.extend(motif.motifs)
+                continue
 
-        initial_tracker_state: BannedTrackerState = frozenset()
+            if not isinstance(motif, str):
+                raise TypeError('Forbidden motifs must be strings or RestrictionSite objects.')
+
+            motif = motif.upper()
+
+            if motif == '':
+                raise ValueError('Forbidden motifs cannot be empty.')
+
+            if not set(motif) <= set('ACGTU'):
+                raise ValueError('Forbidden motifs must contain only A, C, G, T, or U.')
+
+            sequences.append(motif)
+
+        self.forbidden_sequences = tuple(sorted(set(sequences)))
+
+        initial_tracker_state: TrackerState = frozenset()
         self.initial_state_id: int = 0
 
-        self.state_ids: Dict[BannedTrackerState, BannedTrackerStateId] = {initial_tracker_state: self.initial_state_id}
-        self.states: List[BannedTrackerState] = [initial_tracker_state]
+        self.state_ids: Dict[TrackerState, TrackerStateId] = {initial_tracker_state: self.initial_state_id}
+        self.states: List[TrackerState] = [initial_tracker_state]
 
-        self.advance_cache: Dict[Tuple[Step, BannedTrackerStateId], ConstraintState] = {}
+        self.advance_cache: Dict[Tuple[Step, TrackerStateId], ConstraintState] = {}
 
         self.graph: Optional[CodonGraph] = None
         self.paths: Tuple[SubPath, ...] = ()
@@ -93,18 +97,20 @@ class BannedSequenceConstraint(Constraint):
 
     @property
     def initial_state(self) -> ConstraintState:
-        """Return the registered empty tracker-state ID."""
+        """
+        Return the registered empty tracker-state ID.
+        """
         return self.initial_state_id
 
     @property
     def is_trivial(self) -> bool:
         """
-        Whether this tracker is trivial - i.e. there are no paths that would generate
-        a sequence containing a banned sequence.
+        Whether this constraint is trivial - i.e. there are no paths that would
+        generate a sequence containing a forbidden motif.
 
         Returns
         -------
-        True if and only if the tracker is trivial.
+        True if and only if the constraint is trivial.
         """
         return len(self.paths) == 0
 
@@ -112,16 +118,19 @@ class BannedSequenceConstraint(Constraint):
         """
         Link the constraint to a graph.
         """
-        initial_state: BannedTrackerState = frozenset()
+        initial_state: TrackerState = frozenset()
 
         self.state_ids = {initial_state: self.initial_state_id}
         self.states = [initial_state]
         self.advance_cache.clear()
 
-        self.banned_sequences = tuple(graph.tt.normalise_sequence(sequence) for sequence in self.banned_sequences)
+        self.forbidden_sequences = tuple(sorted({
+            graph.tt.normalise_sequence(sequence)
+            for sequence in self.forbidden_sequences
+        }))
 
         self.graph = graph
-        self.paths = self._find_banned_paths()
+        self.paths = self._find_matching_paths()
         self.starts = self._build_starts()
         self.transitions = self._build_transitions()
 
@@ -132,9 +141,9 @@ class BannedSequenceConstraint(Constraint):
             choice: str,
     ) -> ConstraintState:
         """
-        Advance the tracker after taking one graph choice.
+        Advance the constraint state after taking one graph choice.
 
-        Returns DEAD_STATE if the choice completes a banned sequence; otherwise
+        Returns DEAD_STATE if the choice completes a forbidden motif; otherwise
         returns the integer ID of the updated tracker state.
         """
         if state == DEAD_STATE:
@@ -190,22 +199,22 @@ class BannedSequenceConstraint(Constraint):
         self.advance_cache[key] = next_state_id
         return next_state_id
 
-    def _find_banned_paths(self) -> Tuple[SubPath, ...]:
+    def _find_matching_paths(self) -> Tuple[SubPath, ...]:
         """
-        Find every concrete graph path that can generate a banned sequence.
+        Find every concrete graph path that can generate a forbidden motif.
 
         Each returned SubPath records the emitted sequence, the graph steps
-        required to produce it, and the offset at which the banned sequence begins
+        required to produce it, and the offset at which the forbidden motif begins
         within the first emitted choice.
 
         Returns
         -------
         Tuple[SubPath, ...]
-            All graph subpaths capable of producing one of the banned sequences.
+            All graph subpaths capable of producing one of the forbidden motifs.
         """
         paths = []
 
-        for sequence in self.banned_sequences:
+        for sequence in self.forbidden_sequences:
             paths.extend(_find_matching_subpaths(self.graph, sequence))
 
         return tuple(paths)
@@ -215,7 +224,7 @@ class BannedSequenceConstraint(Constraint):
         Build the initial watch transitions for each possible graph step.
 
         The returned mapping records which watches should be created when a given
-        step is taken. If a banned sequence is completed immediately, the transition
+        step is taken. If a forbidden motif is completed immediately, the transition
         value is None.
 
         Returns
@@ -250,7 +259,7 @@ class BannedSequenceConstraint(Constraint):
         Build transitions between active watches.
 
         For each emitted graph choice, records how every active watch should
-        advance. A transition value of None indicates that the banned sequence
+        advance. A transition value of None indicates that the forbidden motif
         has been completed.
 
         Returns
@@ -289,10 +298,10 @@ class BannedSequenceConstraint(Constraint):
 
     def _get_or_register_state_id(
             self,
-            state: BannedTrackerState,
-    ) -> BannedTrackerStateId:
+            state: TrackerState,
+    ) -> TrackerStateId:
         """
-        Return the integer ID for a banned-tracker state, creating one if needed.
+        Return the integer ID for a tracker state, creating one if needed.
 
         Parameters
         ----------
@@ -301,7 +310,7 @@ class BannedSequenceConstraint(Constraint):
 
         Returns
         -------
-        BannedTrackerStateId
+        TrackerStateId
             Stable integer ID for the given tracker state.
         """
         state_id = self.state_ids.get(state)
@@ -324,14 +333,14 @@ def _find_matching_subpaths(
         sequence: str,
 ) -> List[SubPath]:
     """
-    Find all graph subpaths that can emit a given banned sequence.
+    Find all graph subpaths that can emit a given sequence.
 
     Parameters
     ----------
     graph
         The codon graph to search.
     sequence
-        The banned sequence to search for.
+        The sequence to search for.
 
     Returns
     -------

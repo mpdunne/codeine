@@ -8,7 +8,7 @@ from codeine.translation.weights import CodonWeights
 from codeine.translation.tables import TranslationTable
 from codeine.space.coding import CodingSpace
 from codeine.motifs.restriction import RestrictionSite
-from codeine.constraints.banned import BannedSequenceConstraint
+from codeine.constraints.motifs import ForbiddenMotifConstraint
 
 
 @pytest.mark.parametrize('aa_seq', ('MIKEY', 'MILDRED', 'STEVEN', 'WILLIAM'))
@@ -219,13 +219,13 @@ def test_coding_space_count():
 
 
 def helper_get_banned_sequences_from_constraints(space):
-    banned_sequence_constraints = [c for c in space.view.constraints if isinstance(c, BannedSequenceConstraint)]
+    banned_sequence_constraints = [c for c in space.view.constraints if isinstance(c, ForbiddenMotifConstraint)]
     if len(banned_sequence_constraints) == 0:
         return set()
     else:
         seqs = []
         for c in banned_sequence_constraints:
-            seqs += list(c.banned_sequences)
+            seqs += list(c.forbidden_sequences)
         return set(seqs)
 
 
@@ -604,25 +604,10 @@ def test_coding_space_rna_flag_normalises_inputs_to_rna():
     assert space.context_r == 'UAA'
 
 
-def test_coding_space_normalises_string_forbidden_motif_to_rna():
-    space = CodingSpace('M', forbidden_motifs='ATG', rna=True)
-    assert space.forbidden_motifs == 'AUG'
-
-
-def test_coding_space_normalises_list_forbidden_motifs_to_rna():
-    space = CodingSpace('M', forbidden_motifs=['ATG', 'TTT'], rna=True)
-    assert space.forbidden_motifs == ['AUG', 'UUU']
-
-
-def test_coding_space_leaves_restriction_sites_unexpanded():
-    space = CodingSpace('M', forbidden_motifs=RestrictionSite.EcoRI, rna=True)
-    assert space.forbidden_motifs is RestrictionSite.EcoRI
-
-
 def test_set_forbidden_motifs_normalises_to_space_molecule_type():
     space = CodingSpace('M', rna=True)
-    space.set_forbidden_motifs(['ATG', 'TAA'])
-    assert space.forbidden_motifs == ['AUG', 'UAA']
+    space.set_forbidden_motifs(['ATG'])
+    assert space.n_valid_sequences == 0
 
 
 def test_contains_normalises_dna_input_for_rna_space():
@@ -636,27 +621,27 @@ def test_setting_forbidden_motifs_rebulids_constraint():
     space.set_forbidden_motifs(['GAATTC'])
 
     constraints = space.view.constraints
-    banned_sequence_constraints = [c for c in constraints if isinstance(c, BannedSequenceConstraint)]
+    banned_sequence_constraints = [c for c in constraints if isinstance(c, ForbiddenMotifConstraint)]
     assert len(banned_sequence_constraints) == 1
     bsc = banned_sequence_constraints[0]
 
     space.set_forbidden_motifs(['GAATTC'])
     constraints = space.view.constraints
-    banned_sequence_constraints = [c for c in constraints if isinstance(c, BannedSequenceConstraint)]
+    banned_sequence_constraints = [c for c in constraints if isinstance(c, ForbiddenMotifConstraint)]
     assert len(banned_sequence_constraints) == 1
     bsc_new = banned_sequence_constraints[0]
     assert bsc_new is not bsc
 
     space.set_forbidden_motifs(['GAATTC', 'ccgatt'])
     constraints = space.view.constraints
-    banned_sequence_constraints = [c for c in constraints if isinstance(c, BannedSequenceConstraint)]
+    banned_sequence_constraints = [c for c in constraints if isinstance(c, ForbiddenMotifConstraint)]
     assert len(banned_sequence_constraints) == 1
     bsc_new = banned_sequence_constraints[0]
     assert bsc_new is not bsc
 
 
 def test_coding_space_accepts_constraints():
-    constraint = BannedSequenceConstraint(['GAA'])
+    constraint = ForbiddenMotifConstraint(['GAA'])
     space = CodingSpace('E')
     space._set_constraints([constraint])
 
@@ -666,7 +651,7 @@ def test_coding_space_accepts_constraints():
 
 def test_coding_space_can_set_and_clear_constraints():
     space = CodingSpace('E')
-    constraint = BannedSequenceConstraint(['GAA'])
+    constraint = ForbiddenMotifConstraint(['GAA'])
 
     space._set_constraints([constraint])
     assert set(space.enumerate()) == {'GAG'}
@@ -676,7 +661,7 @@ def test_coding_space_can_set_and_clear_constraints():
 
 
 def test_coding_space_constraints_combine_with_forbidden_motifs():
-    constraint = BannedSequenceConstraint(['GAG'])
+    constraint = ForbiddenMotifConstraint(['GAG'])
     space = CodingSpace('E', forbidden_motifs=['GAA'])
     space._set_constraints([constraint])
 
