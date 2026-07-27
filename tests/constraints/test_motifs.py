@@ -4,7 +4,7 @@ from itertools import product
 
 from codeine.graph.base import CodonGraph
 from codeine.constraints.base import DEAD_STATE, SAFE_STATE
-from codeine.constraints.motifs import ForbiddenMotifConstraint, _find_matching_subpaths
+from codeine.constraints.motifs import ForbiddenMotifConstraint
 from codeine.motifs.restriction import RestrictionSite
 from codeine.translation.tables import TranslationTable
 
@@ -90,14 +90,15 @@ def test_forbidden_motifs_are_normalised_to_dna_when_linked():
     graph = CodonGraph('M')
     constraint = ForbiddenMotifConstraint(['AUG'])
     constraint.link(graph)
-    assert constraint.forbidden_sequences == ('ATG',)
+    assert not constraint.is_trivial
+    assert tuple(path.sequence for path in constraint.paths) == ('ATG',)
 
 
 def test_forbidden_motifs_are_normalised_to_rna_when_linked():
     graph = CodonGraph('M', translation_table=TranslationTable(rna=True))
     constraint = ForbiddenMotifConstraint(['ATG'])
     constraint.link(graph)
-    assert constraint.forbidden_sequences == ('AUG',)
+    assert tuple(path.sequence for path in constraint.paths) == ('AUG',)
 
 
 def test_forbidden_motif_constraint_is_trivial_without_motifs():
@@ -657,42 +658,47 @@ def test_banned_sequence_spanning_both_contexts_is_dead():
 # Subpath finding
 ###############################
 
+def helper_get_paths(graph, motifs):
+    if isinstance(motifs, str):
+        motifs = [motifs]
 
-def test_find_matching_subpaths_empty_sequence_raises():
-    graph = CodonGraph('MIKEY')
-    with pytest.raises(ValueError):
-        _find_matching_subpaths(graph, '')
+    constraint = ForbiddenMotifConstraint(forbidden_motifs=motifs)
+    constraint.link(graph)
+
+    return constraint.paths
+
+
 
 def test_find_matching_subpaths_no_match():
     graph = CodonGraph('MIKEY')
 
-    assert not _find_matching_subpaths(graph, 'AAAAAA')
-    assert not _find_matching_subpaths(graph, 'ATGATG')
-    assert not _find_matching_subpaths(graph, 'GGGG')
+    assert not helper_get_paths(graph, 'AAAAAA')
+    assert not helper_get_paths(graph, 'ATGATG')
+    assert not helper_get_paths(graph, 'GGGG')
 
 
 def test_find_matching_subpaths_no_match_long():
     graph = CodonGraph('MIKEY' * 1000)
 
-    assert not _find_matching_subpaths(graph, 'AAAAAA')
-    assert not _find_matching_subpaths(graph, 'ATGATG')
-    assert not _find_matching_subpaths(graph, 'GGGG')
+    assert not helper_get_paths(graph, 'AAAAAA')
+    assert not helper_get_paths(graph, 'ATGATG')
+    assert not helper_get_paths(graph, 'GGGG')
 
 
 def test_find_matching_subpaths_sequence_longer_than_possible_returns_empty():
     graph = CodonGraph('MIKEY')
-    assert not _find_matching_subpaths(graph, 'A' * 10_000)
+    assert not helper_get_paths(graph, 'A' * 10_000)
 
 
 def test_find_matching_subpaths_finds_lowercase_sequences():
     graph = CodonGraph('MIKEY')
-    assert _find_matching_subpaths(graph, 'atg')
+    assert helper_get_paths(graph, 'atg')
 
 
 def test_find_matching_subpaths_single_nt():
     graph = CodonGraph('MIKEY')
 
-    matches = _find_matching_subpaths(graph, 'T')
+    matches = helper_get_paths(graph, 'T')
     assert matches
     for match in matches:
         path = match.steps
@@ -705,46 +711,46 @@ def test_find_matching_subpaths_single_nt():
 def test_find_matching_subpaths_matches_inside_coding_sequence():
     graph = CodonGraph('MIKEY')
 
-    assert _find_matching_subpaths(graph, 'TAAAAG')
-    assert _find_matching_subpaths(graph, 'TAAAAGAG')
-    assert _find_matching_subpaths(graph, 'ATGATA')
+    assert helper_get_paths(graph, 'TAAAAG')
+    assert helper_get_paths(graph, 'TAAAAGAG')
+    assert helper_get_paths(graph, 'ATGATA')
 
 
 def test_find_matching_subpaths_matches_inside_coding_sequence_long():
     graph = CodonGraph('MIKEY' * 1000)
 
-    assert _find_matching_subpaths(graph, 'TAAAAG')
-    assert _find_matching_subpaths(graph, 'TAAAAGAG')
-    assert _find_matching_subpaths(graph, 'ATGATA')
+    assert helper_get_paths(graph, 'TAAAAG')
+    assert helper_get_paths(graph, 'TAAAAGAG')
+    assert helper_get_paths(graph, 'ATGATA')
 
 
 def test_find_matching_subpaths_offset_correct():
     graph = CodonGraph('MIKEY')
 
-    matches = _find_matching_subpaths(graph, 'ATGATAAAGGAATAC')
+    matches = helper_get_paths(graph, 'ATGATAAAGGAATAC')
     assert len(matches) == 1
     assert matches[0].offset == 0
 
-    matches = _find_matching_subpaths(graph, 'TGATAAAGGAATAC')
+    matches = helper_get_paths(graph, 'TGATAAAGGAATAC')
     assert len(matches) == 1
     assert matches[0].offset == 1
 
-    matches = _find_matching_subpaths(graph, 'GATAAAGGAATAC')
+    matches = helper_get_paths(graph, 'GATAAAGGAATAC')
     assert len(matches) == 1
     assert matches[0].offset == 2
 
 
 def test_find_matching_subpaths_fully_in_contexts():
     graph = CodonGraph('MIKEY', context_l='AAGGAAGGAAGGAAGG')
-    assert _find_matching_subpaths(graph, 'GGAAGGAAGG')
+    assert helper_get_paths(graph, 'GGAAGGAAGG')
 
     graph = CodonGraph('MIKEY', context_r='AATTAATTAATTAATT')
-    assert _find_matching_subpaths(graph, 'AATTAATTAA')
+    assert helper_get_paths(graph, 'AATTAATTAA')
 
 
 def test_find_matching_subpaths_overlapping_contexts():
     graph = CodonGraph('MIKEY', context_l='AAGGAAGGAAGGAAGG')
-    matches = _find_matching_subpaths(graph, 'GGAAGGAAGG' + 'ATG')
+    matches = helper_get_paths(graph, 'GGAAGGAAGG' + 'ATG')
     assert matches
     assert len(matches) == 1
     match = matches[0]
@@ -753,7 +759,7 @@ def test_find_matching_subpaths_overlapping_contexts():
         .startswith(match.sequence)
 
     graph = CodonGraph('MIKEY', context_r='AATTAATTAATTAATT')
-    matches = _find_matching_subpaths(graph, 'TAC' + 'AATTAATTAA')
+    matches = helper_get_paths(graph, 'TAC' + 'AATTAATTAA')
     assert matches
     assert len(matches) == 1
     match = matches[0]
@@ -765,7 +771,7 @@ def test_find_matching_subpaths_overlapping_contexts():
 def test_find_matching_subpaths_matches_entire_left_context_plus_cds():
     graph = CodonGraph('MIKEY', context_l='AAGG')
 
-    matches = _find_matching_subpaths(graph, 'AAGGATG')
+    matches = helper_get_paths(graph, 'AAGGATG')
     assert len(matches) == 1
 
     match = matches[0]
@@ -776,7 +782,7 @@ def test_find_matching_subpaths_matches_entire_left_context_plus_cds():
 def test_find_matching_subpaths_matches_cds_plus_entire_right_context():
     graph = CodonGraph('MIKEY', context_r='AAGG')
 
-    matches = _find_matching_subpaths(graph, 'TACAAGG')
+    matches = helper_get_paths(graph, 'TACAAGG')
     assert len(matches) == 1
 
     match = matches[0]
@@ -787,7 +793,7 @@ def test_find_matching_subpaths_matches_cds_plus_entire_right_context():
 def test_find_matching_subpaths_multiple_matches():
     graph = CodonGraph('MMMM')
 
-    matches = _find_matching_subpaths(graph, 'ATGATG')
+    matches = helper_get_paths(graph, 'ATGATG')
     assert len(matches) == 3
 
     for match in matches:
@@ -798,21 +804,21 @@ def test_find_matching_subpaths_multiple_matches():
 
 def test_find_matching_subpaths_single_codon_multiple_matches():
     graph = CodonGraph('KKK')
-    matches = _find_matching_subpaths(graph, 'AAA')
+    matches = helper_get_paths(graph, 'AAA')
     assert len(matches) == 11
 
 
 def test_find_matching_subpaths_respects_codon_restrictions():
     graph = CodonGraph('MIKEY', codon_restrictions={2: 'ATA'})
 
-    assert _find_matching_subpaths(graph, 'ATGATA')
-    assert not _find_matching_subpaths(graph, 'ATGATT')
+    assert helper_get_paths(graph, 'ATGATA')
+    assert not helper_get_paths(graph, 'ATGATT')
 
 
 def test_find_matching_subpaths_ends_inside_codon():
     graph = CodonGraph('MIKEY')
 
-    matches = _find_matching_subpaths(graph, 'ATTAAGG')
+    matches = helper_get_paths(graph, 'ATTAAGG')
     for match in matches:
         assert match.offset == 0
         codons = [codon for _pos, codon in match.steps]
@@ -896,7 +902,7 @@ def test_find_matching_subpaths_full_sequences(aa_seq, context_l, context_r):
     graph = CodonGraph(aa_seq, context_l=context_l, context_r=context_r )
 
     for seq in seqs:
-        matches = _find_matching_subpaths(graph, seq)
+        matches = helper_get_paths(graph, seq)
 
         # Only one path matches any given full sequence.
         assert len(matches) == 1
