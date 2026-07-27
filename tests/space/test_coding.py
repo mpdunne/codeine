@@ -668,6 +668,42 @@ def test_coding_space_constraints_combine_with_forbidden_motifs():
     assert space.n_valid_sequences == 0
 
 
+def test_coding_space_accepts_constraints_at_initialisation():
+    constraint = ForbiddenMotifConstraint(['GAA'])
+
+    space = CodingSpace('E', constraints=[constraint])
+
+    assert space.constraints == (constraint,)
+    assert set(space.enumerate()) == {'GAG'}
+
+
+def test_coding_space_initial_constraints_combine_with_forbidden_motifs():
+    constraint = ForbiddenMotifConstraint(['GAG'])
+
+    space = CodingSpace('E', constraints=[constraint], forbidden_motifs=['GAA'])
+
+    assert space.n_valid_sequences == 0
+
+
+def test_coding_space_initial_constraints_combine_with_max_homopolymer():
+    constraint = ForbiddenMotifConstraint(['AAG'])
+
+    space = CodingSpace('K', constraints=[constraint], max_homopolymer=2)
+
+    assert space.n_valid_sequences == 0
+
+
+def test_coding_space_clear_constraints_preserves_convenience_constraints():
+    constraint = ForbiddenMotifConstraint(['GAG'])
+
+    space = CodingSpace('E', constraints=[constraint], forbidden_motifs=['GAA'])
+
+    space.clear_constraints()
+
+    assert space.constraints == ()
+    assert set(space.enumerate()) == {'GAG'}
+
+
 def test_zero_weight_codons_are_valid_but_not_sampled():
     table = TranslationTable()
     data = {aa: {c: 1 for c in codons} for aa, codons in table.aa_to_codons.items()}

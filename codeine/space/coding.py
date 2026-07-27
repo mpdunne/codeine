@@ -29,6 +29,7 @@ class CodingSpace:
         translation_table: Optional[TranslationTable] = None,
         rna: Optional[bool] = None,
         codon_restrictions: Optional[Dict[int, CodonRestriction]] = None,
+        constraints: Optional[Sequence[Constraint]] = None,
         forbidden_motifs: Optional[Motifs] = None,
         max_homopolymer: Optional[int] = None,
         context_l: str = '',
@@ -47,6 +48,8 @@ class CodingSpace:
             Whether to use RNA. If false or blank, use DNA.
         codon_restrictions
             Any codon restrictions in the format e.g. ``{4: 'TCC'}`` or ``{5: ['AGT', 'AGC']}``. Positions are 1-based.
+        constraints
+            Constraints to apply to this coding space.
         forbidden_motifs
             Forbidden motifs, either as strings or as ``codeine.RestrictionSite``.
         max_homopolymer
@@ -74,7 +77,7 @@ class CodingSpace:
         view = graph.view(seed=seed, weights=codon_weights)
         self.view = view
 
-        self.constraints = ()
+        self.constraints = tuple(constraints or ())
         self.forbidden_motifs = forbidden_motifs
         self.max_homopolymer = max_homopolymer
 
