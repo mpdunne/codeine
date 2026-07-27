@@ -1,7 +1,7 @@
 import pytest
 
 from codeine.constraints.tandem import TandemRepeatConstraint
-from codeine.graph import CodonGraph
+from codeine.graph.base import CodonGraph
 
 from tests.data import NORMAL_PROTEINS, DIFFICULT_PROTEINS, ANTIBODIES
 
@@ -202,12 +202,12 @@ def test_enumerated_sequences_do_not_contain_tandem_repeats(aa_seq, repeat_lengt
     ],
 )
 def test_sampled_sequences_do_not_contain_tandem_repeats(aa_seq, repeat_length, min_copies):
-    view = CodonGraph(aa_seq).view()
+    view = CodonGraph(aa_seq).view(seed=8675309)
 
     constraint = TandemRepeatConstraint(repeat_length=repeat_length, min_copies=min_copies)
     view.set_constraints([constraint])
 
-    for sequence in view.sample(n=1000, seed=1):
+    for sequence in view.sample(n=1000):
         assert not helper_has_tandem_repeat(sequence, repeat_length, min_copies)
 
 

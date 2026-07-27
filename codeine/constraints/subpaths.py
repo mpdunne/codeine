@@ -56,6 +56,11 @@ class SubPathConstraint(Constraint, ABC):
         self.advance_cache: Dict[Tuple[Step, TrackerStateId], ConstraintState] = {}
 
         self.graph: Optional[CodonGraph] = None
+        self.aa_seq = None
+        self.context_l = None
+        self.context_r = None
+        self.translation_table = None
+
         self.paths: Tuple[SubPath, ...] = ()
         self.starts: Dict[Step, Tuple[TransitionValue, ...]] = {}
         self.transitions: Dict[str, Dict[Watch, TransitionValue]] = {}
@@ -139,6 +144,11 @@ class SubPathConstraint(Constraint, ABC):
         self._reset_states()
 
         self.graph = graph
+        self.aa_seq = graph.aa_seq
+        self.context_l = graph.context_l
+        self.context_r = graph.context_r
+        self.translation_table = graph.tt
+
         self.paths = self._find_paths()
         self.starts = self._build_starts()
         self.transitions = self._build_transitions()
