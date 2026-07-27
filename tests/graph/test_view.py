@@ -1123,12 +1123,12 @@ def test_banned_sequences_can_be_set_and_are_normalised():
     view = CodonGraphView(graph, constraints=[ForbiddenMotifConstraint(['aaa', 'AAA', 'ttt'])])
     assert len(view.constraints) == 1
     assert isinstance(view.constraints[0], ForbiddenMotifConstraint)
-    assert set(view.constraints[0].banned_sequences) == {'AAA', 'TTT'}
+    assert set(view.constraints[0].forbidden_sequences) == {'AAA', 'TTT'}
 
     view = CodonGraphView(graph, constraints=[ForbiddenMotifConstraint(['ccc', 'CCC', 'ggg'])])
     assert len(view.constraints) == 1
     assert isinstance(view.constraints[0], ForbiddenMotifConstraint)
-    assert set(view.constraints[0].banned_sequences) == {'CCC', 'GGG'}
+    assert set(view.constraints[0].forbidden_sequences) == {'CCC', 'GGG'}
 
 
 def test_clear_banned_sequences_removes_bans_and_marks_stale():
