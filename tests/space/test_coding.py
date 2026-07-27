@@ -8,6 +8,7 @@ from codeine.translation.weights import CodonWeights
 from codeine.translation.tables import TranslationTable
 from codeine.space.coding import CodingSpace
 from codeine.motifs.restriction import RestrictionSite
+from codeine.constraints.base import Constraint, SAFE_STATE
 from codeine.constraints.motifs import ForbiddenMotifConstraint
 
 
@@ -675,6 +676,34 @@ def test_coding_space_accepts_constraints_at_initialisation():
 
     assert space.constraints == (constraint,)
     assert set(space.enumerate()) == {'GAG'}
+
+
+class SafeConstraint(Constraint):
+
+    def initial_state(self):
+        return SAFE_STATE
+
+    def advance(self, state, pos, choice):
+        return SAFE_STATE
+
+    def link(self, graph):
+        pass
+
+
+def test_coding_space_pickle_preserves_constraints():
+    constraint = SafeConstraint()
+
+    space = CodingSpace('MIKEY', constraints=[constraint],
+                        forbidden_motifs=['CCC'], max_homopolymer=4,seed=8675309)
+
+    loaded = pickle.loads(pickle.dumps(space))
+
+    assert len(loaded.constraints) == 1
+    assert isinstance(loaded.constraints[0], SafeConstraint)
+    assert loaded.forbidden_motifs == space.forbidden_motifs
+    assert loaded.max_homopolymer == space.max_homopolymer
+    assert loaded.n_valid_sequences == space.n_valid_sequences
+    assert set(loaded.enumerate()) == set(space.enumerate())
 
 
 def test_coding_space_initial_constraints_combine_with_forbidden_motifs():

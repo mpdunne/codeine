@@ -397,7 +397,7 @@ class CodingSpace:
 
     def set_constraints(self, constraints: Sequence[Constraint]) -> None:
         """
-        Set any additional constraints.
+        Replace the additional constraints for this coding space.
 
         Parameters
         ----------
@@ -409,7 +409,8 @@ class CodingSpace:
 
     def clear_constraints(self) -> None:
         """
-        Remove custom constraints.
+        Remove all additional constraints. Constraints configured through
+        ``forbidden_motifs`` and ``max_homopolymer`` are unaffected.
         """
         self.set_constraints(())
 
