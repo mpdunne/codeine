@@ -25,7 +25,7 @@ class TandemRepeatConstraint(SubPathConstraint):
             raise TypeError('repeat_length must be an integer')
 
         if repeat_length < 1:
-            raise ValueError('repeat_length must be at least 1')
+            raise ValueError('repeat_length must be at least 2')
 
         if not isinstance(min_copies, int) or isinstance(min_copies, bool):
             raise TypeError('min_copies must be an integer')

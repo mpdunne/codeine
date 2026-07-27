@@ -1,6 +1,73 @@
 import pytest
 
 from codeine.constraints.tandem import TandemRepeatConstraint
+from codeine.graph import CodonGraph
+
+
+###############################
+# Helpers
+###############################
+
+
+def helper_has_tandem_repeat(
+    sequence,
+    repeat_length,
+    min_copies,
+):
+    """
+    Return whether a sequence contains the specified exact tandem repeat.
+    """
+    repeat_span = repeat_length * min_copies
+
+    for start in range(len(sequence) - repeat_span + 1):
+        repeat = sequence[start:start + repeat_length]
+
+        if sequence[start:start + repeat_span] == repeat * min_copies:
+            return True
+
+    return False
+
+
+@pytest.mark.parametrize(
+    'sequence,repeat_length,min_copies,expected',
+    [
+        ('ATAT', 2, 2, True),
+        ('ATATAT', 2, 2, True),
+        ('ATATAT', 2, 3, True),
+        ('ATATAC', 2, 3, False),
+        ('ACTACT', 3, 2, True),
+        ('ACTACTACT', 3, 2, True),
+        ('ACTACTACT', 3, 3, True),
+        ('ACTACTACC', 3, 3, False),
+        ('AATAATAAT', 3, 3, True),
+        ('ACGTACGT', 4, 2, True),
+    ],
+)
+def test_has_tandem_repeat(sequence, repeat_length, min_copies, expected):
+    assert helper_has_tandem_repeat(sequence, repeat_length, min_copies) is expected
+
+
+def helper_enumerate_expected(
+    aa_seq,
+    repeat_length,
+    min_copies,
+    context_l='',
+    context_r='',
+):
+    """
+    Brute-force the sequences that should remain after applying the constraint.
+    """
+    view = CodonGraph(aa_seq, context_l=context_l, context_r=context_r).view()
+
+    return {
+        sequence for sequence in view.enumerate()
+        if not helper_has_tandem_repeat(context_l + sequence + context_r, repeat_length, min_copies)
+    }
+
+
+###############################
+# Construction and validation
+###############################
 
 
 def test_tandem_repeat_constraint_stores_parameters():
@@ -38,3 +105,133 @@ def test_min_copies_must_be_at_least_two(min_copies):
 def test_min_copies_must_be_an_integer(min_copies):
     with pytest.raises(TypeError, match='min_copies must be an integer'):
         TandemRepeatConstraint(repeat_length=4, min_copies=min_copies)
+
+
+###############################
+# Functionality
+###############################
+
+@pytest.mark.parametrize(
+    'aa_seq,repeat_length,min_copies',
+    [
+        # Codon-aligned repeats.
+        ('FF', 3, 2),
+        ('FFF', 3, 3),
+
+        # Repeat units shorter than a codon.
+        ('FF', 2, 2),
+        ('FFF', 2, 3),
+
+        # Repeat units crossing codon boundaries.
+        ('FIY', 4, 2),
+        ('FYFI', 5, 2),
+
+        # No possible repeats.
+        ('ME', 2, 2),
+    ],
+)
+def test_enumerated_sequences_do_not_contain_tandem_repeats(aa_seq, repeat_length, min_copies):
+    expected = helper_enumerate_expected(aa_seq, repeat_length, min_copies)
+
+    view = CodonGraph(aa_seq).view()
+
+    constraint = TandemRepeatConstraint(repeat_length=repeat_length, min_copies=min_copies)
+    view.set_constraints([constraint])
+
+    observed = set(view.enumerate())
+
+    assert observed == expected
+    assert view.n_valid_sequences == len(expected)
+
+
+###############################
+# Large spaces
+###############################
+
+@pytest.mark.parametrize(
+    'aa_seq,repeat_length,min_copies',
+    [
+        ('F' * 20, 2, 4),
+        ('F' * 20, 3, 3),
+        ('F' * 20, 4, 3),
+        ('F' * 20, 6, 2),
+        ('IY' * 20, 2, 4),
+        ('IY' * 20, 4, 3),
+        ('IY' * 20, 6, 2),
+    ],
+)
+def test_sampled_sequences_do_not_contain_tandem_repeats(aa_seq, repeat_length, min_copies):
+    view = CodonGraph(aa_seq).view()
+
+    constraint = TandemRepeatConstraint(repeat_length=repeat_length, min_copies=min_copies)
+    view.set_constraints([constraint])
+
+    for sequence in view.sample(n=1000, seed=1):
+        assert not helper_has_tandem_repeat(sequence, repeat_length, min_copies)
+
+
+###############################
+# Contexts
+###############################
+
+
+@pytest.mark.parametrize(
+    'aa_seq,context_l,context_r,repeat_length,min_copies',
+    [
+        # Repeat begins in the left context.
+        ('F', 'T', '', 2, 2),       # T + TTT -> TT x 2
+        ('F', 'TTC', '', 3, 2),     # TTC + TTC -> TTC x 2
+
+        # Repeat ends in the right context.
+        ('F', '', 'T', 2, 2),       # TTT + T -> TT x 2
+        ('F', '', 'TTC', 3, 2),     # TTC + TTC -> TTC x 2
+
+        # Different synonymous encodings violate opposite boundaries.
+        ('F', 'T', 'ACA', 2, 2),    # T + TTT -> TT x 2 /  TTC + ACA -> CA x 2
+
+        # Repeat units cross codon boundaries.
+        ('FF', 'CT', '', 4, 2),     # CT + TTCTTT -> CTTT x 2
+        ('FF', '', 'CT', 4, 2),     # TTCTTT + CT -> TTCT x 2
+    ],
+)
+def test_tandem_repeats_in_contexts(
+    aa_seq,
+    context_l,
+    context_r,
+    repeat_length,
+    min_copies,
+):
+    expected = helper_enumerate_expected(
+        aa_seq,
+        repeat_length,
+        min_copies,
+        context_l=context_l,
+        context_r=context_r,
+    )
+
+    view = CodonGraph(aa_seq, context_l=context_l, context_r=context_r).view()
+
+    constraint = TandemRepeatConstraint(repeat_length=repeat_length, min_copies=min_copies)
+    view.set_constraints([constraint])
+
+    observed = set(view.enumerate())
+
+    assert observed == expected
+    assert view.n_valid_sequences == len(expected)
+
+
+@pytest.mark.parametrize(
+    'context_l,context_r',
+    [
+        ('ATAT', ''),
+        ('', 'ATAT'),
+    ],
+)
+def test_repeat_entirely_within_context_makes_space_empty(context_l, context_r):
+    view = CodonGraph('MIKEY', context_l=context_l, context_r=context_r).view()
+
+    constraint = TandemRepeatConstraint(repeat_length=2, min_copies=2)
+    view.set_constraints([constraint])
+
+    assert view.n_valid_sequences == 0
+    assert list(view.enumerate()) == []
