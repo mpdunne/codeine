@@ -643,7 +643,7 @@ def test_setting_forbidden_motifs_rebulids_constraint():
 def test_coding_space_accepts_constraints():
     constraint = ForbiddenMotifConstraint(['GAA'])
     space = CodingSpace('E')
-    space._set_constraints([constraint])
+    space.set_constraints([constraint])
 
     assert space.constraints == (constraint,)
     assert set(space.enumerate()) == {'GAG'}
@@ -653,17 +653,17 @@ def test_coding_space_can_set_and_clear_constraints():
     space = CodingSpace('E')
     constraint = ForbiddenMotifConstraint(['GAA'])
 
-    space._set_constraints([constraint])
+    space.set_constraints([constraint])
     assert set(space.enumerate()) == {'GAG'}
 
-    space._clear_constraints()
+    space.clear_constraints()
     assert set(space.enumerate()) == {'GAA', 'GAG'}
 
 
 def test_coding_space_constraints_combine_with_forbidden_motifs():
     constraint = ForbiddenMotifConstraint(['GAG'])
     space = CodingSpace('E', forbidden_motifs=['GAA'])
-    space._set_constraints([constraint])
+    space.set_constraints([constraint])
 
     assert space.n_valid_sequences == 0
 
