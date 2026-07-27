@@ -8,6 +8,7 @@ from codeine.translation.weights import CodonWeights
 from codeine.translation.tables import TranslationTable
 from codeine.space.coding import CodingSpace
 from codeine.motifs.restriction import RestrictionSite
+from codeine.constraints.base import Constraint, SAFE_STATE
 from codeine.constraints.motifs import ForbiddenMotifConstraint
 
 
@@ -643,7 +644,7 @@ def test_setting_forbidden_motifs_rebulids_constraint():
 def test_coding_space_accepts_constraints():
     constraint = ForbiddenMotifConstraint(['GAA'])
     space = CodingSpace('E')
-    space._set_constraints([constraint])
+    space.set_constraints([constraint])
 
     assert space.constraints == (constraint,)
     assert set(space.enumerate()) == {'GAG'}
@@ -653,19 +654,83 @@ def test_coding_space_can_set_and_clear_constraints():
     space = CodingSpace('E')
     constraint = ForbiddenMotifConstraint(['GAA'])
 
-    space._set_constraints([constraint])
+    space.set_constraints([constraint])
     assert set(space.enumerate()) == {'GAG'}
 
-    space._clear_constraints()
+    space.clear_constraints()
     assert set(space.enumerate()) == {'GAA', 'GAG'}
 
 
 def test_coding_space_constraints_combine_with_forbidden_motifs():
     constraint = ForbiddenMotifConstraint(['GAG'])
     space = CodingSpace('E', forbidden_motifs=['GAA'])
-    space._set_constraints([constraint])
+    space.set_constraints([constraint])
 
     assert space.n_valid_sequences == 0
+
+
+def test_coding_space_accepts_constraints_at_initialisation():
+    constraint = ForbiddenMotifConstraint(['GAA'])
+
+    space = CodingSpace('E', constraints=[constraint])
+
+    assert space.constraints == (constraint,)
+    assert set(space.enumerate()) == {'GAG'}
+
+
+class SafeConstraint(Constraint):
+
+    def initial_state(self):
+        return SAFE_STATE
+
+    def advance(self, state, pos, choice):
+        return SAFE_STATE
+
+    def link(self, graph):
+        pass
+
+
+def test_coding_space_pickle_preserves_constraints():
+    constraint = SafeConstraint()
+
+    space = CodingSpace('MIKEY', constraints=[constraint],
+                        forbidden_motifs=['CCC'], max_homopolymer=4,seed=8675309)
+
+    loaded = pickle.loads(pickle.dumps(space))
+
+    assert len(loaded.constraints) == 1
+    assert isinstance(loaded.constraints[0], SafeConstraint)
+    assert loaded.forbidden_motifs == space.forbidden_motifs
+    assert loaded.max_homopolymer == space.max_homopolymer
+    assert loaded.n_valid_sequences == space.n_valid_sequences
+    assert set(loaded.enumerate()) == set(space.enumerate())
+
+
+def test_coding_space_initial_constraints_combine_with_forbidden_motifs():
+    constraint = ForbiddenMotifConstraint(['GAG'])
+
+    space = CodingSpace('E', constraints=[constraint], forbidden_motifs=['GAA'])
+
+    assert space.n_valid_sequences == 0
+
+
+def test_coding_space_initial_constraints_combine_with_max_homopolymer():
+    constraint = ForbiddenMotifConstraint(['AAG'])
+
+    space = CodingSpace('K', constraints=[constraint], max_homopolymer=2)
+
+    assert space.n_valid_sequences == 0
+
+
+def test_coding_space_clear_constraints_preserves_convenience_constraints():
+    constraint = ForbiddenMotifConstraint(['GAG'])
+
+    space = CodingSpace('E', constraints=[constraint], forbidden_motifs=['GAA'])
+
+    space.clear_constraints()
+
+    assert space.constraints == ()
+    assert set(space.enumerate()) == {'GAG'}
 
 
 def test_zero_weight_codons_are_valid_but_not_sampled():
