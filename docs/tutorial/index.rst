@@ -9,8 +9,8 @@ This guide introduces the main concepts in **Codeine**, via various worked examp
    :caption: Contents:
 
    basic_usage
-   constraints
-   contexts
-   mutations
    tables
+   contexts
+   constraints
    weights
+   mutations
