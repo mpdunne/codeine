@@ -3,6 +3,10 @@ Adding constraints
 
 Sequence constraints are central to **Codeine**'s design philosophy, allowing you to easily narrow the space of valid coding sequences to match your requirements.
 
+Common constraints are available directly as convenience arguments to
+``CodingSpace``. More specialised constraints are specified via the
+``constraints`` argument, and both approaches can be used together.
+
 Currently **Codeine** handles:
 
 * `Forbidden motifs`_
@@ -41,26 +45,12 @@ In biotechnology we often wish to exclude sequence motifs that interfere with cl
     print(f'With constraints: {constrained.n_valid_sequences:,} sequences')
     print(constrained.sample())
 
+Forbidden motifs can either be passed directly via
+``forbidden_motifs``, or as a
+``ForbiddenMotifConstraint`` via the ``constraints`` argument.
 
 For convenience, ``codeine.RestrictionSite`` provides a collection of commonly used restriction
-enzyme recognition sequences. For example:
-
-.. code-block:: python
-
-   from codeine import RestrictionSite
-
-   print(RestrictionSite.EcoRI)
-   print(RestrictionSite.BsaI)
-
-
-This outputs a summary of each of these restriction sites:
-
-.. code-block:: text
-
-    EcoRI (GAATTC)
-    BsaI (GGTCTC / GAGACC)
-
-The built-in motifs can then be used alongside custom motifs:
+enzyme recognition sequences. The built-in motifs can be used alongside custom motifs:
 
 .. code-block:: python
 
@@ -111,6 +101,11 @@ containing six or more consecutive identical nucleotides.
 
    print(space.n_valid_sequences)
 
+Homopolymer limits can either be specified via
+``max_homopolymer``, or as a
+``HomopolymerConstraint`` via the ``constraints`` argument.
+
+
 
 .. _Tandem repeats:
 
@@ -159,7 +154,7 @@ desired:
 Combining constraints
 ---------------------
 
-Constraints can be combined freely!
+Convenience arguments and explicit constraints can be combined freely.
 
 .. code-block:: python
 
@@ -169,14 +164,13 @@ Constraints can be combined freely!
 
    space = CodingSpace(
        aa_seq,
-       codon_restrictions={
-           2: ['AAA', 'AAG'],
-           5: 'GAA',
-       },
        forbidden_motifs=[
            RestrictionSite.EcoRI,
            RestrictionSite.XhoI,
            'TAGATA',
+       ],
+       constraints=[
+           TandemRepeatConstraint(4, 3),
        ],
        max_homopolymer=5,
        seed=42,
@@ -194,14 +188,14 @@ For example:
 
 .. code-block:: python
 
-    from codeine import CodingSpace, RestrictionSite
+    from codeine import CodingSpace
 
     space = CodingSpace(
-       'MKTLEFQNGSCPRYKKL',
-       forbidden_motifs=[
-           'ATGAAA',
-           'ATGAAG',
-       ],
+        'MKTLEFQNGSCPRYKKL',
+        forbidden_motifs=[
+            'ATGAAA',
+            'ATGAAG',
+        ],
     )
 
-    print(f'Num. valid sequences: {space.n_valid_sequences} ')
+    print(f'Num. valid sequences: {space.n_valid_sequences}')
