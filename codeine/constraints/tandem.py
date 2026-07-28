@@ -43,9 +43,17 @@ class TandemRepeatConstraint(SubPathConstraint):
         repeat_span = self.repeat_length * self.min_copies
         full_sequence_length = len(self.context_l) + 3 * len(self.aa_seq) + len(self.context_r)
 
+        self._nucleotide_positions = [self._nucleotide_to_pos(nt_ix) for nt_ix in range(full_sequence_length)]
+
+        n_starts = full_sequence_length - repeat_span + 1
+        possible_starts = self._get_possible_starts(n_starts)
+
+        if not possible_starts:
+            return ()
+
         paths = []
 
-        for start in range(full_sequence_length - repeat_span + 1):
+        for start in possible_starts:
             paths.extend(self._find_paths_at(start))
 
         return tuple(set(paths))
@@ -74,14 +82,63 @@ class TandemRepeatConstraint(SubPathConstraint):
 
         return len(self.aa_seq) + 1, nt_ix - coding_end
 
+    def _get_base_masks(self):
+        """
+        Get the possible bases at each nucleotide position.
+        """
+        nt_to_mask = {
+            'A': 1,
+            'C': 2,
+            'G': 4,
+            'T': 8,
+            'U': 8,
+        }
+
+        nt_masks = []
+
+        for pos, choice_offset in self._nucleotide_positions:
+            mask = 0
+
+            for choice in self.graph.nodes[pos].transitions:
+                mask |= nt_to_mask[choice[choice_offset]]
+
+            nt_masks.append(mask)
+
+        return nt_masks
+
+    def _get_possible_starts(self, n_starts):
+        """
+        Get candidate repeat starts that cannot be ruled out at nucleotide level.
+        """
+        base_masks = self._get_base_masks()
+        possible_starts = []
+
+        for start in range(n_starts):
+            for repeat_offset in range(self.repeat_length):
+                mask = base_masks[start + repeat_offset]
+
+                for copy_ix in range(1, self.min_copies):
+                    nt_ix = start + copy_ix * self.repeat_length + repeat_offset
+                    mask &= base_masks[nt_ix]
+
+                    if not mask:
+                        break
+
+                if not mask:
+                    break
+            else:
+                possible_starts.append(start)
+
+        return possible_starts
+
     def _find_paths_at(self, start):
         """
         Find tandem repeat paths beginning at one nucleotide position.
         """
         repeat_span = self.repeat_length * self.min_copies
 
-        start_pos, start_offset = self._nucleotide_to_pos(start)
-        end_pos, _ = self._nucleotide_to_pos(start + repeat_span - 1)
+        start_pos, start_offset = self._nucleotide_positions[start]
+        end_pos, _ = self._nucleotide_positions[start + repeat_span - 1]
 
         paths = [('', ())]
 
