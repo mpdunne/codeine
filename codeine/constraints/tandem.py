@@ -43,6 +43,8 @@ class TandemRepeatConstraint(SubPathConstraint):
         repeat_span = self.repeat_length * self.min_copies
         full_sequence_length = len(self.context_l) + 3 * len(self.aa_seq) + len(self.context_r)
 
+        self._nucleotide_positions = [self._nucleotide_to_pos(nt_ix) for nt_ix in range(full_sequence_length)]
+
         paths = []
 
         for start in range(full_sequence_length - repeat_span + 1):
@@ -80,8 +82,8 @@ class TandemRepeatConstraint(SubPathConstraint):
         """
         repeat_span = self.repeat_length * self.min_copies
 
-        start_pos, start_offset = self._nucleotide_to_pos(start)
-        end_pos, _ = self._nucleotide_to_pos(start + repeat_span - 1)
+        start_pos, start_offset = self._nucleotide_positions[start]
+        end_pos, _ = self._nucleotide_positions[start + repeat_span - 1]
 
         paths = [('', ())]
 
