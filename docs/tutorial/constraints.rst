@@ -7,7 +7,7 @@ Currently **Codeine** handles:
 
 * `Forbidden motifs`_
 * `Max homopolymer length`_
-* `Restricted codon choices`_
+* `Tandem repeats`_
 
 As well as arbitrary `combinations of the above`_. Let's go through these!
 
@@ -111,29 +111,48 @@ containing six or more consecutive identical nucleotides.
 
    print(space.n_valid_sequences)
 
-.. _Restricted codon choices:
 
-Fixed codons
-------------
-``codon_restrictions`` restricts which codons are allowed at specific amino acid positions. They can either be fixed exact codons, or subsets of the set of possible codons for that amino acid. Positions are 1-based.
+.. _Tandem repeats:
+
+Tandem repeats
+--------------
+
+Tandem repeats can increase the risk of polymerase slippage during DNA
+replication. In **Codeine**, tandem repeats can be avoided using the
+``TandemRepeatConstraint``.
+
+For example, the following constraint forbids tandem repeats with a
+repeat unit of 4 nucleotides occurring three or more times consecutively.
 
 .. code-block:: python
 
-    from codeine import CodingSpace
+   from codeine import CodingSpace
+   from codeine.constraints import TandemRepeatConstraint
 
-    aa_seq = 'MKTLEFQNGSCPRYKKL'
-
-    space = CodingSpace(
+   space = CodingSpace(
        aa_seq,
-       codon_restrictions={
-           2: 'AAA',
-           3: ['ACA', 'ACG'],
-       },
-       seed=42,
-    )
+       constraints=[
+           TandemRepeatConstraint(repeat_length=4, min_copies=3),
+       ],
+   )
 
-Here, position 1 is restricted to ``TCG`` or ``TCA``, and position 2 is fixed to
-``GAG``.
+   print(space.n_valid_sequences)
+
+Tandem repeats are, by design, exact. Different repeat lengths are
+therefore handled by separate constraints, which can be combined as
+desired:
+
+
+.. code-block:: python
+
+   space = CodingSpace(
+       aa_seq,
+       constraints=[
+           TandemRepeatConstraint(2, 4),  # e.g. ATATATAT
+           TandemRepeatConstraint(3, 3),  # e.g. GTCGTCGTC
+           TandemRepeatConstraint(4, 3),  # e.g. AGCTAGCTAGCT
+       ],
+   )
 
 .. _combinations of the above:
 
