@@ -76,6 +76,29 @@ class TandemRepeatConstraint(SubPathConstraint):
 
         return len(self.aa_seq) + 1, nt_ix - coding_end
 
+    def _prescreen_repeat(self, start):
+        """
+        Quickly reject candidate tandem repeats that are obviously impossible.
+        """
+        for repeat_offset in range(self.repeat_length):
+            allowed_bases = None
+
+            for copy_ix in range(self.min_copies):
+                nt_ix = start + copy_ix * self.repeat_length + repeat_offset
+                pos, choice_offset = self._nucleotide_positions[nt_ix]
+
+                bases = {choice[choice_offset] for choice in self.graph.nodes[pos].transitions}
+
+                if allowed_bases is None:
+                    allowed_bases = bases
+                else:
+                    allowed_bases &= bases
+
+            if not allowed_bases:
+                return False
+
+        return True
+
     def _find_paths_at(self, start):
         """
         Find tandem repeat paths beginning at one nucleotide position.
@@ -84,6 +107,11 @@ class TandemRepeatConstraint(SubPathConstraint):
 
         start_pos, start_offset = self._nucleotide_positions[start]
         end_pos, _ = self._nucleotide_positions[start + repeat_span - 1]
+
+        # Pre-screening takes a bit of time and the cost outweighs the benefit for shorter repeat
+        # sizes. This checks for obvious codon incompatibility before constructing candidate repeats.
+        if self.repeat_length >= 15 and not self._prescreen_repeat(start):
+            return []
 
         paths = [('', ())]
 

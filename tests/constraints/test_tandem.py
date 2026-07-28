@@ -459,6 +459,8 @@ def test_long_and_possible_repeat_unit(seq, repeat_length, min_copies):
         ('AT' * 99 + 'CGA', 100, 2),
         ('ATC' * 100 + 'ATC' * 100 + 'ATC' * 99 + 'CCC', 100, 3),
         ('ATGC' * 1000 + 'ATGC' * 999 + 'AAAAA', 4000, 3),
+        ('ATCGACGTAGGCATGCCGTAC' * 9 + 'A' * 21, 21, 10),
+        ('ATCGACGTAGGCATGCCGTAC' * 99 + 'A' * 21, 21, 100),
     ],
 )
 def test_long_but_impossible_repeat_unit(seq, repeat_length, min_copies):
