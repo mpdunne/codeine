@@ -45,9 +45,15 @@ class TandemRepeatConstraint(SubPathConstraint):
 
         self._nucleotide_positions = [self._nucleotide_to_pos(nt_ix) for nt_ix in range(full_sequence_length)]
 
+        n_starts = full_sequence_length - repeat_span + 1
+        possible_starts = self._get_possible_starts(n_starts)
+
+        if not possible_starts:
+            return ()
+
         paths = []
 
-        for start in range(full_sequence_length - repeat_span + 1):
+        for start in possible_starts:
             paths.extend(self._find_paths_at(start))
 
         return tuple(set(paths))
@@ -76,28 +82,54 @@ class TandemRepeatConstraint(SubPathConstraint):
 
         return len(self.aa_seq) + 1, nt_ix - coding_end
 
-    def _prescreen_repeat(self, start):
+    def _get_base_masks(self):
         """
-        Quickly reject candidate tandem repeats that are obviously impossible.
+        Get the possible bases at each nucleotide position.
         """
-        for repeat_offset in range(self.repeat_length):
-            allowed_bases = None
+        nt_to_mask = {
+            'A': 1,
+            'C': 2,
+            'G': 4,
+            'T': 8,
+            'U': 8,
+        }
 
-            for copy_ix in range(self.min_copies):
-                nt_ix = start + copy_ix * self.repeat_length + repeat_offset
-                pos, choice_offset = self._nucleotide_positions[nt_ix]
+        nt_masks = []
 
-                bases = {choice[choice_offset] for choice in self.graph.nodes[pos].transitions}
+        for pos, choice_offset in self._nucleotide_positions:
+            mask = 0
 
-                if allowed_bases is None:
-                    allowed_bases = bases
-                else:
-                    allowed_bases &= bases
+            for choice in self.graph.nodes[pos].transitions:
+                mask |= nt_to_mask[choice[choice_offset]]
 
-            if not allowed_bases:
-                return False
+            nt_masks.append(mask)
 
-        return True
+        return nt_masks
+
+    def _get_possible_starts(self, n_starts):
+        """
+        Get candidate repeat starts that cannot be ruled out at nucleotide level.
+        """
+        base_masks = self._get_base_masks()
+        possible_starts = []
+
+        for start in range(n_starts):
+            for repeat_offset in range(self.repeat_length):
+                mask = base_masks[start + repeat_offset]
+
+                for copy_ix in range(1, self.min_copies):
+                    nt_ix = start + copy_ix * self.repeat_length + repeat_offset
+                    mask &= base_masks[nt_ix]
+
+                    if not mask:
+                        break
+
+                if not mask:
+                    break
+            else:
+                possible_starts.append(start)
+
+        return possible_starts
 
     def _find_paths_at(self, start):
         """
@@ -107,11 +139,6 @@ class TandemRepeatConstraint(SubPathConstraint):
 
         start_pos, start_offset = self._nucleotide_positions[start]
         end_pos, _ = self._nucleotide_positions[start + repeat_span - 1]
-
-        # Pre-screening takes a bit of time and the cost outweighs the benefit for shorter repeat
-        # sizes. This checks for obvious codon incompatibility before constructing candidate repeats.
-        if self.repeat_length >= 12 and not self._prescreen_repeat(start):
-            return []
 
         paths = [('', ())]
 
