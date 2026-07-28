@@ -2,6 +2,7 @@ import pytest
 
 from codeine.constraints.tandem import TandemRepeatConstraint
 from codeine.graph.base import CodonGraph
+from codeine.translation.tables import TranslationTable
 
 from tests.data import NORMAL_PROTEINS, DIFFICULT_PROTEINS, ANTIBODIES
 
@@ -424,3 +425,50 @@ def test_sampled_sequences_satisfy_multiple_tandem_repeat_constraints(aa_seq):
     for sequence in view.sample(n=100):
         for constraint in constraints:
             assert not helper_has_tandem_repeat(sequence, constraint.repeat_length, constraint.min_copies)
+
+
+#################
+# Longer repeats
+#################
+
+@pytest.mark.parametrize(
+    'seq,repeat_length,min_copies',
+    [
+        ('ATATATATATATATAT' + 'TATATATATATATATA' + 'T', 15, 2),
+        ('C' + 'ATATATATATATATAT' + 'TATATATATATATATA', 15, 2),
+        ('ATC' * 6 + 'ATC' * 6 + 'ATC' * 6 + 'ATC', 18, 3),
+        ('T' + 'ATC' * 6 + 'ATC' * 6 + 'ATC' * 6 + 'ATCTT', 18, 3),
+    ],
+)
+def test_long_and_possible_repeat_unit(seq, repeat_length, min_copies):
+    aa_seq = TranslationTable().translate(seq)
+
+    view = CodonGraph(aa_seq).view()
+    unconstrained_n = view.n_valid_sequences
+
+    view.set_constraints([TandemRepeatConstraint(repeat_length=repeat_length, min_copies=min_copies)])
+    view.compile()
+    constrained_n = view.n_valid_sequences
+
+    assert constrained_n < unconstrained_n
+
+
+@pytest.mark.parametrize(
+    'seq,repeat_length,min_copies',
+    [
+        ('AT' * 99 + 'CGA', 100, 2),
+        ('ATC' * 100 + 'ATC' * 100 + 'ATC' * 99 + 'CCC', 100, 3),
+        ('ATGC' * 1000 + 'ATGC' * 999 + 'AAAAA', 4000, 3),
+    ],
+)
+def test_long_but_impossible_repeat_unit(seq, repeat_length, min_copies):
+    aa_seq = TranslationTable().translate(seq)
+
+    view = CodonGraph(aa_seq).view()
+    unconstrained_n = view.n_valid_sequences
+
+    view.set_constraints([TandemRepeatConstraint(repeat_length=repeat_length, min_copies=min_copies)])
+    view.compile()
+    constrained_n = view.n_valid_sequences
+
+    assert constrained_n == unconstrained_n
