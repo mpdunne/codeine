@@ -13,8 +13,7 @@ Motifs = Union[Motif, Sequence[Motif]]
 
 class ForbiddenMotifConstraint(SubPathConstraint):
     """
-    A constraint class for preventing specified nucleotide motifs from
-    occurring in graph sequences.
+    Prevent specified nucleotide motifs from occurring in generated sequences.
 
     Motifs may be provided as nucleotide strings or as ``RestrictionSite``
     objects. Restriction sites are expanded into their concrete recognition

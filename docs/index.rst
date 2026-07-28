@@ -1,40 +1,37 @@
 Codeine
 =======
 
-**Codeine** is a Python library for exploring constrained
-synonymous coding sequence spaces.
+**Codeine** is a Python library for exploring synonymous coding sequence spaces under biological constraints.
 
-Overview
---------
 
-**Codeine** represents the complete space of synonymous
-coding sequences satisfying user-defined constraints. This makes it
-possible to count, sample and enumerate valid coding sequences exactly.
+Why Codeine?
+------------
 
-Traditional codon optimisation tools typically return a single
-sequence. By contrast, Codeine represents the full feasible
-sequence space, allowing users to explore alternative designs freely.
+Codeine compiles biological constraints into a ``CodingSpace``, an
+exact representation of the feasible design space for a given amino
+acid sequence.
 
-Constraints are built in to **Codeine**'s sequence generation process,
-so that all generated sequences are automatically valid. This means you can generate as
-many sequences as needed and score them according to your own objective
-functions, without having to repair or filter them.
+Sequences sampled or enumerated from a ``CodingSpace`` are
+automatically valid under the specified constraints.
+This means sequences can be generated freely and scored according to
+arbitrary objective functions, without sequence repair or filtering.
 
 
 Features
 --------
 
+* Arbitrarily long amino acid sequences
 * Exact counting of sequence spaces
-* Uniform and weighted sampling
 * Sequence enumeration
+* Uniform and weighted sampling
 * Local sequence redesign
 * Mutation spaces
 * Fixed codons
 * Sequence contexts
-* Restriction site avoidance
-* Arbitrary forbidden motifs
-* Homopolymer constraints
+* Restriction sites & arbitrary motif avoidance
+* Homopolymer and tandem repeat avoidance
 * Custom translation tables
+
 
 Example
 -------
