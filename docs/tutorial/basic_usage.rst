@@ -1,5 +1,5 @@
-Basic usage
-===========
+Coding spaces
+=============
 
 Here we introduce the three basic operations on a coding space: counting,
 sampling and enumeration.
