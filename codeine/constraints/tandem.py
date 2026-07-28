@@ -110,7 +110,7 @@ class TandemRepeatConstraint(SubPathConstraint):
 
         # Pre-screening takes a bit of time and the cost outweighs the benefit for shorter repeat
         # sizes. This checks for obvious codon incompatibility before constructing candidate repeats.
-        if self.repeat_length >= 15 and not self._prescreen_repeat(start):
+        if self.repeat_length >= 12 and not self._prescreen_repeat(start):
             return []
 
         paths = [('', ())]
