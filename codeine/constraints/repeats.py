@@ -1,6 +1,8 @@
 from abc import ABC
+from typing import Optional
 
 from codeine.constraints.base import Constraint
+from codeine.graph.base import CodonGraph
 
 
 class RepeatConstraint(Constraint, ABC):
@@ -57,14 +59,33 @@ class RepeatConstraint(Constraint, ABC):
         self.max_distance = max_distance
         self.inverted = inverted
 
+        self.graph: Optional[CodonGraph] = None
+        self.aa_seq = None
+        self.context_l = None
+        self.context_r = None
+        self.translation_table = None
+        self.nt_trans = None
+
     def initial_state(self):
         raise NotImplementedError
 
     def link(self, graph):
-        raise NotImplementedError
+        self.graph = graph
+        self.aa_seq = graph.aa_seq
+        self.context_l = graph.context_l
+        self.context_r = graph.context_r
+        self.translation_table = graph.tt
+
+        self.nt_trans = str.maketrans('ACGU', 'UGCA') if graph.tt.rna else str.maketrans('ACGT', 'TGCA')
 
     def advance(self, state, pos, choice):
         raise NotImplementedError
+
+    def reverse_complement(self, sequence: str):
+        """
+        Return the reverse complement of a nucleotide sequence.
+        """
+        return sequence.translate(self.nt_trans)[::-1]
 
 
 class DirectRepeatConstraint(RepeatConstraint):
