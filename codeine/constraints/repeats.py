@@ -3,6 +3,7 @@ from typing import Optional
 
 from codeine.constraints.base import Constraint
 from codeine.graph.base import CodonGraph
+from codeine.utils.bitmasks import choices_to_nt_bitmasks
 
 
 class RepeatConstraint(Constraint, ABC):
@@ -64,9 +65,25 @@ class RepeatConstraint(Constraint, ABC):
         self.context_l = None
         self.context_r = None
         self.translation_table = None
+
         self.nt_trans = None
+        self.full_sequence_length = None
+
+        self.reference_choices = None
+        self.compare_choices = None
+
+        self.nt_bitmasks_reference = None
+        self.nt_bitmasks_compare = None
+
+        self.nt_positions_reference = None
+        self.nt_positions_compare = None
+
+        self.repeats = None
 
     def initial_state(self):
+        raise NotImplementedError
+
+    def advance(self, state, pos, choice):
         raise NotImplementedError
 
     def link(self, graph):
@@ -78,14 +95,186 @@ class RepeatConstraint(Constraint, ABC):
 
         self.nt_trans = str.maketrans('ACGU', 'UGCA') if graph.tt.rna else str.maketrans('ACGT', 'TGCA')
 
-    def advance(self, state, pos, choice):
-        raise NotImplementedError
+        self.reference_choices = [tuple(node.transitions) for node in self.graph.nodes
+                                  if node is not self.graph.end_node]
 
-    def reverse_complement(self, sequence: str):
+        self.compare_choices = (
+            [
+                tuple(self._reverse_complement(choice) for choice in choice_set)
+                for choice_set in self.reference_choices[::-1]
+            ]
+            if self.inverted
+            else self.reference_choices
+        )
+
+        self.nt_bitmasks_reference = choices_to_nt_bitmasks(self.reference_choices)
+        self.nt_bitmasks_compare = choices_to_nt_bitmasks(self.compare_choices)
+
+        self.nt_positions_reference = self._get_nt_positions(self.reference_choices)
+        self.nt_positions_compare = self._get_nt_positions(self.compare_choices)
+
+        self.full_sequence_length = len(self.nt_bitmasks_reference)
+        self.repeats = []
+
+        min_shift = 0 if self.inverted else self.repeat_length + self.min_distance
+        max_shift = self.full_sequence_length - self.repeat_length
+
+        # Cap the max shift in the direct case. For inverted repeats, distance
+        # depends on where in the alignment the repeat occurs and is checked later.
+        if not self.inverted and self.max_distance is not None:
+            max_shift = min(max_shift, self.repeat_length + self.max_distance)
+
+        for shift in range(min_shift, max_shift + 1):
+            self._find_repeats_at_shift(shift)
+
+    @property
+    def is_trivial(self) -> bool:
+        return not self.repeats
+
+    def _reverse_complement(self, sequence: str):
         """
         Return the reverse complement of a nucleotide sequence.
         """
         return sequence.translate(self.nt_trans)[::-1]
+
+    @staticmethod
+    def _get_nt_positions(choices):
+        """
+        Get the graph position and choice offset at each nucleotide position.
+        """
+        return [(pos, choice_offset) for pos, choice_set in enumerate(choices)
+                for choice_offset in range(len(choice_set[0]))]
+
+    def _find_repeats_at_shift(self, shift):
+        """
+        Find candidate repeats at one alignment of the reference and compare sequences.
+        """
+
+        # We can exclude most start positions by comparing the nucleotide bitmasks
+        # for the choices.
+        reference_nt_masks = self.nt_bitmasks_reference[:-shift] if shift else self.nt_bitmasks_reference
+        compare_nt_masks = self.nt_bitmasks_compare[shift:]
+
+        nt_intersections = [
+            mask_reference & mask_compare
+            for mask_reference, mask_compare in zip(reference_nt_masks, compare_nt_masks)
+        ]
+
+        # Find runs at least repeat_length long. Each sufficiently long run may
+        # contain several overlapping candidate repeats.
+        run_start = None
+
+        for ix, masked_nt in enumerate(nt_intersections):
+            if not masked_nt:
+                run_start = None
+                continue
+
+            if run_start is None:
+                run_start = ix
+
+            if ix - run_start + 1 < self.repeat_length:
+                continue
+
+            start_l = ix - self.repeat_length + 1
+            start_compare = shift + start_l
+
+            start_r = self.full_sequence_length - start_compare - self.repeat_length \
+                if self.inverted else start_compare
+
+            if start_r <= start_l:
+                continue
+
+            distance = start_r - start_l - self.repeat_length
+
+            if distance < self.min_distance:
+                continue
+
+            if self.max_distance is not None and distance > self.max_distance:
+                continue
+
+            # Check which whole choices can actually participate in the repeat.
+            # The nucleotide-level filter above treats positions independently;
+            # this step restores dependencies within codons/context choices.
+            filtered_choices = self._filter_choices(start_l, start_compare)
+
+            if filtered_choices is None:
+                continue
+
+            reference_choices_filtered, compare_choice_filtered = filtered_choices
+
+            self.repeats.append((
+                start_l,
+                start_r,
+                start_compare,
+                reference_choices_filtered,
+                compare_choice_filtered,
+            ))
+
+    def _filter_choices(self, reference_start, compare_start):
+        """
+        Find the codon choices that can realise a candidate repeat.
+
+        Align the ``repeat_length`` nucleotides starting at ``reference_start`` and
+        ``compare_start``, and remove codon choices that prohibit a match.
+
+        Filtering continues until no further choices can be removed. By construction, any
+        non-empty result guarantees that at least one match exists.
+
+        Returns
+        -------
+        reference_choices, compare_choices
+            Dictionaries mapping each involved position to the set of choices that
+            remain possible, or ``None`` if no repeat is possible here.
+        """
+        comparisons = {}
+
+        # Group nucleotide comparisons by the pair of graph positions involved.
+        for offset in range(self.repeat_length):
+            reference_pos, reference_offset = self.nt_positions_reference[reference_start + offset]
+            compare_pos, compare_offset = self.nt_positions_compare[compare_start + offset]
+
+            comparisons.setdefault((reference_pos, compare_pos), []).append(
+                (reference_offset, compare_offset)
+            )
+
+        # Start with every choice possible at every involved position.
+        reference_choices = {pos: set(self.reference_choices[pos]) for pos, _ in comparisons}
+        compare_choices = {pos: set(self.compare_choices[pos]) for _, pos in comparisons}
+
+        # TODO: We can probably use bitmasks for this. We love bitmasks.
+        # Remove choices that have no compatible choice at a compared position. Due to offsets,
+        # a single position will usually need to be compared against multiple neighbouring positions,
+        # Filtering in one of them can affect the choices in another: proceed iteratively until stable.
+        while True:
+            changed = False
+
+            for (reference_pos, compare_pos), offsets in comparisons.items():
+                next_reference_choices = set()
+                next_compare_choices = set()
+
+                # Find choices on either side that have at least one compatible partner.
+                for reference_choice in reference_choices[reference_pos]:
+                    for compare_choice in compare_choices[compare_pos]:
+                        if all(
+                            reference_choice[reference_offset] == compare_choice[compare_offset]
+                            for reference_offset, compare_offset in offsets
+                        ):
+                            next_reference_choices.add(reference_choice)
+                            next_compare_choices.add(compare_choice)
+
+                if not next_reference_choices or not next_compare_choices:
+                    return None
+
+                if next_reference_choices != reference_choices[reference_pos]:
+                    reference_choices[reference_pos] = next_reference_choices
+                    changed = True
+
+                if next_compare_choices != compare_choices[compare_pos]:
+                    compare_choices[compare_pos] = next_compare_choices
+                    changed = True
+
+            if not changed:
+                return reference_choices, compare_choices
 
 
 class DirectRepeatConstraint(RepeatConstraint):
