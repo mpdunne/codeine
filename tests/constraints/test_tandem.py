@@ -15,24 +15,24 @@ from tests.data import NORMAL_PROTEINS, DIFFICULT_PROTEINS, ANTIBODIES
 def helper_has_tandem_repeat(
     sequence,
     repeat_length,
-    min_copies,
+    copies,
 ):
     """
     Return whether a sequence contains the specified exact tandem repeat.
     """
-    repeat_span = repeat_length * min_copies
+    repeat_span = repeat_length * copies
 
     for start in range(len(sequence) - repeat_span + 1):
         repeat = sequence[start:start + repeat_length]
 
-        if sequence[start:start + repeat_span] == repeat * min_copies:
+        if sequence[start:start + repeat_span] == repeat * copies:
             return True
 
     return False
 
 
 @pytest.mark.parametrize(
-    'sequence,repeat_length,min_copies,expected',
+    'sequence,repeat_length,copies,expected',
     [
         ('AAAA', 1, 2, True),
         ('AAAA', 1, 4, True),
@@ -55,14 +55,14 @@ def helper_has_tandem_repeat(
         ('', 1, 2, False),
     ],
 )
-def test_has_tandem_repeat(sequence, repeat_length, min_copies, expected):
-    assert helper_has_tandem_repeat(sequence, repeat_length, min_copies) is expected
+def test_has_tandem_repeat(sequence, repeat_length, copies, expected):
+    assert helper_has_tandem_repeat(sequence, repeat_length, copies) is expected
 
 
 def helper_enumerate_expected(
     aa_seq,
     repeat_length,
-    min_copies,
+    copies,
     context_l='',
     context_r='',
 ):
@@ -73,7 +73,7 @@ def helper_enumerate_expected(
 
     return {
         sequence for sequence in view.enumerate()
-        if not helper_has_tandem_repeat(context_l + sequence + context_r, repeat_length, min_copies)
+        if not helper_has_tandem_repeat(context_l + sequence + context_r, repeat_length, copies)
     }
 
 
@@ -83,16 +83,16 @@ def helper_enumerate_expected(
 
 
 def test_tandem_repeat_constraint_stores_parameters():
-    constraint = TandemRepeatConstraint(repeat_length=4, min_copies=3)
+    constraint = TandemRepeatConstraint(repeat_length=4, copies=3)
 
     assert constraint.repeat_length == 4
-    assert constraint.min_copies == 3
+    assert constraint.copies == 3
 
 
 def test_tandem_repeat_constraint_defaults_to_two_copies():
     constraint = TandemRepeatConstraint(repeat_length=4)
 
-    assert constraint.min_copies == 2
+    assert constraint.copies == 2
 
 
 @pytest.mark.parametrize('repeat_length', [0, -1])
@@ -107,16 +107,16 @@ def test_repeat_length_must_be_an_integer(repeat_length):
         TandemRepeatConstraint(repeat_length=repeat_length)
 
 
-@pytest.mark.parametrize('min_copies', [0, 1, -1])
-def test_min_copies_must_be_at_least_two(min_copies):
-    with pytest.raises(ValueError, match='min_copies must be at least 2'):
-        TandemRepeatConstraint(repeat_length=4, min_copies=min_copies)
+@pytest.mark.parametrize('copies', [0, 1, -1])
+def test_copies_must_be_at_least_two(copies):
+    with pytest.raises(ValueError, match='copies must be at least 2'):
+        TandemRepeatConstraint(repeat_length=4, copies=copies)
 
 
-@pytest.mark.parametrize('min_copies', [None, 2.5, '2', True])
-def test_min_copies_must_be_an_integer(min_copies):
-    with pytest.raises(TypeError, match='min_copies must be an integer'):
-        TandemRepeatConstraint(repeat_length=4, min_copies=min_copies)
+@pytest.mark.parametrize('copies', [None, 2.5, '2', True])
+def test_copies_must_be_an_integer(copies):
+    with pytest.raises(TypeError, match='copies must be an integer'):
+        TandemRepeatConstraint(repeat_length=4, copies=copies)
 
 
 ###############################
@@ -124,7 +124,7 @@ def test_min_copies_must_be_an_integer(min_copies):
 ###############################
 
 @pytest.mark.parametrize(
-    'aa_seq,repeat_length,min_copies',
+    'aa_seq,repeat_length,copies',
     [
         # Single-nucleotide repeat units.
         ('F', 1, 2),
@@ -165,12 +165,12 @@ def test_min_copies_must_be_an_integer(min_copies):
         ('FI', 3, 3),
     ],
 )
-def test_enumerated_sequences_do_not_contain_tandem_repeats(aa_seq, repeat_length, min_copies):
-    expected = helper_enumerate_expected(aa_seq, repeat_length, min_copies)
+def test_enumerated_sequences_do_not_contain_tandem_repeats(aa_seq, repeat_length, copies):
+    expected = helper_enumerate_expected(aa_seq, repeat_length, copies)
 
     view = CodonGraph(aa_seq).view()
 
-    constraint = TandemRepeatConstraint(repeat_length=repeat_length, min_copies=min_copies)
+    constraint = TandemRepeatConstraint(repeat_length=repeat_length, copies=copies)
     view.set_constraints([constraint])
 
     observed = set(view.enumerate())
@@ -184,7 +184,7 @@ def test_enumerated_sequences_do_not_contain_tandem_repeats(aa_seq, repeat_lengt
 ###############################
 
 @pytest.mark.parametrize(
-    'aa_seq,repeat_length,min_copies',
+    'aa_seq,repeat_length,copies',
     [
         ('F' * 20, 1, 6),
         ('F' * 20, 2, 4),
@@ -202,14 +202,14 @@ def test_enumerated_sequences_do_not_contain_tandem_repeats(aa_seq, repeat_lengt
         ('FIL' * 15, 8, 2),
     ],
 )
-def test_sampled_sequences_do_not_contain_tandem_repeats(aa_seq, repeat_length, min_copies):
+def test_sampled_sequences_do_not_contain_tandem_repeats(aa_seq, repeat_length, copies):
     view = CodonGraph(aa_seq).view(seed=8675309)
 
-    constraint = TandemRepeatConstraint(repeat_length=repeat_length, min_copies=min_copies)
+    constraint = TandemRepeatConstraint(repeat_length=repeat_length, copies=copies)
     view.set_constraints([constraint])
 
     for sequence in view.sample(n=1000):
-        assert not helper_has_tandem_repeat(sequence, repeat_length, min_copies)
+        assert not helper_has_tandem_repeat(sequence, repeat_length, copies)
 
 
 ###############################
@@ -218,7 +218,7 @@ def test_sampled_sequences_do_not_contain_tandem_repeats(aa_seq, repeat_length, 
 
 
 @pytest.mark.parametrize(
-    'aa_seq,context_l,context_r,repeat_length,min_copies',
+    'aa_seq,context_l,context_r,repeat_length,copies',
     [
         # Repeat begins in the left context.
         ('F', 'T', '', 2, 2),       # T + TTT -> TT x 2
@@ -261,19 +261,19 @@ def test_tandem_repeats_in_contexts(
     context_l,
     context_r,
     repeat_length,
-    min_copies,
+    copies,
 ):
     expected = helper_enumerate_expected(
         aa_seq,
         repeat_length,
-        min_copies,
+        copies,
         context_l=context_l,
         context_r=context_r,
     )
 
     view = CodonGraph(aa_seq, context_l=context_l, context_r=context_r).view()
 
-    constraint = TandemRepeatConstraint(repeat_length=repeat_length, min_copies=min_copies)
+    constraint = TandemRepeatConstraint(repeat_length=repeat_length, copies=copies)
     view.set_constraints([constraint])
 
     observed = set(view.enumerate())
@@ -306,7 +306,7 @@ def test_tandem_repeats_in_contexts(
 def test_repeat_entirely_within_context_makes_space_empty(context_l, context_r):
     view = CodonGraph('MIKEY', context_l=context_l, context_r=context_r).view()
 
-    constraint = TandemRepeatConstraint(repeat_length=2, min_copies=2)
+    constraint = TandemRepeatConstraint(repeat_length=2, copies=2)
     view.set_constraints([constraint])
 
     assert view.n_valid_sequences == 0
@@ -318,7 +318,7 @@ def test_repeat_entirely_within_context_makes_space_empty(context_l, context_r):
 ##################
 
 @pytest.mark.parametrize(
-    'aa_seq,repeat_length,min_copies',
+    'aa_seq,repeat_length,copies',
     [
         (NORMAL_PROTEINS['ubiquitin'], 3, 3),
         (NORMAL_PROTEINS['gfp'], 6, 2),
@@ -331,19 +331,19 @@ def test_repeat_entirely_within_context_makes_space_empty(context_l, context_r):
 def test_real_protein_samples_do_not_contain_tandem_repeats(
     aa_seq,
     repeat_length,
-    min_copies,
+    copies,
 ):
     view = CodonGraph(aa_seq).view(seed=8675309)
 
-    constraint = TandemRepeatConstraint(repeat_length=repeat_length, min_copies=min_copies)
+    constraint = TandemRepeatConstraint(repeat_length=repeat_length, copies=copies)
     view.set_constraints([constraint])
 
     for sequence in view.sample(n=100):
-        assert not helper_has_tandem_repeat(sequence, repeat_length, min_copies)
+        assert not helper_has_tandem_repeat(sequence, repeat_length, copies)
 
 
 @pytest.mark.parametrize(
-    'aa_seq,context_l,context_r,repeat_length,min_copies',
+    'aa_seq,context_l,context_r,repeat_length,copies',
     [
         (NORMAL_PROTEINS['ubiquitin'], 'ATAT', '', 4, 2),
         (ANTIBODIES['caplacizumab'], '', 'GCGCGC', 3, 2),
@@ -354,17 +354,17 @@ def test_real_protein_samples_with_contexts(
     context_l,
     context_r,
     repeat_length,
-    min_copies,
+    copies,
 ):
     view = CodonGraph(aa_seq, context_l=context_l, context_r=context_r).view(seed=8675309)
 
-    constraint = TandemRepeatConstraint(repeat_length=repeat_length, min_copies=min_copies)
+    constraint = TandemRepeatConstraint(repeat_length=repeat_length, copies=copies)
     view.set_constraints([constraint])
 
     for sequence in view.sample(n=100):
         full_sequence = context_l + sequence + context_r
 
-        assert not helper_has_tandem_repeat(full_sequence, repeat_length, min_copies)
+        assert not helper_has_tandem_repeat(full_sequence, repeat_length, copies)
 
 
 ########################
@@ -385,7 +385,7 @@ def test_multiple_tandem_repeat_constraints():
         sequence
         for sequence in CodonGraph(aa_seq).view().enumerate()
         if all(
-            not helper_has_tandem_repeat(sequence, constraint.repeat_length, constraint.min_copies)
+            not helper_has_tandem_repeat(sequence, constraint.repeat_length, constraint.copies)
             for constraint in constraints
         )
     }
@@ -424,7 +424,7 @@ def test_sampled_sequences_satisfy_multiple_tandem_repeat_constraints(aa_seq):
 
     for sequence in view.sample(n=100):
         for constraint in constraints:
-            assert not helper_has_tandem_repeat(sequence, constraint.repeat_length, constraint.min_copies)
+            assert not helper_has_tandem_repeat(sequence, constraint.repeat_length, constraint.copies)
 
 
 #################
@@ -432,7 +432,7 @@ def test_sampled_sequences_satisfy_multiple_tandem_repeat_constraints(aa_seq):
 #################
 
 @pytest.mark.parametrize(
-    'seq,repeat_length,min_copies',
+    'seq,repeat_length,copies',
     [
         ('ATATATATATATATAT' + 'TATATATATATATATA' + 'T', 15, 2),
         ('C' + 'ATATATATATATATAT' + 'TATATATATATATATA', 15, 2),
@@ -440,13 +440,13 @@ def test_sampled_sequences_satisfy_multiple_tandem_repeat_constraints(aa_seq):
         ('T' + 'ATC' * 6 + 'ATC' * 6 + 'ATC' * 6 + 'ATCTT', 18, 3),
     ],
 )
-def test_long_and_possible_repeat_unit(seq, repeat_length, min_copies):
+def test_long_and_possible_repeat_unit(seq, repeat_length, copies):
     aa_seq = TranslationTable().translate(seq)
 
     view = CodonGraph(aa_seq).view()
     unconstrained_n = view.n_valid_sequences
 
-    view.set_constraints([TandemRepeatConstraint(repeat_length=repeat_length, min_copies=min_copies)])
+    view.set_constraints([TandemRepeatConstraint(repeat_length=repeat_length, copies=copies)])
     view.compile()
     constrained_n = view.n_valid_sequences
 
@@ -454,7 +454,7 @@ def test_long_and_possible_repeat_unit(seq, repeat_length, min_copies):
 
 
 @pytest.mark.parametrize(
-    'seq,repeat_length,min_copies',
+    'seq,repeat_length,copies',
     [
         ('AT' * 99 + 'CGA', 100, 2),
         ('ATC' * 100 + 'ATC' * 100 + 'ATC' * 99 + 'CCC', 100, 3),
@@ -463,13 +463,13 @@ def test_long_and_possible_repeat_unit(seq, repeat_length, min_copies):
         ('ATCGACGTAGGCATGCCGTAC' * 99 + 'A' * 21, 21, 100),
     ],
 )
-def test_long_but_impossible_repeat_unit(seq, repeat_length, min_copies):
+def test_long_but_impossible_repeat_unit(seq, repeat_length, copies):
     aa_seq = TranslationTable().translate(seq)
 
     view = CodonGraph(aa_seq).view()
     unconstrained_n = view.n_valid_sequences
 
-    view.set_constraints([TandemRepeatConstraint(repeat_length=repeat_length, min_copies=min_copies)])
+    view.set_constraints([TandemRepeatConstraint(repeat_length=repeat_length, copies=copies)])
     view.compile()
     constrained_n = view.n_valid_sequences
 
