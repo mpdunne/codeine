@@ -1,6 +1,13 @@
+import random
 import pytest
 
 from codeine.constraints.repeats import DirectRepeatConstraint, InvertedRepeatConstraint, RepeatConstraint
+from codeine.graph.base import CodonGraph
+
+
+###############################
+# Validation & construction
+###############################
 
 
 class ExampleRepeatConstraint(RepeatConstraint):
@@ -82,3 +89,299 @@ def test_inverted_repeat_stores_values_correctly():
     assert constraint.min_distance == 3
     assert constraint.max_distance == 20
     assert constraint.inverted is True
+
+
+###################################################
+# Trivial constraints and repeat-free sequences
+###################################################
+
+
+def make_repeat_safe_sequence(length, repeat_length, alphabet='AC'):
+    """
+    Construct a sequence containing no repeated repeat_length-mers.
+    """
+    if not alphabet:
+        raise ValueError('alphabet must not be empty')
+
+    if length > len(alphabet) ** repeat_length + repeat_length - 1:
+        raise ValueError('requested sequence is too long for this repeat length')
+
+    sequence = [alphabet[0]] * (repeat_length - 1)
+    seen = set()
+
+    while len(sequence) < length:
+        for nt in alphabet[::-1]:
+            kmer = ''.join(sequence[-repeat_length + 1:] + [nt])
+
+            if kmer not in seen:
+                seen.add(kmer)
+                sequence.append(nt)
+                break
+        else:
+            raise RuntimeError('Could not construct repeat-safe sequence')
+
+    return ''.join(sequence)
+
+
+def reverse_complement(sequence):
+    return sequence.translate(str.maketrans('ACGT', 'TGCA'))[::-1]
+
+
+@pytest.mark.parametrize(
+    ('repeat_length', 'context_l_size', 'context_r_size'),
+    [
+        (12, 0, 100),
+        (24, 50, 50),
+        (120, 100, 200),
+    ],
+)
+def test_repeat_safe_contexts_have_no_direct_repeats(
+    repeat_length,
+    context_l_size,
+    context_r_size,
+):
+    sequence = make_repeat_safe_sequence(context_l_size + context_r_size, repeat_length)
+
+    context_l = sequence[:context_l_size]
+    context_r = sequence[context_l_size:]
+
+    graph = CodonGraph('M', context_l=context_l, context_r=context_r)
+
+    constraint = RepeatConstraint(repeat_length=repeat_length)
+    constraint.link(graph)
+
+    assert constraint.is_trivial
+
+
+def test_repeated_coding_region_can_form_direct_repeat():
+    constraint = RepeatConstraint(repeat_length=15)
+    constraint.link(CodonGraph('MIKEYAAAAAMIKEY'))
+
+    assert not constraint.is_trivial
+
+
+def test_fixed_codons_kill_direct_repeat():
+    constraint = RepeatConstraint(repeat_length=15)
+    graph = CodonGraph('MIKEYAAAAAMIKEY')
+    constraint.link(graph)
+
+    assert not constraint.is_trivial
+
+    constraint = RepeatConstraint(repeat_length=15)
+    graph = CodonGraph('MIKEYAAAAAMIKEY', codon_restrictions={2: 'ATA', 12: 'ATT'})
+    constraint.link(graph)
+
+    assert constraint.is_trivial
+
+
+def test_exact_direct_repeat_in_context():
+    repeat = 'ATGATCAAAGAATAC'
+
+    graph = CodonGraph('M', context_l=repeat + 'ACACACAC' + repeat)
+
+    constraint = RepeatConstraint(repeat_length=len(repeat))
+    constraint.link(graph)
+
+    assert not constraint.is_trivial
+
+
+def test_single_change_kills_direct_repeat_in_context():
+    repeat = 'ATGATCAAAGAATAC'
+    modified_repeat = 'ATGATCAAGGAATAC'
+
+    graph = CodonGraph('M', context_l=repeat + 'ACACACAC' + modified_repeat)
+
+    constraint = RepeatConstraint(repeat_length=len(repeat))
+    constraint.link(graph)
+
+    assert constraint.is_trivial
+
+
+@pytest.mark.parametrize(
+    'min_distance,max_distance',
+    [
+        (6, 12),
+        (12, 24),
+        (18, 36),
+    ],
+)
+def test_direct_repeat_distance(min_distance, max_distance):
+    constraint = RepeatConstraint(repeat_length=15, min_distance=min_distance, max_distance=max_distance)
+
+    repeat_free_cds = 'AAAAAAAAAAAAAACCCCCCCCCCCCCCCACCCCCCCCCCCCCAACCC'
+    repeat_free_aa = 'KKKKNPPPPPPPPPQP'
+
+    def make_graph(linker_aa_len):
+        linker_aa = repeat_free_aa[:linker_aa_len]
+        linker_cds = repeat_free_cds[:linker_aa_len * 3]
+        aa_seq = 'CCCCC' + linker_aa + 'CCCCC'
+        codon_restrictions = {6 + ix: linker_cds[ix * 3:(ix + 1) * 3] for ix in range(linker_aa_len)}
+        return CodonGraph(aa_seq, codon_restrictions=codon_restrictions)
+
+    # Too close :(
+    graph = make_graph(min_distance // 3 - 1)
+    constraint.link(graph)
+    assert constraint.is_trivial
+
+    # Just right! :D
+    graph = make_graph(min_distance // 3)
+    constraint.link(graph)
+    assert not constraint.is_trivial
+
+    # Too far :O
+    graph = make_graph(max_distance // 3 + 1)
+    constraint.link(graph)
+    assert constraint.is_trivial
+
+
+@pytest.mark.parametrize(
+    ('aa_seq', 'repeat_length'),
+    [
+        ('MIKEYAAAAAMIKEY', 15),
+        ('MKTLEFQAAAAAMKTLEFQ', 21),
+        ('GCPRYKKLLLLLGCPRYKK', 21),
+    ],
+)
+def test_repeated_coding_regions_are_not_trivial(aa_seq, repeat_length):
+    graph = CodonGraph(aa_seq)
+
+    constraint = RepeatConstraint(repeat_length=repeat_length)
+    constraint.link(graph)
+
+    assert not constraint.is_trivial
+
+
+@pytest.mark.parametrize(
+    ('repeat_length', 'aa_length', 'context_l_size', 'context_r_size'),
+    [
+        (6, 10, 0, 0),
+        (24, 50, 20, 30),
+        (120, 100, 100, 50),
+    ],
+)
+def test_ag_only_coding_spaces_have_no_inverted_repeats(
+    repeat_length,
+    aa_length,
+    context_l_size,
+    context_r_size,
+):
+    # K and E are encoded only by A/G codons:
+    # K = AAA/AAG and E = GAA/GAG.
+    # Their reverse complements contain only T/C, so an A/G-only coding
+    # space cannot contain an inverted repeat.
+    for seed in range(10):
+        rng = random.Random(seed)
+
+        aa_seq = ''.join(rng.choice('KE') for _ in range(aa_length))
+        context_l = ''.join(rng.choice('AG') for _ in range(context_l_size))
+        context_r = ''.join(rng.choice('AG') for _ in range(context_r_size))
+
+        graph = CodonGraph(aa_seq, context_l=context_l, context_r=context_r)
+
+        constraint = RepeatConstraint(repeat_length=repeat_length, inverted=True,)
+        constraint.link(graph)
+
+        assert constraint.is_trivial
+
+
+@pytest.mark.parametrize(
+    'repeat',
+    [
+        'ATGATCAAAGAATAC',
+        'ATCGACCAATTG',
+    ],
+)
+def test_exact_inverted_repeat(repeat):
+    graph = CodonGraph('M', context_l=repeat + 'AGAGAGAG' + reverse_complement(repeat))
+
+    constraint = RepeatConstraint(repeat_length=len(repeat), inverted=True)
+    constraint.link(graph)
+
+    assert not constraint.is_trivial
+
+
+def test_fixed_codons_kill_inverted_repeat():
+    aa_seq = 'KEEKEEFLFLFLKEEEKEEKEEKEEKEE'  # <- FL's encodings can form inverted repeats with the KE encodings.
+
+    constraint = RepeatConstraint(repeat_length=15, inverted=True)
+    graph = CodonGraph(aa_seq)
+    constraint.link(graph)
+
+    assert not constraint.is_trivial
+
+    constraint = RepeatConstraint(repeat_length=15, inverted=True)
+    graph = CodonGraph(aa_seq, codon_restrictions={8: 'TTG'})  # This breaks the inverted repeats.
+    constraint.link(graph)
+
+    assert constraint.is_trivial
+
+
+def test_single_change_kills_inverted_repeat_in_context():
+    repeat = 'ATGATCAAAGAATAC'
+    modified_repeat = 'ATGATCAAGGAATAC'
+
+    graph = CodonGraph('M', context_l=repeat + 'AGAGAGAG' + reverse_complement(modified_repeat))
+
+    constraint = RepeatConstraint(repeat_length=len(repeat), inverted=True)
+    constraint.link(graph)
+
+    assert constraint.is_trivial
+
+
+@pytest.mark.parametrize(
+    'min_distance,max_distance',
+    [
+        (6, 12),
+        (12, 24),
+        (18, 36),
+    ],
+)
+def test_inverted_repeat_distance(min_distance, max_distance):
+    constraint = RepeatConstraint(
+        repeat_length=15,
+        min_distance=min_distance,
+        max_distance=max_distance,
+        inverted=True,
+    )
+
+    repeat_free_cds = 'AAAAAAAAAAAAAACCCCCCCCCCCCCCCACCCCCCCCCCCCCAACCC'
+    repeat_free_aa = 'KKKKNPPPPPPPPPQP'
+
+    def make_graph(linker_aa_len):
+        linker_aa = repeat_free_aa[:linker_aa_len]
+        linker_cds = repeat_free_cds[:linker_aa_len * 3]
+        aa_seq = 'KEEKE' + linker_aa + 'FFFFF'
+        codon_restrictions = {6 + ix: linker_cds[ix * 3:(ix + 1) * 3] for ix in range(linker_aa_len)}
+        return CodonGraph(aa_seq, codon_restrictions=codon_restrictions)
+
+    # Too close :(
+    graph = make_graph(min_distance // 3 - 1)
+    constraint.link(graph)
+    assert constraint.is_trivial
+
+    # Just right! :D
+    graph = make_graph(min_distance // 3)
+    constraint.link(graph)
+    assert not constraint.is_trivial
+
+    # Too far :(
+    graph = make_graph(max_distance // 3 + 1)
+    constraint.link(graph)
+    assert constraint.is_trivial
+
+
+@pytest.mark.parametrize(
+    'repeat',
+    [
+        'ATGATCAAAGAATAC',
+        'ATCGACCAATTG',
+        'GTCAGGATCCGATGCAAT',
+    ],
+)
+def test_inverted_repeats_are_not_trivial(repeat):
+    graph = CodonGraph('M', context_l=repeat + 'AGAGAGAG' + reverse_complement(repeat))
+
+    constraint = RepeatConstraint(repeat_length=len(repeat), inverted=True)
+    constraint.link(graph)
+
+    assert not constraint.is_trivial
