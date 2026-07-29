@@ -6,13 +6,13 @@ class TandemRepeatConstraint(SubPathConstraint):
     Forbid exact tandem repeats of a specified repeat-unit length.
     """
 
-    def __init__(self, repeat_length: int, min_copies: int = 2):
+    def __init__(self, repeat_length: int, copies: int = 2):
         """
         Parameters
         ----------
         repeat_length
             Length of the repeated unit in nucleotides.
-        min_copies
+        copies
             Minimum number of consecutive copies to forbid.
         """
         super().__init__()
@@ -23,14 +23,14 @@ class TandemRepeatConstraint(SubPathConstraint):
         if repeat_length < 1:
             raise ValueError('repeat_length must be at least 1')
 
-        if not isinstance(min_copies, int) or isinstance(min_copies, bool):
-            raise TypeError('min_copies must be an integer')
+        if not isinstance(copies, int) or isinstance(copies, bool):
+            raise TypeError('copies must be an integer')
 
-        if min_copies < 2:
-            raise ValueError('min_copies must be at least 2')
+        if copies < 2:
+            raise ValueError('copies must be at least 2')
 
         self.repeat_length = repeat_length
-        self.min_copies = min_copies
+        self.copies = copies
 
     def _find_paths(self):
         """
@@ -40,7 +40,7 @@ class TandemRepeatConstraint(SubPathConstraint):
         -------
         Any paths that can appear but which we wish to ban.
         """
-        repeat_span = self.repeat_length * self.min_copies
+        repeat_span = self.repeat_length * self.copies
         full_sequence_length = len(self.context_l) + 3 * len(self.aa_seq) + len(self.context_r)
 
         self._nucleotide_positions = [self._nucleotide_to_pos(nt_ix) for nt_ix in range(full_sequence_length)]
@@ -117,7 +117,7 @@ class TandemRepeatConstraint(SubPathConstraint):
             for repeat_offset in range(self.repeat_length):
                 mask = base_masks[start + repeat_offset]
 
-                for copy_ix in range(1, self.min_copies):
+                for copy_ix in range(1, self.copies):
                     nt_ix = start + copy_ix * self.repeat_length + repeat_offset
                     mask &= base_masks[nt_ix]
 
@@ -135,7 +135,7 @@ class TandemRepeatConstraint(SubPathConstraint):
         """
         Find tandem repeat paths beginning at one nucleotide position.
         """
-        repeat_span = self.repeat_length * self.min_copies
+        repeat_span = self.repeat_length * self.copies
 
         start_pos, start_offset = self._nucleotide_positions[start]
         end_pos, _ = self._nucleotide_positions[start + repeat_span - 1]

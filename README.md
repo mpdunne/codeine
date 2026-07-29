@@ -95,7 +95,7 @@ space = CodingSpace(
     },
     max_homopolymer=4,
     constraints=[
-        TandemRepeatConstraint(repeat_length=3, min_copies=3),
+        TandemRepeatConstraint(repeat_length=3, copies=3),
     ],
 )
 
