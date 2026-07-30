@@ -3,6 +3,7 @@ import pytest
 
 from codeine.constraints.repeats import DirectRepeatConstraint, InvertedRepeatConstraint, RepeatConstraint
 from codeine.graph.base import CodonGraph
+from codeine.translation.tables import TranslationTable
 
 
 ###############################
@@ -385,3 +386,83 @@ def test_inverted_repeats_are_not_trivial(repeat):
     constraint.link(graph)
 
     assert not constraint.is_trivial
+
+
+##################
+# Repeats exist!
+##################
+
+
+@pytest.mark.parametrize(
+    'aa_seq,repeat_length',
+    [
+        ('II', 3),
+        ('IYIY', 6),
+        ('MIKEYMIKEY', 15),
+        ('MKTLEFQMKTLEFQ', 21),
+    ],
+)
+def test_finds_direct_repeats(aa_seq, repeat_length):
+    constraint = RepeatConstraint(repeat_length)
+    constraint.link(CodonGraph(aa_seq))
+
+    assert constraint.repeats
+
+
+@pytest.mark.parametrize(
+    'repeat',
+    [
+        'ATGATC',
+        'ATCGACCAATTG',
+        'ATGATCAAAGAATAC',
+    ],
+)
+def test_finds_inverted_repeats(repeat):
+    constraint = RepeatConstraint(len(repeat), inverted=True)
+    constraint.link(CodonGraph('M', context_l=repeat + 'AGAGAGAG' + reverse_complement(repeat)))
+
+    assert constraint.repeats
+
+
+def test_finds_long_direct_repeat():
+    constraint = RepeatConstraint(1500)
+    constraint.link(CodonGraph('MIKEY' * 200))
+
+    assert len(constraint.repeats) == 1
+
+
+def test_finds_long_inverted_repeat():
+    constraint = RepeatConstraint(1500, inverted=True)
+    constraint.link(CodonGraph('KE' * 250 + 'FL' * 250))
+
+    assert len(constraint.repeats) == 1
+
+
+def test_finds_distant_direct_repeat():
+    repeat_length = 15
+    spacer = make_repeat_safe_sequence(3000, repeat_length)
+    tt = TranslationTable()
+
+    aa_seq = 'MIKEY' + tt.translate(spacer) + 'MIKEY'
+    codon_restrictions = {6 + ix: spacer[ix * 3:(ix + 1) * 3] for ix in range(len(spacer) // 3)}
+    graph = CodonGraph(aa_seq, codon_restrictions=codon_restrictions)
+
+    constraint = RepeatConstraint(repeat_length)
+    constraint.link(graph)
+
+    assert len(constraint.repeats) == 1
+
+
+def test_finds_distant_inverted_repeat():
+    repeat_length = 15
+    spacer = 'AC' * 1500
+    tt = TranslationTable()
+
+    aa_seq = 'KEEKE' + tt.translate(spacer) + 'FFFFF'
+    codon_restrictions = {6 + ix: spacer[ix * 3:(ix + 1) * 3] for ix in range(len(spacer) // 3)}
+    graph = CodonGraph(aa_seq, codon_restrictions=codon_restrictions)
+
+    constraint = RepeatConstraint(repeat_length, inverted=True)
+    constraint.link(graph)
+
+    assert len(constraint.repeats) == 1

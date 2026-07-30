@@ -95,8 +95,11 @@ class RepeatConstraint(Constraint, ABC):
 
         self.nt_trans = str.maketrans('ACGU', 'UGCA') if graph.tt.rna else str.maketrans('ACGT', 'TGCA')
 
-        self.reference_choices = [tuple(node.transitions) for node in self.graph.nodes
-                                  if node is not self.graph.end_node]
+        self.reference_choices = [
+            tuple(node.transitions)
+            for node in self.graph.nodes
+            if node is not self.graph.end_node
+        ]
 
         self.compare_choices = (
             [
@@ -200,15 +203,42 @@ class RepeatConstraint(Constraint, ABC):
             if filtered_choices is None:
                 continue
 
-            reference_choices_filtered, compare_choice_filtered = filtered_choices
+            reference_choices_filtered, compare_choices_filtered = filtered_choices
 
-            self.repeats.append((
+            requirements = self._get_compatible_choices(
                 start_l,
-                start_r,
                 start_compare,
                 reference_choices_filtered,
-                compare_choice_filtered,
-            ))
+                compare_choices_filtered,
+            )
+
+            self.repeats.append((start_l, start_r, requirements))
+
+    def _get_offsets_by_position_pairs(self, reference_start, compare_start):
+        """
+        Map the nucleotide comparison onto pairs of graph positions, and determine what pairs of
+        offsets within them will be required to have at least one match.
+
+        A  pair of graph positions can have multiple comparison points, because contexts can be
+        longer than a single codon.
+
+        Returns
+        -------
+        aligned_positions
+            Dictionary mapping each ``(reference_pos, compare_pos)`` pair to the
+            nucleotide offsets within those choices that must be capable of matching
+        """
+        comparisons = {}
+
+        for offset in range(self.repeat_length):
+            reference_pos, reference_offset = self.nt_positions_reference[reference_start + offset]
+            compare_pos, compare_offset = self.nt_positions_compare[compare_start + offset]
+
+            comparisons.setdefault((reference_pos, compare_pos), []).append(
+                (reference_offset, compare_offset)
+            )
+
+        return comparisons
 
     def _filter_choices(self, reference_start, compare_start):
         """
@@ -226,18 +256,8 @@ class RepeatConstraint(Constraint, ABC):
             Dictionaries mapping each involved position to the set of choices that
             remain possible, or ``None`` if no repeat is possible here.
         """
-        comparisons = {}
+        comparisons = self._get_offsets_by_position_pairs(reference_start, compare_start)
 
-        # Group nucleotide comparisons by the pair of graph positions involved.
-        for offset in range(self.repeat_length):
-            reference_pos, reference_offset = self.nt_positions_reference[reference_start + offset]
-            compare_pos, compare_offset = self.nt_positions_compare[compare_start + offset]
-
-            comparisons.setdefault((reference_pos, compare_pos), []).append(
-                (reference_offset, compare_offset)
-            )
-
-        # Start with every choice possible at every involved position.
         reference_choices = {pos: set(self.reference_choices[pos]) for pos, _ in comparisons}
         compare_choices = {pos: set(self.compare_choices[pos]) for _, pos in comparisons}
 
@@ -275,6 +295,44 @@ class RepeatConstraint(Constraint, ABC):
 
             if not changed:
                 return reference_choices, compare_choices
+
+    def _get_compatible_choices(
+        self,
+        reference_start,
+        compare_start,
+        reference_choices,
+        compare_choices,
+    ):
+        """
+        Get the compare choices permitted by each reference choice.
+
+        Returns
+        -------
+        requirements
+            Dictionary mapping each reference position to its compared positions and,
+            for each reference choice, the compare choices compatible with it.
+        """
+        comparisons = self._get_offsets_by_position_pairs(reference_start, compare_start)
+        requirements = {}
+
+        for (reference_pos, compare_pos), offsets in comparisons.items():
+            allowed_choices = {}
+
+            for reference_choice in reference_choices[reference_pos]:
+                allowed_choices[reference_choice] = {
+                    compare_choice
+                    for compare_choice in compare_choices[compare_pos]
+                    if all(
+                        reference_choice[reference_offset] == compare_choice[compare_offset]
+                        for reference_offset, compare_offset in offsets
+                    )
+                }
+
+            requirements.setdefault(reference_pos, []).append(
+                (compare_pos, allowed_choices)
+            )
+
+        return requirements
 
 
 class DirectRepeatConstraint(RepeatConstraint):
