@@ -43,3 +43,15 @@ def choices_to_nt_bitmasks(choices):
             nt_masks.append(mask)
 
     return nt_masks
+
+
+def pack_nt_bitmasks(nt_bitmasks):
+    """
+    Pack 4-bit nucleotide masks into consecutive nibbles of one integer.
+    """
+    packed = bytearray((len(nt_bitmasks) + 1) // 2)
+
+    for ix, mask in enumerate(nt_bitmasks):
+        packed[ix // 2] |= mask << (4 * (ix % 2))
+
+    return int.from_bytes(packed, 'little')

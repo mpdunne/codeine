@@ -3,7 +3,7 @@ from typing import Optional
 
 from codeine.constraints.base import Constraint
 from codeine.graph.base import CodonGraph
-from codeine.utils.bitmasks import choices_to_nt_bitmasks
+from codeine.utils.bitmasks import choices_to_nt_bitmasks, pack_nt_bitmasks
 
 
 class RepeatConstraint(Constraint, ABC):
@@ -75,6 +75,10 @@ class RepeatConstraint(Constraint, ABC):
         self.nt_bitmasks_reference = None
         self.nt_bitmasks_compare = None
 
+        self.nt_bitmasks_reference_packed = None
+        self.nt_bitmasks_compare_packed = None
+        self.nt_position_mask = None
+
         self.nt_positions_reference = None
         self.nt_positions_compare = None
 
@@ -117,6 +121,14 @@ class RepeatConstraint(Constraint, ABC):
         self.nt_positions_compare = self._get_nt_positions(self.compare_choices)
 
         self.full_sequence_length = len(self.nt_bitmasks_reference)
+
+        # Pack each 4-bit nucleotide mask into one nibble of a single integer.
+        self.nt_bitmasks_reference_packed = pack_nt_bitmasks(self.nt_bitmasks_reference)
+        self.nt_bitmasks_compare_packed = pack_nt_bitmasks(self.nt_bitmasks_compare)
+
+        # 0001 0001 0001 ...: one marker bit per nucleotide position.
+        self.nt_position_mask = ((1 << (4 * self.full_sequence_length)) - 1) // 15
+
         self.repeats = []
 
         min_shift = 0 if self.inverted else self.repeat_length + self.min_distance
@@ -148,15 +160,56 @@ class RepeatConstraint(Constraint, ABC):
         return [(pos, choice_offset) for pos, choice_set in enumerate(choices)
                 for choice_offset in range(len(choice_set[0]))]
 
+    @staticmethod
+    def _get_run_starts(matches, length):
+        """
+        Find starts of runs containing at least ``length`` matching positions.
+
+        The input has one possible marker bit every four bits, corresponding to
+        nucleotide positions. The returned integer contains a marker bit at each
+        position where a sufficiently long run begins.
+        """
+        blocks = {1: matches}
+        size = 1
+
+        # Build runs of lengths 1, 2, 4, 8, ...
+        while size * 2 <= length:
+            blocks[size * 2] = blocks[size] & (blocks[size] >> (4 * size))
+            size *= 2
+
+        starts = blocks[size]
+        covered = size
+        remaining = length - size
+
+        # Combine powers of two to make the requested run length.
+        while remaining:
+            size = 1 << (remaining.bit_length() - 1)
+            starts &= blocks[size] >> (4 * covered)
+            covered += size
+            remaining -= size
+
+        return starts
+
     def _find_repeats_at_shift(self, shift):
         """
         Find candidate repeats at one alignment of the reference and compare sequences.
         """
 
-        # We can exclude most start positions by comparing the nucleotide bitmasks
-        # for the choices.
-        reference_nt_masks = self.nt_bitmasks_reference[:-shift] if shift else self.nt_bitmasks_reference
-        compare_nt_masks = self.nt_bitmasks_compare[shift:]
+        # Compare all nucleotide positions at this shift in a few bigint operations.
+        nt_intersections = (
+            self.nt_bitmasks_reference_packed
+            & (self.nt_bitmasks_compare_packed >> (4 * shift))
+        )
+
+        # Collapse each non-zero 4-bit nucleotide intersection to its marker bit.
+        matches = (
+            nt_intersections
+            | (nt_intersections >> 1)
+            | (nt_intersections >> 2)
+            | (nt_intersections >> 3)
+        ) & self.nt_position_mask
+
+        starts = self._get_run_starts(matches, self.repeat_length)
 
         # For inverted repeats, later start positions would map back onto or before
         # the reference repeat, so they can never form a valid pair.
@@ -166,27 +219,14 @@ class RepeatConstraint(Constraint, ABC):
             if max_start_l < 0:
                 return
 
-            max_ix = max_start_l + self.repeat_length - 1
+            starts &= (1 << (4 * (max_start_l + 1))) - 1
 
-            reference_nt_masks = reference_nt_masks[:max_ix + 1]
-            compare_nt_masks = compare_nt_masks[:max_ix + 1]
+        # Only visit actual candidate repeat starts.
+        while starts:
+            bit = starts & -starts
+            start_l = (bit.bit_length() - 1) // 4
+            starts ^= bit
 
-        run_start = None
-
-        for ix, (mask_reference, mask_compare) in enumerate(zip(reference_nt_masks, compare_nt_masks)):
-            masked_nt = mask_reference & mask_compare
-
-            if not masked_nt:
-                run_start = None
-                continue
-
-            if run_start is None:
-                run_start = ix
-
-            if ix - run_start + 1 < self.repeat_length:
-                continue
-
-            start_l = ix - self.repeat_length + 1
             start_compare = shift + start_l
 
             start_r = self.full_sequence_length - start_compare - self.repeat_length \

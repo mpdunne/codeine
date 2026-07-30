@@ -1,8 +1,7 @@
 import pytest
 
-from codeine import TranslationTable
 from codeine.graph.base import CodonGraph
-from codeine.utils.bitmasks import choices_to_nt_bitmasks, sequence_to_nt_bitmasks
+from codeine.utils.bitmasks import choices_to_nt_bitmasks, sequence_to_nt_bitmasks, pack_nt_bitmasks
 
 
 @pytest.mark.parametrize(
@@ -140,3 +139,17 @@ def test_generated_sequences_are_subsets_of_choice_masks():
         assert len(sequence_masks) == len(nt_masks)
         assert all(sequence_mask & choice_mask == sequence_mask
                    for sequence_mask, choice_mask in zip(sequence_masks, nt_masks))
+
+
+def test_pack_nt_bitmasks():
+    assert pack_nt_bitmasks([1, 2, 4, 8]) == 0x8421
+    assert pack_nt_bitmasks([1, 2, 4, 15]) == 0xF421
+    assert pack_nt_bitmasks([*range(16)]) == 0xFEDCBA9876543210
+
+
+def test_pack_nt_bitmasks_single():
+    assert pack_nt_bitmasks([15]) == 0xF
+
+
+def test_pack_nt_bitmasks_empty():
+    assert pack_nt_bitmasks([]) == 0
