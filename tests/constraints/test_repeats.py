@@ -4,6 +4,7 @@ import pytest
 from codeine.constraints.repeats import DirectRepeatConstraint, InvertedRepeatConstraint, RepeatConstraint
 from codeine.graph.base import CodonGraph
 from codeine.translation.tables import TranslationTable
+from codeine.tools.repeats import contains_direct_repeat, contains_inverted_repeat
 
 
 ###############################
@@ -517,3 +518,170 @@ def test_finds_inverted_repeats_across_full_sequence(context_l, cds, context_r, 
 
     observed = [(start_l, start_r) for start_l, start_r, _requirements in constraint.repeats]
     assert observed == expected
+
+
+##########################################
+# Enumeration tests & empty spaces
+##########################################
+
+@pytest.mark.parametrize(
+    'context_l,aa_seq,context_r,repeat_length',
+    [
+        # In-frame repeats in CDS
+        ('GCTAACGTAC', 'MIKEYMIKEY', 'TCGATGCAGT', 15),
+        ('ATCGACCAATTG', 'IYIY', 'GCTAACGTAC', 6),
+        ('GCTAACGTAC', 'IYAIYAIY', 'TCGATGCAGT', 6),
+
+        # Out-of-frame repeats in CDS
+        ('', 'RNYKQT', '', 4),
+        ('', 'IHERQW', '', 4),
+        ('', 'MTKPHY', '', 4),
+
+        # Repeats overlapping contexts
+        ('GGACGTT', 'KRALE', 'TCTCTTCC', 4),  # overlaps context_l
+        ('TATCC', 'DNRVG', 'CAAG', 4),  # overlaps context_r
+        ('CACTGCG', 'RIWGS', 'AGGGGA', 5),  # overlaps context_r
+    ],
+)
+def test_direct_repeat_constraint_enumeration(context_l, aa_seq, context_r, repeat_length):
+    view = CodonGraph(aa_seq, context_l=context_l, context_r=context_r).view()
+    unconstrained = [*view.enumerate()]
+
+    view.set_constraints([DirectRepeatConstraint(repeat_length)])
+    constrained = [*view.enumerate()]
+
+    filtered = [cds for cds in unconstrained if not contains_direct_repeat(context_l + cds + context_r, repeat_length)]
+
+    assert 0 != len(filtered) == len(constrained) != len(unconstrained)
+    assert set(filtered) == set(constrained)
+
+
+@pytest.mark.parametrize(
+    'context_l,aa_seq,context_r,repeat_length',
+    [
+        # In-frame inverse repeats in CDS
+        ('GCTAACGTAC', 'KEEKEFFFFF', 'TCGATGCAGT', 15),
+        ('ATCGACCAATTG', 'KEFL', 'GCTAACGTAC', 6),
+        ('GCTAACGTAC', 'KEAFLAFL', 'TCGATGCAGT', 6),
+
+        # Out-of-frame repeats in CDS
+        ('', 'GYWCKP', '', 4),
+        ('', 'VSNAYC', '', 4),
+        ('', 'CGVTMK', '', 4),
+
+        # Inverted repeats overlapping contexts
+        ('TAATCCT', 'HQTMI', 'CCAGCAT', 4),  # overlaps context_l
+        ('TGAGCC', 'PTHGA', 'GCTTTT', 4),  # overlaps context_l
+        ('GATACGGG', 'FQYCA', 'TGAA', 4),  # overlaps context_r
+    ],
+)
+def test_inverted_repeat_constraint_enumeration(context_l, aa_seq, context_r, repeat_length):
+    view = CodonGraph(aa_seq, context_l=context_l, context_r=context_r).view()
+    unconstrained = [*view.enumerate()]
+
+    view.set_constraints([InvertedRepeatConstraint(repeat_length)])
+    constrained = [*view.enumerate()]
+
+    filtered = [cds for cds in unconstrained if not contains_inverted_repeat(context_l + cds + context_r, repeat_length)]
+
+    assert 0 != len(filtered) == len(constrained) != len(unconstrained)
+    assert set(filtered) == set(constrained)
+
+
+@pytest.mark.parametrize(
+    'context_l,aa_seq,context_r,repeat_length',
+    [
+        # In-frame repeats in CDS
+        ('', 'MMMMMM', '', 9),
+        ('', 'MMMMMMMM', '', 12),
+
+        # Out-of-frame repeats in CDS
+        ('', 'MMWM', '', 4),
+        ('', 'WMMM', '', 4),
+
+        # In contexts
+        ('ATCGACCAATTG', 'MIKEY', 'GCTAACGTACATCGACCAATTG', 12),
+        ('GCTAAC', 'KEFL', 'TCGATGCAGTGCTAAC', 6),
+
+        # Overlapping contexts
+        ('GCTAACG', 'MIKEY', 'TCGATGCAGTGCTAAC', 6),   # overlaps context_l
+        ('ATCGACCA', 'KEFL', 'GCTAACATCGACCA', 8),     # overlaps context_r
+    ],
+)
+def test_direct_repeat_constraint_empty_space(context_l, aa_seq, context_r, repeat_length):
+    view = CodonGraph(aa_seq, context_l=context_l, context_r=context_r).view()
+    view.set_constraints([DirectRepeatConstraint(repeat_length)])
+
+    assert not [*view.enumerate()]
+
+
+@pytest.mark.parametrize(
+    'context_l,aa_seq,context_r,repeat_length',
+    [
+        # In-frame inverted repeats in CDS
+        ('', 'MWH', '', 3),
+        ('', 'MHM', '', 3),
+
+        # Out-of-frame inverted repeats in CDS
+        ('', 'MHMH', '', 4),
+        ('', 'MPWH', '', 4),
+
+        # In contexts
+        ('ATCGACCAATTG', 'MIKEY', reverse_complement('ATCGACCAATTG'), 12),
+        ('GCTAACGTAC', 'KEFL', reverse_complement('GCTAACGTAC'), 10),
+
+        # Overlapping contexts
+        ('GCTAACG', 'MIKEY', 'TCGATGCAGT' + reverse_complement('GCTAAC'), 6),  # overlaps context_l
+        ('ATCGACCA', 'KEFL', 'GCTAAC' + reverse_complement('TCGACCA'), 7),  # overlaps context_r
+    ],
+)
+def test_inverted_repeat_constraint_empty_space(context_l, aa_seq, context_r, repeat_length):
+    view = CodonGraph(aa_seq, context_l=context_l, context_r=context_r).view()
+    view.set_constraints([InvertedRepeatConstraint(repeat_length)])
+
+    assert not [*view.enumerate()]
+
+
+##########################################
+# Sampling tests on larger spaces.
+##########################################
+
+@pytest.mark.parametrize(
+    'aa_seq,repeat_length,min_distance,max_distance',
+    [
+        ('MIKEYQTVEGPILAIEWAEGTLPWPMIKEY', 9, 0, None),
+        ('MIKEYQTVEGPILAIEWAEGTLPWPMIKEY', 15, 0, None),
+        ('MIKEYMIKEYQTLAIEWAEGTLPWPMIKEY', 15, 16, None),
+        ('MIKEYQTLAIEWMIKEYAEGTLPWPMIKEY', 15, 16, None),
+        ('MIKEYMIKEYMIKEYMIKEYMIKEYQTLAIEWAEGTLPWPMIKEY', 75, 75, None),
+    ],
+)
+def test_direct_repeat_constraint_sampling(aa_seq, repeat_length, min_distance, max_distance):
+    view = CodonGraph(aa_seq).view()
+
+    constraint = DirectRepeatConstraint(repeat_length, min_distance=min_distance, max_distance=max_distance)
+    view.set_constraints([constraint])
+
+    for _ in range(100):
+        cds = view.sample()
+        assert not contains_direct_repeat(cds, repeat_length, min_distance=min_distance, max_distance=max_distance)
+
+
+@pytest.mark.parametrize(
+    'aa_seq,repeat_length,min_distance,max_distance',
+    [
+        ('KEEKEQTVEGPILAIEWAEGTLPWPFFFFF', 9, 0, None),
+        ('KEEKEQTVEGPILAIEWAEGTLPWPFFFFF', 15, 0, None),
+        ('KEEKEKEEKEQTLAIEWAEGTLPWPFFFFF', 15, 16, None),
+        ('KEKEKEKEKEKEKEKEKEKEKEKEKQTLAIEWAEGTLPWPFFFFFFFFFFFFFFFFFFFFFFFFF', 75, 75, None),
+    ],
+)
+def test_inverted_repeat_constraint_sampling(aa_seq, repeat_length, min_distance, max_distance):
+    view = CodonGraph(aa_seq).view()
+
+    constraint = InvertedRepeatConstraint(repeat_length, min_distance=min_distance, max_distance=max_distance)
+    view.set_constraints([constraint])
+
+    for _ in range(100):
+        cds = view.sample()
+        assert not contains_inverted_repeat(cds, repeat_length, min_distance=min_distance, max_distance=max_distance)

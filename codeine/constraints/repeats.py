@@ -1,7 +1,7 @@
 from abc import ABC
 from typing import Optional
 
-from codeine.constraints.base import Constraint
+from codeine.constraints.base import Constraint, DEAD_STATE, SAFE_STATE
 from codeine.graph.base import CodonGraph
 from codeine.utils.bitmasks import choices_to_nt_bitmasks, pack_nt_bitmasks
 
@@ -83,12 +83,70 @@ class RepeatConstraint(Constraint, ABC):
         self.nt_positions_compare = None
 
         self.repeats = None
+        self.repeat_starts = None
+        self.repeat_ends = None
+        self.choice_bits = None
 
+    @property
     def initial_state(self):
-        raise NotImplementedError
+        return frozenset()
 
     def advance(self, state, pos, choice):
-        raise NotImplementedError
+        if state in (SAFE_STATE, DEAD_STATE):
+            return state
+
+        watches = list(state)
+
+        # Start watching repeats when their first reference position is reached.
+        for repeat_ix in self.repeat_starts.get(pos, ()):
+            watches.append((repeat_ix, ()))
+
+        next_state = set()
+        choice_bit = self.choice_bits[pos][choice]
+
+        for repeat_ix, pending in watches:
+            _start_l, _start_r, requirements = self.repeats[repeat_ix]
+
+            # Accumulate the compare-side choices required by this reference choice.
+            new_requirements = requirements.get(pos)
+
+            if new_requirements:
+                pending = dict(pending)
+
+                for compare_pos, allowed_by_reference_choice in new_requirements:
+                    allowed_choices = allowed_by_reference_choice.get(choice, 0)
+
+                    if not allowed_choices:
+                        break
+
+                    if compare_pos in pending:
+                        pending[compare_pos] &= allowed_choices
+                    else:
+                        pending[compare_pos] = allowed_choices
+
+                    if not pending[compare_pos]:
+                        break
+                else:
+                    pending = tuple(sorted(pending.items()))
+                    new_requirements = None
+
+                if new_requirements is not None:
+                    continue
+
+            # Once the compare side is reached, a mismatch kills this watch.
+            if pending and pending[0][0] == pos:
+                if not pending[0][1] & choice_bit:
+                    continue
+
+                pending = pending[1:]
+
+            # No pending requirements means this repeat has been completed.
+            if pos >= self.repeat_ends[repeat_ix] and not pending:
+                return DEAD_STATE
+
+            next_state.add((repeat_ix, pending))
+
+        return frozenset(next_state) if next_state or pos < self.last_repeat_start else SAFE_STATE
 
     def link(self, graph):
         self.graph = graph
@@ -103,6 +161,11 @@ class RepeatConstraint(Constraint, ABC):
             tuple(node.transitions)
             for node in self.graph.nodes
             if node is not self.graph.end_node
+        ]
+
+        self.choice_bits = [
+            {choice: 1 << choice_ix for choice_ix, choice in enumerate(choice_set)}
+            for choice_set in self.reference_choices
         ]
 
         self.compare_choices = (
@@ -142,6 +205,14 @@ class RepeatConstraint(Constraint, ABC):
 
         for shift in range(min_shift, max_shift + 1):
             self._find_repeats_at_shift(shift)
+
+        self.repeat_starts = {}
+
+        for repeat_ix, (_start_l, _start_r, requirements) in enumerate(self.repeats):
+            self.repeat_starts.setdefault(min(requirements), []).append(repeat_ix)
+
+        self.repeat_ends = [max(requirements) for _start_l, _start_r, requirements in self.repeats]
+        self.last_repeat_start = max(self.repeat_starts, default=-1)
 
     @property
     def is_trivial(self) -> bool:
@@ -271,7 +342,7 @@ class RepeatConstraint(Constraint, ABC):
         Map the nucleotide comparison onto pairs of graph positions, and determine what pairs of
         offsets within them will be required to have at least one match.
 
-        A  pair of graph positions can have multiple comparison points, because contexts can be
+        A pair of graph positions can have multiple comparison points, because contexts can be
         longer than a single codon.
 
         Returns
@@ -369,10 +440,12 @@ class RepeatConstraint(Constraint, ABC):
 
         for (reference_pos, compare_pos), offsets in comparisons.items():
             allowed_choices = {}
+            graph_compare_pos = len(self.reference_choices) - compare_pos - 1 \
+                if self.inverted else compare_pos
 
             for reference_choice in reference_choices[reference_pos]:
-                allowed_choices[reference_choice] = {
-                    compare_choice
+                compare_choice_set = {
+                    self._reverse_complement(compare_choice) if self.inverted else compare_choice
                     for compare_choice in compare_choices[compare_pos]
                     if all(
                         reference_choice[reference_offset] == compare_choice[compare_offset]
@@ -380,8 +453,13 @@ class RepeatConstraint(Constraint, ABC):
                     )
                 }
 
+                allowed_choices[reference_choice] = sum(
+                    self.choice_bits[graph_compare_pos][compare_choice]
+                    for compare_choice in compare_choice_set
+                )
+
             requirements.setdefault(reference_pos, []).append(
-                (compare_pos, allowed_choices)
+                (graph_compare_pos, allowed_choices)
             )
 
         return requirements
