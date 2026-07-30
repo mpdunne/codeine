@@ -131,7 +131,8 @@ class RepeatConstraint(Constraint, ABC):
 
         self.repeats = []
 
-        min_shift = 0 if self.inverted else self.repeat_length + self.min_distance
+        min_shift = -(self.full_sequence_length - self.repeat_length) if self.inverted \
+            else self.repeat_length + self.min_distance
         max_shift = self.full_sequence_length - self.repeat_length
 
         # Cap the max shift in the direct case. For inverted repeats, distance
@@ -196,10 +197,13 @@ class RepeatConstraint(Constraint, ABC):
         """
 
         # Compare all nucleotide positions at this shift in a few bigint operations.
-        nt_intersections = (
-            self.nt_bitmasks_reference_packed
-            & (self.nt_bitmasks_compare_packed >> (4 * shift))
+        compare = (
+            self.nt_bitmasks_compare_packed >> (4 * shift)
+            if shift >= 0
+            else self.nt_bitmasks_compare_packed << (4 * abs(shift))
         )
+
+        nt_intersections = self.nt_bitmasks_reference_packed & compare
 
         # Collapse each non-zero 4-bit nucleotide intersection to its marker bit.
         matches = (

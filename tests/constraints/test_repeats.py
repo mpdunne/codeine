@@ -356,19 +356,25 @@ def test_inverted_repeat_distance(min_distance, max_distance):
         return CodonGraph(aa_seq, codon_restrictions=codon_restrictions)
 
     # Too close :(
-    graph = make_graph(min_distance // 3 - 1)
-    constraint.link(graph)
-    assert constraint.is_trivial
+    linker_aa_len = min_distance // 3 - 1
+    constraint.link(make_graph(linker_aa_len))
+    repeat_ixs = (0, 15 + linker_aa_len * 3)
+    found_ixs = [(start_l, start_r) for start_l, start_r, _requirements in constraint.repeats]
+    assert repeat_ixs not in found_ixs
 
     # Just right! :D
-    graph = make_graph(min_distance // 3)
-    constraint.link(graph)
-    assert not constraint.is_trivial
+    linker_aa_len = min_distance // 3
+    constraint.link(make_graph(linker_aa_len))
+    repeat_ixs = (0, 15 + linker_aa_len * 3)
+    found_ixs = [(start_l, start_r) for start_l, start_r, _requirements in constraint.repeats]
+    assert repeat_ixs in found_ixs
 
     # Too far :(
-    graph = make_graph(max_distance // 3 + 1)
-    constraint.link(graph)
-    assert constraint.is_trivial
+    linker_aa_len = max_distance // 3 + 1
+    constraint.link(make_graph(linker_aa_len))
+    repeat_ixs = (0, 15 + linker_aa_len * 3)
+    found_ixs = [(start_l, start_r) for start_l, start_r, _requirements in constraint.repeats]
+    assert repeat_ixs not in found_ixs
 
 
 @pytest.mark.parametrize(
@@ -466,3 +472,48 @@ def test_finds_distant_inverted_repeat():
     constraint.link(graph)
 
     assert len(constraint.repeats) == 1
+
+
+@pytest.mark.parametrize(
+    'context_l,cds,context_r,repeat_length,expected',
+    [
+        ('ATG', 'AACGCA', 'T', 3, [(0, 7)]),
+        ('AAAAATG', 'AACGCA', 'T', 3, [(4, 11)]),
+        ('', 'ATGAAC', 'GCAT', 3, [(0, 7)]),
+        ('AAAAA', 'ATGAAC', 'GCAT', 3, [(5, 12)]),
+        ('ATG', 'AACGCA', 'TAAAAA', 3, [(0, 7)]),
+        ('AAAAATG', 'AACGCA', 'TAAAAA', 3, [(4, 11)]),
+    ],
+)
+def test_finds_inverted_repeats_across_full_sequence(context_l, cds, context_r, repeat_length, expected):
+
+    # This test exists to catch a previous bug in which we were missing matches whose rev. comp.
+    # appeared before the first part of the match, in the rev. comped sequence.
+    #
+    # reference:       A A A A A T G A A C G C A T
+    #                          A T G
+    #
+    # rev comp:        A T G C G T T C A T T T T T  ---> caught by a right-moving scan
+    #                  A T G
+    #
+    # We need to scan both ways, unlike direct repeats :)
+    #
+    # Compare with this example.
+    #
+    # reference:       A T G A A C G C A T A A A A
+    #                  A T G
+    #
+    # rev comp:        T T T T A T G C G T T C A T  <--- caught by a left-moving scan
+    #                          A T G
+
+    tt = TranslationTable()
+    aa_seq = tt.translate(cds)
+    codon_restrictions = {ix + 1: cds[ix * 3:(ix + 1) * 3] for ix in range(len(cds) // 3)}
+
+    graph = CodonGraph(aa_seq, context_l=context_l, context_r=context_r, codon_restrictions=codon_restrictions)
+
+    constraint = RepeatConstraint(repeat_length, inverted=True)
+    constraint.link(graph)
+
+    observed = [(start_l, start_r) for start_l, start_r, _requirements in constraint.repeats]
+    assert observed == expected
