@@ -82,6 +82,7 @@ class RepeatConstraint(Constraint, ABC):
         self.nt_positions_reference = None
         self.nt_positions_compare = None
 
+        self.watch_transitions = None
         self.active_positions = None
         self.repeats = None
         self.repeat_starts = None
@@ -107,49 +108,15 @@ class RepeatConstraint(Constraint, ABC):
 
         next_state = []
         append = next_state.append
-        choice_bit = self.choice_bits[pos][choice]
 
         for repeat_ix, pending in watches:
-            _start_l, _start_r, requirements = self.repeats[repeat_ix]
+            next_watch = self._advance_watch(repeat_ix, pending, pos, choice)
 
-            # Accumulate the compare-side choices required by this reference choice.
-            new_requirements = requirements.get(pos)
-
-            if new_requirements:
-                pending = dict(pending)
-
-                for compare_pos, allowed_by_reference_choice in new_requirements:
-                    allowed_choices = allowed_by_reference_choice.get(choice, 0)
-
-                    if not allowed_choices:
-                        break
-
-                    if compare_pos in pending:
-                        pending[compare_pos] &= allowed_choices
-                    else:
-                        pending[compare_pos] = allowed_choices
-
-                    if not pending[compare_pos]:
-                        break
-                else:
-                    pending = tuple(sorted(pending.items()))
-                    new_requirements = None
-
-                if new_requirements is not None:
-                    continue
-
-            # Once the compare side is reached, a mismatch kills this watch.
-            if pending and pending[0][0] == pos:
-                if not pending[0][1] & choice_bit:
-                    continue
-
-                pending = pending[1:]
-
-            # No pending requirements means this repeat has been completed.
-            if pos >= self.repeat_ends[repeat_ix] and not pending:
+            if next_watch == DEAD_STATE:
                 return DEAD_STATE
 
-            append((repeat_ix, pending))
+            if next_watch is not None:
+                append(next_watch)
 
         return frozenset(next_state) if next_state or pos < self.last_repeat_start else SAFE_STATE
 
@@ -229,10 +196,63 @@ class RepeatConstraint(Constraint, ABC):
                     active_positions[compare_pos] = True
 
         self.active_positions = tuple(active_positions)
+        self.watch_transitions = {}
 
     @property
     def is_trivial(self) -> bool:
         return not self.repeats
+
+    def _advance_watch(self, repeat_ix, pending, pos, choice):
+        key = repeat_ix, pending, pos, choice
+
+        try:
+            return self.watch_transitions[key]
+        except KeyError:
+            pass
+
+        _start_l, _start_r, requirements = self.repeats[repeat_ix]
+
+        # Accumulate the compare-side choices required by this reference choice.
+        new_requirements = requirements.get(pos)
+
+        if new_requirements:
+            pending = dict(pending)
+
+            for compare_pos, allowed_by_reference_choice in new_requirements:
+                allowed_choices = allowed_by_reference_choice.get(choice, 0)
+
+                if not allowed_choices:
+                    self.watch_transitions[key] = None
+                    return None
+
+                if compare_pos in pending:
+                    pending[compare_pos] &= allowed_choices
+                else:
+                    pending[compare_pos] = allowed_choices
+
+                if not pending[compare_pos]:
+                    self.watch_transitions[key] = None
+                    return None
+
+            pending = tuple(sorted(pending.items()))
+
+        # Once the compare side is reached, a mismatch kills this watch.
+        if pending and pending[0][0] == pos:
+            if not pending[0][1] & self.choice_bits[pos][choice]:
+                self.watch_transitions[key] = None
+                return None
+
+            pending = pending[1:]
+
+        # No pending requirements means this repeat has been completed.
+        if pos >= self.repeat_ends[repeat_ix] and not pending:
+            self.watch_transitions[key] = DEAD_STATE
+            return DEAD_STATE
+
+        next_watch = repeat_ix, pending
+        self.watch_transitions[key] = next_watch
+
+        return next_watch
 
     def _reverse_complement(self, sequence: str):
         """
