@@ -158,16 +158,24 @@ class RepeatConstraint(Constraint, ABC):
         reference_nt_masks = self.nt_bitmasks_reference[:-shift] if shift else self.nt_bitmasks_reference
         compare_nt_masks = self.nt_bitmasks_compare[shift:]
 
-        nt_intersections = [
-            mask_reference & mask_compare
-            for mask_reference, mask_compare in zip(reference_nt_masks, compare_nt_masks)
-        ]
+        # For inverted repeats, later start positions would map back onto or before
+        # the reference repeat, so they can never form a valid pair.
+        if self.inverted:
+            max_start_l = (self.full_sequence_length - shift - 2 * self.repeat_length - self.min_distance) // 2
 
-        # Find runs at least repeat_length long. Each sufficiently long run may
-        # contain several overlapping candidate repeats.
+            if max_start_l < 0:
+                return
+
+            max_ix = max_start_l + self.repeat_length - 1
+
+            reference_nt_masks = reference_nt_masks[:max_ix + 1]
+            compare_nt_masks = compare_nt_masks[:max_ix + 1]
+
         run_start = None
 
-        for ix, masked_nt in enumerate(nt_intersections):
+        for ix, (mask_reference, mask_compare) in enumerate(zip(reference_nt_masks, compare_nt_masks)):
+            masked_nt = mask_reference & mask_compare
+
             if not masked_nt:
                 run_start = None
                 continue
