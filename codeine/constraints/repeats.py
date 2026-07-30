@@ -82,6 +82,7 @@ class RepeatConstraint(Constraint, ABC):
         self.nt_positions_reference = None
         self.nt_positions_compare = None
 
+        self.active_positions = None
         self.repeats = None
         self.repeat_starts = None
         self.repeat_ends = None
@@ -95,13 +96,17 @@ class RepeatConstraint(Constraint, ABC):
         if state in (SAFE_STATE, DEAD_STATE):
             return state
 
+        if not self.active_positions[pos]:
+            return state if state or pos < self.last_repeat_start else SAFE_STATE
+
         watches = list(state)
 
         # Start watching repeats when their first reference position is reached.
         for repeat_ix in self.repeat_starts.get(pos, ()):
             watches.append((repeat_ix, ()))
 
-        next_state = set()
+        next_state = []
+        append = next_state.append
         choice_bit = self.choice_bits[pos][choice]
 
         for repeat_ix, pending in watches:
@@ -144,7 +149,7 @@ class RepeatConstraint(Constraint, ABC):
             if pos >= self.repeat_ends[repeat_ix] and not pending:
                 return DEAD_STATE
 
-            next_state.add((repeat_ix, pending))
+            append((repeat_ix, pending))
 
         return frozenset(next_state) if next_state or pos < self.last_repeat_start else SAFE_STATE
 
@@ -213,6 +218,17 @@ class RepeatConstraint(Constraint, ABC):
 
         self.repeat_ends = [max(requirements) for _start_l, _start_r, requirements in self.repeats]
         self.last_repeat_start = max(self.repeat_starts, default=-1)
+
+        active_positions = [False] * len(self.reference_choices)
+
+        for _start_l, _start_r, requirements in self.repeats:
+            for reference_pos, entries in requirements.items():
+                active_positions[reference_pos] = True
+
+                for compare_pos, _allowed_choices in entries:
+                    active_positions[compare_pos] = True
+
+        self.active_positions = tuple(active_positions)
 
     @property
     def is_trivial(self) -> bool:
