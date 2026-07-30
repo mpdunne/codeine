@@ -653,6 +653,7 @@ def test_inverted_repeat_constraint_empty_space(context_l, aa_seq, context_r, re
         ('MIKEYQTVEGPILAIEWAEGTLPWPMIKEY', 15, 0, None),
         ('MIKEYMIKEYQTLAIEWAEGTLPWPMIKEY', 15, 16, None),
         ('MIKEYQTLAIEWMIKEYAEGTLPWPMIKEY', 15, 16, None),
+        ('MIKEYMIKEYMIKEYMIKEY', 15, 0, None),
         ('MIKEYMIKEYMIKEYMIKEYMIKEYQTLAIEWAEGTLPWPMIKEY', 75, 75, None),
     ],
 )
@@ -673,6 +674,7 @@ def test_direct_repeat_constraint_sampling(aa_seq, repeat_length, min_distance, 
         ('KEEKEQTVEGPILAIEWAEGTLPWPFFFFF', 9, 0, None),
         ('KEEKEQTVEGPILAIEWAEGTLPWPFFFFF', 15, 0, None),
         ('KEEKEKEEKEQTLAIEWAEGTLPWPFFFFF', 15, 16, None),
+        ('KEEKEKEEKEKEEKEFFFFFFFFFFFFFFF', 15, 0, None),
         ('KEKEKEKEKEKEKEKEKEKEKEKEKQTLAIEWAEGTLPWPFFFFFFFFFFFFFFFFFFFFFFFFF', 75, 75, None),
     ],
 )
