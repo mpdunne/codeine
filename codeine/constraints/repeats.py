@@ -82,7 +82,10 @@ class RepeatConstraint(Constraint, ABC):
         self.nt_positions_reference = None
         self.nt_positions_compare = None
 
+        self.watch_ids = None
+        self.watches = None
         self.watch_transitions = None
+        self.repeat_start_watch_ids = None
         self.active_positions = None
         self.repeats = None
         self.repeat_starts = None
@@ -91,7 +94,7 @@ class RepeatConstraint(Constraint, ABC):
 
     @property
     def initial_state(self):
-        return frozenset()
+        return ()
 
     def advance(self, state, pos, choice):
         if state in (SAFE_STATE, DEAD_STATE):
@@ -100,17 +103,13 @@ class RepeatConstraint(Constraint, ABC):
         if not self.active_positions[pos]:
             return state if state or pos < self.last_repeat_start else SAFE_STATE
 
-        watches = list(state)
-
-        # Start watching repeats when their first reference position is reached.
-        for repeat_ix in self.repeat_starts.get(pos, ()):
-            watches.append((repeat_ix, ()))
+        watches = state + self.repeat_start_watch_ids.get(pos, ())
 
         next_state = []
         append = next_state.append
 
-        for repeat_ix, pending in watches:
-            next_watch = self._advance_watch(repeat_ix, pending, pos, choice)
+        for watch_id in watches:
+            next_watch = self._advance_watch(watch_id, pos, choice)
 
             if next_watch == DEAD_STATE:
                 return DEAD_STATE
@@ -118,7 +117,7 @@ class RepeatConstraint(Constraint, ABC):
             if next_watch is not None:
                 append(next_watch)
 
-        return frozenset(next_state) if next_state or pos < self.last_repeat_start else SAFE_STATE
+        return tuple(next_state) if next_state or pos < self.last_repeat_start else SAFE_STATE
 
     def link(self, graph):
         self.graph = graph
@@ -196,23 +195,43 @@ class RepeatConstraint(Constraint, ABC):
                     active_positions[compare_pos] = True
 
         self.active_positions = tuple(active_positions)
-        self.watch_transitions = {}
+
+        self.watch_ids = {}
+        self.watches = []
+        self.watch_transitions = []
+        self.repeat_start_watch_ids = {
+            pos: tuple(self._intern_watch(repeat_ix, ()) for repeat_ix in repeat_ixs)
+            for pos, repeat_ixs in self.repeat_starts.items()
+        }
 
     @property
     def is_trivial(self) -> bool:
         return not self.repeats
 
-    def _advance_watch(self, repeat_ix, pending, pos, choice):
-        key = repeat_ix, pending, pos, choice
+    def _intern_watch(self, repeat_ix, pending):
+        watch = repeat_ix, pending
+        watch_id = self.watch_ids.get(watch)
+
+        if watch_id is None:
+            watch_id = len(self.watches)
+            self.watch_ids[watch] = watch_id
+            self.watches.append(watch)
+            self.watch_transitions.append({})
+
+        return watch_id
+
+    def _advance_watch(self, watch_id, pos, choice):
+        transitions = self.watch_transitions[watch_id]
+        key = pos, choice
 
         try:
-            return self.watch_transitions[key]
+            return transitions[key]
         except KeyError:
             pass
 
+        repeat_ix, pending = self.watches[watch_id]
         _start_l, _start_r, requirements = self.repeats[repeat_ix]
 
-        # Accumulate the compare-side choices required by this reference choice.
         new_requirements = requirements.get(pos)
 
         if new_requirements:
@@ -222,7 +241,7 @@ class RepeatConstraint(Constraint, ABC):
                 allowed_choices = allowed_by_reference_choice.get(choice, 0)
 
                 if not allowed_choices:
-                    self.watch_transitions[key] = None
+                    transitions[key] = None
                     return None
 
                 if compare_pos in pending:
@@ -231,26 +250,24 @@ class RepeatConstraint(Constraint, ABC):
                     pending[compare_pos] = allowed_choices
 
                 if not pending[compare_pos]:
-                    self.watch_transitions[key] = None
+                    transitions[key] = None
                     return None
 
             pending = tuple(sorted(pending.items()))
 
-        # Once the compare side is reached, a mismatch kills this watch.
         if pending and pending[0][0] == pos:
             if not pending[0][1] & self.choice_bits[pos][choice]:
-                self.watch_transitions[key] = None
+                transitions[key] = None
                 return None
 
             pending = pending[1:]
 
-        # No pending requirements means this repeat has been completed.
         if pos >= self.repeat_ends[repeat_ix] and not pending:
-            self.watch_transitions[key] = DEAD_STATE
+            transitions[key] = DEAD_STATE
             return DEAD_STATE
 
-        next_watch = repeat_ix, pending
-        self.watch_transitions[key] = next_watch
+        next_watch = self._intern_watch(repeat_ix, pending)
+        transitions[key] = next_watch
 
         return next_watch
 
