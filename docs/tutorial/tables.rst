@@ -149,7 +149,7 @@ Codeine supports the following `NCBI genetic code tables <https://www.ncbi.nlm.n
 
 Fixed codons
 ------------
-``codon_restrictions`` restricts which codons are allowed at specific amino acid positions. They can either be fixed exact codons, or subsets of the set of possible codons for that amino acid. Positions are 1-based.
+``fixed_codons`` restricts which codons are allowed at specific amino acid positions. They can either be fixed exact codons, or subsets of the set of possible codons for that amino acid. Positions are 1-based.
 
 .. code-block:: python
 
@@ -159,7 +159,7 @@ Fixed codons
 
     space = CodingSpace(
        aa_seq,
-       codon_restrictions={
+       fixed_codons={
            2: 'AAA',
            3: ['ACA', 'ACG'],
        },

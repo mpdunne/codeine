@@ -23,7 +23,7 @@ class CodonGraph:
     def __init__(
         self,
         aa_seq: str,
-        codon_restrictions: Optional[Dict[int, CodonRestriction]] = None,
+        fixed_codons: Optional[Dict[int, CodonRestriction]] = None,
         translation_table: Optional[TranslationTable] = None,
         context_l: str = '',
         context_r: str = '',
@@ -33,7 +33,7 @@ class CodonGraph:
         ----------
         aa_seq
             The amino acid sequence.
-        codon_restrictions
+        fixed_codons
             Any codon restrictions, for example fixed codons or subsets, in the form {3: 'AAA', 6: ['TTT', 'TTC']...}
         translation_table
             The translation table to use.
@@ -53,8 +53,8 @@ class CodonGraph:
         self.aa_seq = aa_seq.upper()
         self.validate_aa_seq()
 
-        self.codon_restrictions = {}
-        self.codon_restrictions = self.validate_codon_restrictions(codon_restrictions)
+        self.fixed_codons = {}
+        self.fixed_codons = self.validate_fixed_codons(fixed_codons)
 
         self.context_l = self.tt.normalise_sequence(context_l)
         self.context_r = self.tt.normalise_sequence(context_r)
@@ -83,11 +83,11 @@ class CodonGraph:
             f'{self.aa_seq}',
             ''
         ]
-        if self.codon_restrictions:
+        if self.fixed_codons:
             lines += [
                 'Codon restrictions:',
                 *format_restrictions(
-                    self.codon_restrictions,
+                    self.fixed_codons,
                     label='restricted positions',
                 ),
                 '',
@@ -103,17 +103,17 @@ class CodonGraph:
             if aa not in self.tt.aa_to_codons:
                 raise ValueError(f'Invalid amino acid {aa} at position {pos}.')
 
-    def validate_codon_restrictions(
+    def validate_fixed_codons(
             self,
-            codon_restrictions: Optional[Dict[int, CodonRestriction]],
+            fixed_codons: Optional[Dict[int, CodonRestriction]],
     ) -> Dict[int, List[str]]:
         """
         Check the inputted restrictions make sense!
         """
-        codon_restrictions = codon_restrictions or {}
+        fixed_codons = fixed_codons or {}
         normalised = {}
 
-        for pos, codon_restriction in codon_restrictions.items():
+        for pos, codon_restriction in fixed_codons.items():
             if pos < 1 or pos > len(self.aa_seq):
                 raise ValueError(f'Restricted position {pos} is out of range.')
 
@@ -129,8 +129,8 @@ class CodonGraph:
 
             aa = self.aa_seq[pos - 1]
 
-            if pos in self.codon_restrictions:
-                allowed_codons = [self.tt.normalise_sequence(codon) for codon in self.codon_restrictions[pos]]
+            if pos in self.fixed_codons:
+                allowed_codons = [self.tt.normalise_sequence(codon) for codon in self.fixed_codons[pos]]
             else:
                 allowed_codons = self.tt.aa_to_codons[aa]
 
@@ -165,8 +165,8 @@ class CodonGraph:
         for ix, aa in enumerate(self.aa_seq):
             pos = ix + 1
 
-            if pos in self.codon_restrictions:
-                codons = self.codon_restrictions[pos]
+            if pos in self.fixed_codons:
+                codons = self.fixed_codons[pos]
             else:
                 codons = self.tt.aa_to_codons[aa]
 

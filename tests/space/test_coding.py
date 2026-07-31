@@ -22,7 +22,7 @@ def test_coding_space_sequences_translate_correctly(aa_seq):
 
 
 def test_coding_space_fixed_codons_are_fixed():
-    space = CodingSpace('MIKEY', codon_restrictions={2: 'ATA'})
+    space = CodingSpace('MIKEY', fixed_codons={2: 'ATA'})
 
     for _ in range(1000):
         cds = space.sample()
@@ -320,7 +320,7 @@ def test_coding_space_pickle_preserves_pins():
 def test_coding_space_pickle_preserves_constraints():
     space = CodingSpace(
         'MIKEY',
-        codon_restrictions={2: 'ATC'},
+        fixed_codons={2: 'ATC'},
         forbidden_motifs=['AAAA'],
         max_homopolymer=4,
         seed=8675309,
@@ -417,7 +417,7 @@ def test_coding_space_exposes_graph_properties():
     cw = CodonWeights.ecoli()
     space = CodingSpace(
         'MIKEY',
-        codon_restrictions={2: 'ATC'},
+        fixed_codons={2: 'ATC'},
         codon_weights=cw,
         context_l='AAA',
         context_r='CCC',
@@ -427,7 +427,7 @@ def test_coding_space_exposes_graph_properties():
     assert space.translation_table is space.view.translation_table
     assert space.codon_weights is space.view.codon_weights
     assert space.codon_weights is cw
-    assert space.codon_restrictions == space.view.codon_restrictions
+    assert space.fixed_codons == space.view.fixed_codons
     assert space.context_l == 'AAA'
     assert space.context_r == 'CCC'
 
@@ -598,9 +598,9 @@ def test_coding_space_rna_flag_creates_rna_space():
 
 
 def test_coding_space_rna_flag_normalises_inputs_to_rna():
-    space = CodingSpace('M', codon_restrictions={1: 'ATG'}, context_l='TTT', context_r='TAA', rna=True)
+    space = CodingSpace('M', fixed_codons={1: 'ATG'}, context_l='TTT', context_r='TAA', rna=True)
 
-    assert space.codon_restrictions == {1: ['AUG']}
+    assert space.fixed_codons == {1: ['AUG']}
     assert space.context_l == 'UUU'
     assert space.context_r == 'UAA'
 
@@ -761,7 +761,7 @@ def test_sampling_raises_if_all_valid_sequences_have_zero_weight():
     }
 
     weights = CodonWeights(data)
-    space = CodingSpace('F', codon_restrictions={1: 'TTT'}, codon_weights=weights)
+    space = CodingSpace('F', fixed_codons={1: 'TTT'}, codon_weights=weights)
 
     assert space.n_valid_sequences == 1
     assert set(space.enumerate()) == {'TTT'}

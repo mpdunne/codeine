@@ -132,11 +132,11 @@ class CodonGraphView:
             ''
         ]
 
-        if self.graph.codon_restrictions:
+        if self.graph.fixed_codons:
             lines += [
                 'Codon restrictions:',
                 *format_restrictions(
-                    self.graph.codon_restrictions,
+                    self.graph.fixed_codons,
                     label='restricted positions',
                 ),
                 '',
@@ -410,7 +410,7 @@ class CodonGraphView:
         pinned_codons
             A dict specifying which codons to pin, by pos: codon.
         """
-        pinned_codons = self.graph.validate_codon_restrictions(pinned_codons)
+        pinned_codons = self.graph.validate_fixed_codons(pinned_codons)
         self.pinned_codons.update(pinned_codons)
         self._update_compile_status(COMPILE_SHALLOW)
 
@@ -440,7 +440,7 @@ class CodonGraphView:
         pinned_codons:
             A dict specifying which codons to pin, by pos: codon
         """
-        pinned_codons = self.graph.validate_codon_restrictions(pinned_codons)
+        pinned_codons = self.graph.validate_fixed_codons(pinned_codons)
         self.pinned_codons = dict(pinned_codons)
         self._update_compile_status(COMPILE_SHALLOW)
 
@@ -540,11 +540,11 @@ class CodonGraphView:
         return self._codon_weights
 
     @property
-    def codon_restrictions(self) -> Dict[int, CodonRestriction]:
+    def fixed_codons(self) -> Dict[int, CodonRestriction]:
         """
         Any hard-fixed codon restrictions on the codon graph.
         """
-        return self.graph.codon_restrictions
+        return self.graph.fixed_codons
 
     @property
     def context_l(self) -> str:

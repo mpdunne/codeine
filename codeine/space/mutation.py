@@ -145,11 +145,11 @@ class MutationSpace:
             '',
         ]
 
-        if self.codon_restrictions:
+        if self.fixed_codons:
             lines += [
                 'Codon restrictions:',
                 *format_restrictions(
-                    self.codon_restrictions,
+                    self.fixed_codons,
                     label='restricted positions',
                     max_lines=4,
                 ),
@@ -373,11 +373,11 @@ class MutationSpace:
         return self.view.codon_weights
 
     @property
-    def codon_restrictions(self) -> Dict[int, CodonRestriction]:
+    def fixed_codons(self) -> Dict[int, CodonRestriction]:
         """
         The fixed codon restrictions from the underlying graph.
         """
-        return self.view.codon_restrictions
+        return self.view.fixed_codons
 
     @property
     def context_l(self) -> str:

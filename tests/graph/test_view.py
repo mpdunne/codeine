@@ -23,10 +23,10 @@ def test_view_exposes_translation_table():
     assert view.translation_table is graph.tt
 
 
-def test_view_exposes_codon_restrictions():
-    graph = CodonGraph('MIKEY', codon_restrictions={2: 'ATC'})
+def test_view_exposes_fixed_codons():
+    graph = CodonGraph('MIKEY', fixed_codons={2: 'ATC'})
     view = graph.view()
-    assert view.codon_restrictions == graph.codon_restrictions
+    assert view.fixed_codons == graph.fixed_codons
 
 
 def test_view_exposes_contexts():
@@ -85,8 +85,8 @@ def test_view_rejects_out_of_range_pin():
         view.pin_codons({6: 'ATG'})
 
 
-def test_view_rejects_pin_outside_codon_restrictions():
-    view = CodonGraph('MIKEY', codon_restrictions={3: ['AAA']}).view()
+def test_view_rejects_pin_outside_fixed_codons():
+    view = CodonGraph('MIKEY', fixed_codons={3: ['AAA']}).view()
     with pytest.raises(ValueError):
         view.pin_codons({3: 'AAG'})
 
@@ -246,8 +246,8 @@ def test_n_valid_sequences_no_restrictions(aa_seq, standard_codon_table):
 
 def test_n_valid_sequences_fixed_codon(standard_codon_table):
     aa_seq = 'MIKEY'
-    codon_restrictions = {2: 'ATC'}
-    view = CodonGraph(aa_seq, codon_restrictions=codon_restrictions).view()
+    fixed_codons = {2: 'ATC'}
+    view = CodonGraph(aa_seq, fixed_codons=fixed_codons).view()
 
     sequences_all = helper_enumerate_sequences(aa_seq, standard_codon_table)
     sequences_restricted = [s for s in sequences_all if s[3:6] == 'ATC']
@@ -263,11 +263,11 @@ def test_n_valid_sequences_pinning_and_unpinning(standard_codon_table):
     sequences_all = helper_enumerate_sequences(aa_seq, standard_codon_table)
     assert len(sequences_all) == view.n_valid_sequences
 
-    codon_restrictions = {2: 'ATC'}
+    fixed_codons = {2: 'ATC'}
     sequences_restricted = [s for s in sequences_all if s[3:6] == 'ATC']
     assert len(sequences_restricted) != len(sequences_all)
 
-    view.pin_codons(codon_restrictions)
+    view.pin_codons(fixed_codons)
     assert len(sequences_restricted) == view.n_valid_sequences
 
     view.clear_pins()
@@ -1152,7 +1152,7 @@ def test_view_exposes_graph_properties():
 
     assert view.aa_seq == graph.aa_seq
     assert view.translation_table is graph.tt
-    assert view.codon_restrictions is graph.codon_restrictions
+    assert view.fixed_codons is graph.fixed_codons
     assert view.context_l == graph.context_l
     assert view.context_r == graph.context_r
 

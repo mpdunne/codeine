@@ -89,7 +89,7 @@ space = CodingSpace(
         RestrictionSite.BamHI,
         'CTGCAG',
     ],
-    codon_restrictions={
+    fixed_codons={
         2: 'AAG',
         16: 'AAG',
     },
