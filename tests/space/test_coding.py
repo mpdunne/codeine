@@ -113,7 +113,7 @@ def test_coding_space_sample_excludes_context_by_default():
 
 def test_coding_space_mutants_raises_if_seq_is_invalid():
     space = CodingSpace('MIKEY')
-    
+
     with pytest.raises(ValueError):
         _ = space.mutants('', [1, 2])
 
@@ -257,7 +257,7 @@ def test_mixed_restrictions():
 
 
 def test_forbidden_motifs_repr():
-    space = CodingSpace('MIKEY', forbidden_motifs=[RestrictionSite.EcoRI, 'AAAA'],)
+    space = CodingSpace('MIKEY', forbidden_motifs=[RestrictionSite.EcoRI, 'AAAA'])
 
     text = repr(space)
     assert 'Forbidden motifs:' in text
@@ -661,6 +661,16 @@ def test_coding_space_can_set_and_clear_constraints():
     assert set(space.enumerate()) == {'GAA', 'GAG'}
 
 
+def test_coding_space_can_add_constraints():
+    space = CodingSpace('MIKEY')
+    constraint = ForbiddenMotifConstraint(['AAA'])
+
+    space.add_constraints(constraint)
+
+    assert constraint in space.constraints
+    assert constraint in space.view.constraints
+
+
 def test_coding_space_constraints_combine_with_forbidden_motifs():
     constraint = ForbiddenMotifConstraint(['GAG'])
     space = CodingSpace('E', forbidden_motifs=['GAA'])
@@ -694,7 +704,7 @@ def test_coding_space_pickle_preserves_constraints():
     constraint = SafeConstraint()
 
     space = CodingSpace('MIKEY', constraints=[constraint],
-                        forbidden_motifs=['CCC'], max_homopolymer=4,seed=8675309)
+                        forbidden_motifs=['CCC'], max_homopolymer=4, seed=8675309)
 
     loaded = pickle.loads(pickle.dumps(space))
 

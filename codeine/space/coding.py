@@ -395,6 +395,26 @@ class CodingSpace:
         """
         self.set_max_homopolymer(None)
 
+    def add_constraints(self, constraints: Union[Constraint, Sequence[Constraint]]) -> None:
+        """
+        Add one or more constraints to this coding space.
+
+        Parameters
+        ----------
+        constraints
+            Constraints to add.
+        """
+        if isinstance(constraints, Constraint):
+            constraints = [constraints]
+
+        constraints = tuple(constraints)
+
+        if not constraints:
+            return
+
+        self.constraints += constraints
+        self.view.add_constraints(constraints)
+
     def set_constraints(self, constraints: Sequence[Constraint]) -> None:
         """
         Replace the additional constraints for this coding space.
