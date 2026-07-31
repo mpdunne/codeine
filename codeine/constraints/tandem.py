@@ -1,4 +1,5 @@
 from codeine.constraints.subpaths import SubPath, SubPathConstraint
+from codeine.utils.bitmasks import choices_to_nt_bitmasks
 
 
 class TandemRepeatConstraint(SubPathConstraint):
@@ -82,35 +83,12 @@ class TandemRepeatConstraint(SubPathConstraint):
 
         return len(self.aa_seq) + 1, nt_ix - coding_end
 
-    def _get_base_masks(self):
-        """
-        Get the possible bases at each nucleotide position.
-        """
-        nt_to_mask = {
-            'A': 1,
-            'C': 2,
-            'G': 4,
-            'T': 8,
-            'U': 8,
-        }
-
-        nt_masks = []
-
-        for pos, choice_offset in self._nucleotide_positions:
-            mask = 0
-
-            for choice in self.graph.nodes[pos].transitions:
-                mask |= nt_to_mask[choice[choice_offset]]
-
-            nt_masks.append(mask)
-
-        return nt_masks
-
     def _get_possible_starts(self, n_starts):
         """
         Get candidate repeat starts that cannot be ruled out at nucleotide level.
         """
-        base_masks = self._get_base_masks()
+        choices = [tuple(node.transitions) for node in self.graph.nodes if node is not self.graph.end_node]
+        base_masks = choices_to_nt_bitmasks(choices)
         possible_starts = []
 
         for start in range(n_starts):
