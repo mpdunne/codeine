@@ -462,8 +462,8 @@ def test_find_matching_subpaths_single_codon_multiple_matches():
     assert len(matches) == 11
 
 
-def test_find_matching_subpaths_respects_codon_restrictions():
-    graph = CodonGraph('MIKEY', codon_restrictions={2: 'ATA'})
+def test_find_matching_subpaths_respects_fixed_codons():
+    graph = CodonGraph('MIKEY', fixed_codons={2: 'ATA'})
 
     assert helper_get_paths(graph, 'ATGATA')
     assert not helper_get_paths(graph, 'ATGATT')

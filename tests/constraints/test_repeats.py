@@ -170,7 +170,7 @@ def test_fixed_codons_kill_direct_repeat():
     assert not constraint.is_trivial
 
     constraint = RepeatConstraint(repeat_length=15)
-    graph = CodonGraph('MIKEYAAAAAMIKEY', codon_restrictions={2: 'ATA', 12: 'ATT'})
+    graph = CodonGraph('MIKEYAAAAAMIKEY', fixed_codons={2: 'ATA', 12: 'ATT'})
     constraint.link(graph)
 
     assert constraint.is_trivial
@@ -217,8 +217,8 @@ def test_direct_repeat_distance(min_distance, max_distance):
         linker_aa = repeat_free_aa[:linker_aa_len]
         linker_cds = repeat_free_cds[:linker_aa_len * 3]
         aa_seq = 'CCCCC' + linker_aa + 'CCCCC'
-        codon_restrictions = {6 + ix: linker_cds[ix * 3:(ix + 1) * 3] for ix in range(linker_aa_len)}
-        return CodonGraph(aa_seq, codon_restrictions=codon_restrictions)
+        fixed_codons = {6 + ix: linker_cds[ix * 3:(ix + 1) * 3] for ix in range(linker_aa_len)}
+        return CodonGraph(aa_seq, fixed_codons=fixed_codons)
 
     # Too close :(
     graph = make_graph(min_distance // 3 - 1)
@@ -312,7 +312,7 @@ def test_fixed_codons_kill_inverted_repeat():
     assert not constraint.is_trivial
 
     constraint = RepeatConstraint(repeat_length=15, inverted=True)
-    graph = CodonGraph(aa_seq, codon_restrictions={8: 'TTG'})  # This breaks the inverted repeats.
+    graph = CodonGraph(aa_seq, fixed_codons={8: 'TTG'})  # This breaks the inverted repeats.
     constraint.link(graph)
 
     assert constraint.is_trivial
@@ -353,8 +353,8 @@ def test_inverted_repeat_distance(min_distance, max_distance):
         linker_aa = repeat_free_aa[:linker_aa_len]
         linker_cds = repeat_free_cds[:linker_aa_len * 3]
         aa_seq = 'KEEKE' + linker_aa + 'FFFFF'
-        codon_restrictions = {6 + ix: linker_cds[ix * 3:(ix + 1) * 3] for ix in range(linker_aa_len)}
-        return CodonGraph(aa_seq, codon_restrictions=codon_restrictions)
+        fixed_codons = {6 + ix: linker_cds[ix * 3:(ix + 1) * 3] for ix in range(linker_aa_len)}
+        return CodonGraph(aa_seq, fixed_codons=fixed_codons)
 
     # Too close :(
     linker_aa_len = min_distance // 3 - 1
@@ -451,8 +451,8 @@ def test_finds_distant_direct_repeat():
     tt = TranslationTable()
 
     aa_seq = 'MIKEY' + tt.translate(spacer) + 'MIKEY'
-    codon_restrictions = {6 + ix: spacer[ix * 3:(ix + 1) * 3] for ix in range(len(spacer) // 3)}
-    graph = CodonGraph(aa_seq, codon_restrictions=codon_restrictions)
+    fixed_codons = {6 + ix: spacer[ix * 3:(ix + 1) * 3] for ix in range(len(spacer) // 3)}
+    graph = CodonGraph(aa_seq, fixed_codons=fixed_codons)
 
     constraint = RepeatConstraint(repeat_length)
     constraint.link(graph)
@@ -466,8 +466,8 @@ def test_finds_distant_inverted_repeat():
     tt = TranslationTable()
 
     aa_seq = 'KEEKE' + tt.translate(spacer) + 'FFFFF'
-    codon_restrictions = {6 + ix: spacer[ix * 3:(ix + 1) * 3] for ix in range(len(spacer) // 3)}
-    graph = CodonGraph(aa_seq, codon_restrictions=codon_restrictions)
+    fixed_codons = {6 + ix: spacer[ix * 3:(ix + 1) * 3] for ix in range(len(spacer) // 3)}
+    graph = CodonGraph(aa_seq, fixed_codons=fixed_codons)
 
     constraint = RepeatConstraint(repeat_length, inverted=True)
     constraint.link(graph)
@@ -509,9 +509,9 @@ def test_finds_inverted_repeats_across_full_sequence(context_l, cds, context_r, 
 
     tt = TranslationTable()
     aa_seq = tt.translate(cds)
-    codon_restrictions = {ix + 1: cds[ix * 3:(ix + 1) * 3] for ix in range(len(cds) // 3)}
+    fixed_codons = {ix + 1: cds[ix * 3:(ix + 1) * 3] for ix in range(len(cds) // 3)}
 
-    graph = CodonGraph(aa_seq, context_l=context_l, context_r=context_r, codon_restrictions=codon_restrictions)
+    graph = CodonGraph(aa_seq, context_l=context_l, context_r=context_r, fixed_codons=fixed_codons)
 
     constraint = RepeatConstraint(repeat_length, inverted=True)
     constraint.link(graph)

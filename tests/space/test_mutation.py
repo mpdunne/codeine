@@ -308,7 +308,7 @@ def test_mutation_space_exposes_graph_properties():
     cw = CodonWeights.ecoli()
     space = CodingSpace(
         'MIKEY',
-        codon_restrictions={2: 'ATC'},
+        fixed_codons={2: 'ATC'},
         codon_weights=cw,
         context_l='AAA',
         context_r='CCC',
@@ -318,7 +318,7 @@ def test_mutation_space_exposes_graph_properties():
     assert muts.aa_seq == space.aa_seq
     assert muts.translation_table is space.translation_table
     assert muts.codon_weights is space.codon_weights
-    assert muts.codon_restrictions == space.codon_restrictions
+    assert muts.fixed_codons == space.fixed_codons
     assert muts.context_l == space.context_l
     assert muts.context_r == space.context_r
 

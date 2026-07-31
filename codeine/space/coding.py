@@ -28,7 +28,7 @@ class CodingSpace:
         *,
         translation_table: Optional[TranslationTable] = None,
         rna: Optional[bool] = None,
-        codon_restrictions: Optional[Dict[int, CodonRestriction]] = None,
+        fixed_codons: Optional[Dict[int, CodonRestriction]] = None,
         constraints: Optional[Sequence[Constraint]] = None,
         forbidden_motifs: Optional[Motifs] = None,
         max_homopolymer: Optional[int] = None,
@@ -46,7 +46,7 @@ class CodingSpace:
             The translation table to use. Leave blank to use standard table.
         rna
             Whether to use RNA. If false or blank, use DNA.
-        codon_restrictions
+        fixed_codons
             Any codon restrictions in the format e.g. ``{4: 'TCC'}`` or ``{5: ['AGT', 'AGC']}``. Positions are 1-based.
         constraints
             Constraints to apply to this coding space.
@@ -68,7 +68,7 @@ class CodingSpace:
 
         graph = CodonGraph(
             aa_seq,
-            codon_restrictions=codon_restrictions,
+            fixed_codons=fixed_codons,
             translation_table=translation_table,
             context_l=context_l,
             context_r=context_r,
@@ -161,11 +161,11 @@ class CodingSpace:
             '',
         ]
 
-        if self.codon_restrictions:
+        if self.fixed_codons:
             lines += [
                 'Codon restrictions:',
                 *format_restrictions(
-                    self.codon_restrictions,
+                    self.fixed_codons,
                     label='restricted positions',
                     max_lines=4,
                 ),
@@ -449,11 +449,11 @@ class CodingSpace:
         return self.view.codon_weights
 
     @property
-    def codon_restrictions(self) -> Dict[int, CodonRestriction]:
+    def fixed_codons(self) -> Dict[int, CodonRestriction]:
         """
         The fixed codon restrictions from the underlying graph.
         """
-        return self.view.codon_restrictions
+        return self.view.fixed_codons
 
     @property
     def context_l(self) -> str:

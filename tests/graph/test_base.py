@@ -19,9 +19,9 @@ def test_invalid_amino_acid_raises():
 
 
 def test_lowercase_sequence_is_accepted():
-    graph = CodonGraph('mikey', codon_restrictions={3: 'aaa'})
+    graph = CodonGraph('mikey', fixed_codons={3: 'aaa'})
     assert graph.aa_seq == 'MIKEY'
-    assert graph.codon_restrictions[3] == ['AAA']
+    assert graph.fixed_codons[3] == ['AAA']
 
 
 def test_contexts_are_normalised_to_graph_molecule_type():
@@ -35,62 +35,62 @@ def test_contexts_are_normalised_to_graph_molecule_type():
     assert graph.right_context_node.sequence == 'UUU'
 
 
-def test_rna_codon_restrictions_are_normalised():
+def test_rna_fixed_codons_are_normalised():
     tt = TranslationTable(rna=True)
-    graph = CodonGraph('MIKEY', codon_restrictions={1: 'ATG'}, translation_table=tt)
-    assert graph.codon_restrictions[1] == ['AUG']
+    graph = CodonGraph('MIKEY', fixed_codons={1: 'ATG'}, translation_table=tt)
+    assert graph.fixed_codons[1] == ['AUG']
     assert graph.codon_node_by_pos(1).codons == ('AUG',)
 
 
-def test_duplicate_codon_restrictions_are_deduplicated():
-    graph = CodonGraph('MIKEY', codon_restrictions={3: ['AAA', 'AAA', 'AAG']})
-    assert set(graph.codon_restrictions[3]) == {'AAA', 'AAG'}
+def test_duplicate_fixed_codons_are_deduplicated():
+    graph = CodonGraph('MIKEY', fixed_codons={3: ['AAA', 'AAA', 'AAG']})
+    assert set(graph.fixed_codons[3]) == {'AAA', 'AAG'}
 
 
 def test_invalid_codon_restriction_positions_raises():
     with pytest.raises(ValueError):
-        CodonGraph('MIKEY', codon_restrictions={-1: 'ATG'})
+        CodonGraph('MIKEY', fixed_codons={-1: 'ATG'})
 
     with pytest.raises(ValueError):
-        CodonGraph('MIKEY', codon_restrictions={6: 'ATG'})
+        CodonGraph('MIKEY', fixed_codons={6: 'ATG'})
 
 
 def test_invalid_codon_restriction_value_raises():
     with pytest.raises(ValueError):
-        CodonGraph('MIKEY', codon_restrictions={1: 'ATT'})
+        CodonGraph('MIKEY', fixed_codons={1: 'ATT'})
 
     with pytest.raises(ValueError):
-        CodonGraph('MIKEY', codon_restrictions={2: ['TTT']})
+        CodonGraph('MIKEY', fixed_codons={2: ['TTT']})
 
 
-def test_codon_restrictions_are_uppercased():
-    graph = CodonGraph('MIKEY', codon_restrictions={3: 'aaa'})
-    assert graph.codon_restrictions[3] == ['AAA']
+def test_fixed_codons_are_uppercased():
+    graph = CodonGraph('MIKEY', fixed_codons={3: 'aaa'})
+    assert graph.fixed_codons[3] == ['AAA']
 
-    graph = CodonGraph('MIKEY', codon_restrictions={3: ['aaa']})
-    assert graph.codon_restrictions[3] == ['AAA']
+    graph = CodonGraph('MIKEY', fixed_codons={3: ['aaa']})
+    assert graph.fixed_codons[3] == ['AAA']
 
-    graph = CodonGraph('MIKEY', codon_restrictions={3: ['aaa', 'aag']})
-    assert set(graph.codon_restrictions[3]) == {'AAA', 'AAG'}
+    graph = CodonGraph('MIKEY', fixed_codons={3: ['aaa', 'aag']})
+    assert set(graph.fixed_codons[3]) == {'AAA', 'AAG'}
 
 
 def test_single_codon_restriction_is_applied():
-    graph = CodonGraph('MIKEY', codon_restrictions={3: 'AAA'})
+    graph = CodonGraph('MIKEY', fixed_codons={3: 'AAA'})
     node = graph.codon_node_by_pos(3)
     assert node.codons == ('AAA',)
 
 
 def test_multiple_codon_restriction_is_applied():
-    graph = CodonGraph('MIKEY', codon_restrictions={3: ['AAA', 'AAG']})
+    graph = CodonGraph('MIKEY', fixed_codons={3: ['AAA', 'AAG']})
     node = graph.codon_node_by_pos(3)
     assert set(node.codons) == {'AAA', 'AAG'}
 
 
-def test_validate_codon_restrictions_respects_existing_restrictions():
-    graph = CodonGraph('MIKEY', codon_restrictions={3: ['AAA']})
+def test_validate_fixed_codons_respects_existing_restrictions():
+    graph = CodonGraph('MIKEY', fixed_codons={3: ['AAA']})
 
     with pytest.raises(ValueError):
-        graph.validate_codon_restrictions({3: ['AAG']})
+        graph.validate_fixed_codons({3: ['AAG']})
 
 
 def test_graph_has_initial_and_final_nodes():
@@ -195,10 +195,10 @@ def test_codon_graph_pickle_preserves_enumeration():
 
 
 def test_codon_graph_pickle_preserves_constraints():
-    graph = CodonGraph('MIKEY', codon_restrictions={2: 'ATC'})
+    graph = CodonGraph('MIKEY', fixed_codons={2: 'ATC'})
     loaded = pickle.loads(pickle.dumps(graph))
 
-    assert loaded.codon_restrictions == graph.codon_restrictions
+    assert loaded.fixed_codons == graph.fixed_codons
     assert loaded.view().n_valid_sequences == graph.view().n_valid_sequences
 
 
