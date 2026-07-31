@@ -91,6 +91,7 @@ class RepeatConstraint(Constraint, ABC):
         self.repeat_starts = None
         self.repeat_ends = None
         self.choice_bits = None
+        self.transition_keys = None
 
     @property
     def initial_state(self):
@@ -104,12 +105,20 @@ class RepeatConstraint(Constraint, ABC):
             return state if state or pos < self.last_repeat_start else SAFE_STATE
 
         watches = state + self.repeat_start_watch_ids.get(pos, ())
+        transition_key = self.transition_keys[pos][choice]
+        watch_transitions = self.watch_transitions
+        advance_watch = self._advance_watch
 
         next_state = []
         append = next_state.append
 
         for watch_id in watches:
-            next_watch = self._advance_watch(watch_id, pos, choice)
+            transitions = watch_transitions[watch_id]
+
+            try:
+                next_watch = transitions[transition_key]
+            except KeyError:
+                next_watch = advance_watch(watch_id, pos, choice, transition_key, transitions)
 
             if next_watch == DEAD_STATE:
                 return DEAD_STATE
@@ -138,6 +147,13 @@ class RepeatConstraint(Constraint, ABC):
             {choice: 1 << choice_ix for choice_ix, choice in enumerate(choice_set)}
             for choice_set in self.reference_choices
         ]
+
+        transition_key = 0
+        self.transition_keys = []
+
+        for choice_set in self.reference_choices:
+            self.transition_keys.append({choice: transition_key + choice_ix for choice_ix, choice in enumerate(choice_set)})
+            transition_key += len(choice_set)
 
         self.compare_choices = (
             [
@@ -220,54 +236,69 @@ class RepeatConstraint(Constraint, ABC):
 
         return watch_id
 
-    def _advance_watch(self, watch_id, pos, choice):
-        transitions = self.watch_transitions[watch_id]
-        key = pos, choice
-
-        try:
-            return transitions[key]
-        except KeyError:
-            pass
-
+    def _advance_watch(self, watch_id, pos, choice, transition_key, transitions):
         repeat_ix, pending = self.watches[watch_id]
         _start_l, _start_r, requirements = self.repeats[repeat_ix]
 
+        # Requirements are created when a choice on the reference side determines
+        # which choices may still match at one or more later compare positions.
         new_requirements = requirements.get(pos)
 
         if new_requirements:
-            pending = dict(pending)
+            # Pending requirements are stored as a flat, position-sorted tuple:
+            # (position, allowed_choices, position, allowed_choices, ...).
+            # Keeping them ordered makes the next requirement available at the
+            # front without rebuilding a dictionary and sorting on every advance.
+            pending = list(pending)
 
             for compare_pos, allowed_by_reference_choice in new_requirements:
                 allowed_choices = allowed_by_reference_choice.get(choice, 0)
 
+                # This reference choice cannot participate in this repeat.
                 if not allowed_choices:
-                    transitions[key] = None
+                    transitions[transition_key] = None
                     return None
 
-                if compare_pos in pending:
-                    pending[compare_pos] &= allowed_choices
+                # Insert the new requirement in position order, intersecting it
+                # with an existing requirement if several comparisons constrain
+                # the same future position.
+                for ix in range(0, len(pending), 2):
+                    if pending[ix] == compare_pos:
+                        pending[ix + 1] &= allowed_choices
+
+                        if not pending[ix + 1]:
+                            transitions[transition_key] = None
+                            return None
+
+                        break
+
+                    if pending[ix] > compare_pos:
+                        pending[ix:ix] = (compare_pos, allowed_choices)
+                        break
                 else:
-                    pending[compare_pos] = allowed_choices
+                    pending.extend((compare_pos, allowed_choices))
 
-                if not pending[compare_pos]:
-                    transitions[key] = None
-                    return None
+            pending = tuple(pending)
 
-            pending = tuple(sorted(pending.items()))
-
-        if pending and pending[0][0] == pos:
-            if not pending[0][1] & self.choice_bits[pos][choice]:
-                transitions[key] = None
+        # When a pending compare position is reached, the chosen codon must be one
+        # of those still compatible with the earlier reference-side choices.
+        if pending and pending[0] == pos:
+            if not pending[1] & self.choice_bits[pos][choice]:
+                transitions[transition_key] = None
                 return None
 
-            pending = pending[1:]
+            pending = pending[2:]
 
+        # Reaching the end with every requirement satisfied means this candidate
+        # repeat has been realised, so the sequence is invalid.
         if pos >= self.repeat_ends[repeat_ix] and not pending:
-            transitions[key] = DEAD_STATE
+            transitions[transition_key] = DEAD_STATE
             return DEAD_STATE
 
+        # Otherwise intern the remaining watch state so equivalent partial matches
+        # share the same ID, then cache this transition for subsequent graph states.
         next_watch = self._intern_watch(repeat_ix, pending)
-        transitions[key] = next_watch
+        transitions[transition_key] = next_watch
 
         return next_watch
 
