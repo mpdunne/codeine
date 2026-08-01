@@ -128,3 +128,22 @@ The ``in`` operator can be used to test whether a coding sequence belongs to a c
 
     print('TGTTATATACAGAACTGCCCTCTTGGG' in space)
     # False
+
+
+Compilation
+-----------
+
+Coding spaces are compiled automatically when first used for counting,
+sampling, or enumeration.
+
+You can call ``compile()`` explicitly to prepare a space before use, or to
+benchmark compilation separately from subsequent operations.
+
+.. code-block:: python
+
+    from codeine import CodingSpace
+
+    space = CodingSpace('CYIQNCPLG', seed=42)
+    space.compile()
+
+    print(space.sample())

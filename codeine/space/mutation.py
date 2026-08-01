@@ -215,10 +215,11 @@ class MutationSpace:
 
     def compile(self) -> None:
         """
-        Compile this mutation space.
+        Compile this coding space.
 
-        If ``compile()`` has not been called manually, it will automatically be
-        called before sampling, enumeration, or counting.
+        If the space is still uncompiled at the point of counting, sampling, or enumeration, ``compile()``
+        will be called automatically. Explicit compilation is useful for benchmarking or for preparing
+        a space before repeated sampling.
         """
         self.view.compile()
 
