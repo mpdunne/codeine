@@ -115,47 +115,6 @@ class CodonGraphView:
         """
         return self.contains(seq)
 
-    def __repr__(self) -> str:
-        if self._compile_status:
-            self.compile()
-
-        molecule = 'RNA' if self.graph.tt.rna else 'DNA'
-
-        lines = [
-            f'{type(self).__name__}',
-            '',
-            f'Translation table: {self.graph.tt.table_id} ({self.graph.tt.name})',
-            f'Molecule type: {molecule}',
-            '',
-            f'Amino acid sequence ({len(self.aa_seq)} aa)',
-            f'{self.aa_seq}',
-            ''
-        ]
-
-        if self.graph.fixed_codons:
-            lines += [
-                'Codon restrictions:',
-                *format_restrictions(
-                    self.graph.fixed_codons,
-                    label='restricted positions',
-                ),
-                '',
-                ]
-
-        if self.pinned_codons:
-            lines += [
-                'Temporary pins:',
-                *format_restrictions(
-                    self.pinned_codons,
-                    label='pinned positions',
-                ),
-                '',
-                ]
-
-        lines.append(f'Num. valid coding sequences: {format_count(self.n_valid_sequences)}')
-
-        return '\n'.join(lines)
-
     def contains(self, seq: str) -> bool:
         """
         Check whether a coding sequence is contained in this view.
