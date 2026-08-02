@@ -21,7 +21,7 @@ To sample mutants, start with a ``CodingSpace`` and a reference coding sequence.
         max_nts=2,
     )
 
-    print(muts.n_valid_variants)
+    print(muts.n_valid_sequences)
 
 Calling ``space.mutants(...)`` returns a ``MutationSpace`` object.
 Alternatively the ``MutationSpace`` can be constructed directly:
@@ -39,7 +39,7 @@ Alternatively the ``MutationSpace`` can be constructed directly:
         max_nts=2,
     )
 
-    print(muts.n_valid_variants)
+    print(muts.n_valid_sequences)
 
 Here, ``max_nts=2`` allows coding sequences with at most two nucleotide
 differences from the reference sequence.
@@ -76,16 +76,16 @@ For longer sequences, the number of variants available can grow significantly as
     muts = space.mutants(cds=space.sample())
 
     muts.set_distance_constraints(max_nts=0)
-    print(muts.n_valid_variants) # 1
+    print(muts.n_valid_sequences) # 1
 
     muts.set_distance_constraints(max_nts=1)
-    print(muts.n_valid_variants) # 86
+    print(muts.n_valid_sequences) # 86
 
     muts.set_distance_constraints(max_nts=2)
-    print(muts.n_valid_variants) # 3599
+    print(muts.n_valid_sequences) # 3599
 
     muts.set_distance_constraints(max_nts=3)
-    print(muts.n_valid_variants) # 97690
+    print(muts.n_valid_sequences) # 97690
 
 Constraining free positions
 ---------------------------
@@ -132,7 +132,7 @@ Mutation spaces can be counted, enumerated, and sampled just like ordinary codin
         max_nts=2,
     )
 
-    print(muts.n_valid_variants)
+    print(muts.n_valid_sequences)
 
     print(space.sample())
 
