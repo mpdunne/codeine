@@ -14,6 +14,16 @@ CodonRestriction = Union[str, Sequence[str]]
 def format_count(n: int) -> str:
     """
     Format large counts in scientific notation.
+
+    Parameters
+    ----------
+    n
+        The count to format.
+
+    Returns
+    -------
+    str
+        The formatted count.
     """
     if n < 10**9:
         return f'{n:,}'
