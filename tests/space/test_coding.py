@@ -791,13 +791,18 @@ def test_restricted_weights_remove_zero_weight_codons_from_space():
     weights = CodonWeights(data).threshold(0.1)
     table, weights = weights.restrict(table)
 
-    space = CodingSpace(
-        'F',
-        translation_table=table,
-        codon_weights=weights,
-    )
+    space = CodingSpace('F', translation_table=table, codon_weights=weights)
 
     assert space.n_valid_sequences == 1
     assert set(space.enumerate()) == {'TTC'}
     assert 'TTC' in space
     assert 'TTT' not in space
+
+
+def test_coding_space_codon_options():
+    space = CodingSpace('MIF', fixed_codons={2: ['ATT', 'ATC']})
+    space.pin_codons({3: 'TTC'})
+
+    assert space.codon_options[1] == ('ATG',)
+    assert set(space.codon_options[2]) == {'ATT', 'ATC'}
+    assert space.codon_options[3] == ('TTC',)

@@ -1176,3 +1176,23 @@ def test_coding_space_count():
     space = CodingSpace('MIKEY')
     muts = space.mutants(space[0], free_positions=[2, 3, 4])
     assert muts.count() == muts.n_valid_sequences == 12
+
+
+def test_mutation_space_codon_options_respect_free_positions():
+    space = CodingSpace('MIKEY')
+    muts = space.mutants('ATGATTAAAGAATAT', free_positions=[2, 3])
+
+    assert muts.codon_options[1] == ('ATG',)
+    assert set(muts.codon_options[2]) == {'ATT', 'ATC', 'ATA'}
+    assert set(muts.codon_options[3]) == {'AAA', 'AAG'}
+    assert muts.codon_options[4] == ('GAA',)
+    assert muts.codon_options[5] == ('TAT',)
+
+
+def test_mutation_space_codon_options_respect_inherited_pins():
+    space = CodingSpace('MIKEY')
+    space.pin_codons({3: 'AAA'})
+
+    muts = space.mutants('ATGATTAAAGAATAT', free_positions=[2, 3])
+
+    assert muts.codon_options[3] == ('AAA',)

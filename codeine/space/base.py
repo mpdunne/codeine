@@ -1,7 +1,7 @@
 import pickle
 
 from pathlib import Path
-from typing import Dict, Iterator, List, Optional, TYPE_CHECKING, Type, TypeVar, Union
+from typing import Dict, Iterator, List, Optional, TYPE_CHECKING, Type, Tuple, TypeVar, Union
 
 if TYPE_CHECKING:
     from codeine.graph.view import CodonGraphView
@@ -213,3 +213,13 @@ class Space:
         Temporary codon pins currently applied to this space.
         """
         return self.view.pinned_codons
+
+    @property
+    def codon_options(self) -> Dict[int, Tuple[str, ...]]:
+        """
+        The codons available at each amino acid position.
+        """
+        return {
+            node.pos: tuple(self.pinned_codons.get(node.pos, node.codons))
+            for node in self.view.graph.codon_nodes
+        }
