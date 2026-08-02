@@ -1,16 +1,14 @@
-from typing import Collection, Dict, FrozenSet, List, Iterator, Optional, Set, Union
+from typing import Collection, FrozenSet, Optional, Set
 
 from codeine.constraints.mutations import MutationDistanceConstraint
-from codeine.graph.base import CodonRestriction
 from codeine.motifs.restriction import RestrictionSite
+from codeine.space.base import Space
 from codeine.space.coding import CodingSpace
-from codeine.translation.tables import TranslationTable
-from codeine.translation.weights import CodonWeights
 from codeine.utils.display import format_forbidden_motifs, format_forbidden_motif,\
     format_count, format_restrictions, format_positions
 
 
-class MutationSpace:
+class MutationSpace(Space):
     """
     Represents the subset of valid coding sequences reachable from a reference CDS
     by mutation under constraints.
@@ -80,53 +78,6 @@ class MutationSpace:
             min_codons=min_codons,
             max_codons=max_codons,
         )
-
-    def __getitem__(self, index: Union[int, slice]) -> Union[str, List[str]]:
-        """
-        Return one or more valid sequences.
-
-        Parameters
-        ----------
-        index
-            Zero-based sequence index or slice.
-
-        Returns
-        -------
-        str or List[str]
-            The indexed sequence, or a list of sequences for a slice.
-        """
-        return self.view[index]
-
-    def __iter__(self) -> Iterator[str]:
-        """
-        Iterate over all valid sequences in this mutation space.
-        Be aware that "all valid sequences" can be astronomically many!
-
-        Yields
-        ----------
-        All valid sequences in the coding space, in order.
-        """
-        yield from self.view
-
-    def __contains__(self, seq: str) -> bool:
-        """
-        Does the given seq exist in this space?
-
-        Returns
-        ----------
-        True if and only if this is a valid sequence in this space.
-        """
-        return seq in self.view
-
-    def __len__(self) -> int:
-        """
-        This method exists only to provide a helpful error message. Being able to call
-        len(space) is a totally reasonable thing to expect, but python's ``len`` hits a limit
-        for very large spaces.
-
-        Use ``count()`` or ``n_valid_sequences`` instead.
-        """
-        raise TypeError('len() is not supported for MutationSpace; use .count() or .n_valid_variants instead.')
 
     def __repr__(self) -> str:
         molecule = 'RNA' if self.translation_table.rna else 'DNA'
@@ -209,71 +160,9 @@ class MutationSpace:
                 '',
             ]
 
-        lines.append(f'Num. valid variants: {format_count(self.n_valid_variants)}')
+        lines.append(f'Num. valid variants: {format_count(self.n_valid_sequences)}')
 
         return '\n'.join(lines)
-
-    def compile(self) -> None:
-        """
-        Compile this coding space.
-
-        If the space is still uncompiled at the point of counting, sampling, or enumeration, ``compile()``
-        will be called automatically. Explicit compilation is useful for benchmarking or for preparing
-        a space before repeated sampling.
-        """
-        self.view.compile()
-
-    def sample(self, n: Optional[int] = None) -> Union[str, List[str]]:
-        """
-        Sample one or more variants from this mutation space.
-
-        Parameters
-        ----------
-        n
-            Number of sequences to sample. If omitted, return a single sequence.
-
-        Returns
-        -------
-        A sampled sequence or list of sequences from this mutation space.
-        """
-        return self.view.sample(n=n)
-
-    def enumerate(self) -> Iterator[str]:
-        """
-        Generate all sequences in this mutation space.
-
-        Yields
-        ------
-        str
-            A valid coding sequence.
-        """
-        yield from self.view.enumerate()
-
-    def contains(self, seq: str) -> bool:
-        """
-        Check whether a coding sequence is contained in this mutation space.
-
-        Parameters
-        ----------
-        seq
-            The sequence to check
-
-        Returns
-        -------
-        True if and only if the sequence is contained in this mutation space.
-        """
-        return self.view.contains(seq)
-
-    def count(self) -> int:
-        """
-        Return the number of valid variants in this mutation space.
-
-        Returns
-        -------
-        int
-            The number of valid variants.
-        """
-        return self.n_valid_variants
 
     def set_free_positions(self, positions: Collection[int]) -> None:
         """
@@ -351,64 +240,6 @@ class MutationSpace:
         Remove all mutation distance constraints.
         """
         self.set_distance_constraints()
-
-    @property
-    def aa_seq(self) -> str:
-        """
-        The amino acid sequence for this mutation space.
-        """
-        return self.view.aa_seq
-
-    @property
-    def translation_table(self) -> TranslationTable:
-        """
-        The translation table from the underlying graph.
-        """
-        return self.view.translation_table
-
-    @property
-    def codon_weights(self) -> CodonWeights:
-        """
-        The codon weights from the underlying graph.
-        """
-        return self.view.codon_weights
-
-    @property
-    def fixed_codons(self) -> Dict[int, CodonRestriction]:
-        """
-        The fixed codon restrictions from the underlying graph.
-        """
-        return self.view.fixed_codons
-
-    @property
-    def context_l(self) -> str:
-        """
-        The left context sequence from the underlying graph.
-        """
-        return self.view.context_l
-
-    @property
-    def context_r(self) -> str:
-        """
-        The right context sequence from the underlying graph.
-        """
-        return self.view.context_r
-
-    @property
-    def pinned_codons(self) -> Dict[int, List[str]]:
-        """
-        Pins currently applied to the mutation view.
-
-        This includes inherited pins and pins used internally to freeze positions.
-        """
-        return self.view.pinned_codons
-
-    @property
-    def n_valid_variants(self) -> int:
-        """
-        Number of valid variants under the current mutation constraints.
-        """
-        return self.view.n_valid_sequences
 
     @property
     def free_positions(self) -> FrozenSet[int]:

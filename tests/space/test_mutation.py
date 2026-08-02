@@ -108,13 +108,13 @@ def test_mutation_space_n_valid_sequences():
     assert space.n_valid_sequences == 24
 
     mut = space.mutants(ref_cds, [1])
-    assert mut.n_valid_variants == 1
+    assert mut.n_valid_sequences == 1
 
     mut = space.mutants(ref_cds, [2])
-    assert mut.n_valid_variants == 3
+    assert mut.n_valid_sequences == 3
 
     mut = space.mutants(ref_cds, [1, 2, 3])
-    assert mut.n_valid_variants == 6
+    assert mut.n_valid_sequences == 6
 
     assert space.n_valid_sequences == 24
 
@@ -342,7 +342,7 @@ def test_mutation_space_samples_correctly():
     assert space.view.pinned_codons == {}
     assert set(muts.view.pinned_codons.keys()) == {1, 3, 4, 5}
     variants = [muts.sample() for _ in range(1000)]
-    assert len(set(variants)) == muts.n_valid_variants == 3
+    assert len(set(variants)) == muts.n_valid_sequences == 3
     for variant in variants:
         assert variant[0:3] == cds[0:3]
         assert variant[6:9] == cds[6:9]
@@ -353,7 +353,7 @@ def test_mutation_space_samples_correctly():
     assert space.view.pinned_codons == {}
     assert set(muts.view.pinned_codons.keys()) == {1, 4, 5}
     variants = [muts.sample() for _ in range(1000)]
-    assert len(set(variants)) == muts.n_valid_variants == 6
+    assert len(set(variants)) == muts.n_valid_sequences == 6
     for variant in variants:
         assert variant[0:3] == cds[0:3]
         assert variant[9:12] == cds[9:12]
@@ -363,7 +363,7 @@ def test_mutation_space_samples_correctly():
     assert space.view.pinned_codons == {}
     assert set(muts.view.pinned_codons.keys()) == {1, 2, 3, 4}
     variants = [muts.sample() for _ in range(1000)]
-    assert len(set(variants)) == muts.n_valid_variants == 2
+    assert len(set(variants)) == muts.n_valid_sequences == 2
     for variant in variants:
         assert variant[0:3] == cds[0:3]
         assert variant[3:6] == cds[3:6]
@@ -669,8 +669,8 @@ def test_distance_constraints_reduce_count():
     unconstrained = MutationSpace(space, cds)
     constrained = MutationSpace(space, cds, max_nts=2)
 
-    assert unconstrained.n_valid_variants == 24
-    assert constrained.n_valid_variants == 15
+    assert unconstrained.n_valid_sequences == 24
+    assert constrained.n_valid_sequences == 15
 
 
 def test_distance_constraints_allow_contains_only_constrained_cdss():
@@ -696,37 +696,37 @@ def test_distance_constraints_affect_sampling_and_enumeration():
     muts = MutationSpace(space, reference)
 
     muts.set_distance_constraints(max_nts=0)
-    assert muts.n_valid_variants == 1
+    assert muts.n_valid_sequences == 1
     assert len([*muts]) == 1
     for _ in range(100):
         assert muts.sample() == reference
 
     muts.set_distance_constraints(min_nts=1, max_nts=1)
-    assert muts.n_valid_variants == 25
+    assert muts.n_valid_sequences == 25
     assert len([*muts]) == 25
     for _ in range(100):
         assert get_nt_diffs(reference, muts.sample()) == 1
 
     muts.set_distance_constraints(max_nts=3)
-    assert muts.n_valid_variants == 2208
+    assert muts.n_valid_sequences == 2208
     assert len([*muts]) == 2208
     for _ in range(100):
         assert get_nt_diffs(reference, muts.sample()) <= 3
 
     muts.set_distance_constraints(max_codons=0)
-    assert muts.n_valid_variants == 1
+    assert muts.n_valid_sequences == 1
     assert len([*muts]) == 1
     for _ in range(100):
         assert muts.sample() == reference
 
     muts.set_distance_constraints(min_codons=1, max_codons=1)
-    assert muts.n_valid_variants == 35
+    assert muts.n_valid_sequences == 35
     assert len([*muts]) == 35
     for _ in range(100):
         assert get_codon_diffs(reference, muts.sample()) == 1
 
     muts.set_distance_constraints(max_codons=3)
-    assert muts.n_valid_variants == 5276
+    assert muts.n_valid_sequences == 5276
     assert len([*muts]) == 5276
     for _ in range(100):
         assert get_codon_diffs(reference, muts.sample()) <= 3
@@ -737,13 +737,13 @@ def test_clear_distance_constraints_restores_original_count():
     cds = space[0]
 
     muts = MutationSpace(space, cds)
-    assert muts.n_valid_variants == 24
+    assert muts.n_valid_sequences == 24
 
     muts.set_distance_constraints(max_nts=2)
-    assert muts.n_valid_variants == 15
+    assert muts.n_valid_sequences == 15
 
     muts.clear_distance_constraints()
-    assert muts.n_valid_variants == 24
+    assert muts.n_valid_sequences == 24
 
 
 def test_banned_sequences_work_with_distance_constraints():
@@ -757,13 +757,13 @@ def test_banned_sequences_work_with_distance_constraints():
     reference = 'TCCGCTTCTTCTGCTTTCCGTGCTTCC'
 
     muts = space.mutants(reference)
-    assert muts.n_valid_variants == 604800
+    assert muts.n_valid_sequences == 604800
 
     muts.set_distance_constraints(max_nts=5)
-    assert muts.n_valid_variants == 23155
+    assert muts.n_valid_sequences == 23155
 
     muts.set_distance_constraints(min_codons=5, max_codons=5)
-    assert muts.n_valid_variants == 60866
+    assert muts.n_valid_sequences == 60866
 
 
 def has_banned_sequence(cds, banned_sequences=(), context_l='', context_r=''):
@@ -873,7 +873,7 @@ def test_mutation_space_matches_naive_combinatorial(
     )
 
     assert [*muts] == expected
-    assert muts.n_valid_variants == len(expected)
+    assert muts.n_valid_sequences == len(expected)
 
     expected_set = set(expected)
     for cds in enumerate_naive(aa_seq):
@@ -930,7 +930,7 @@ def test_mutation_space_samples_real_proteins(
     reference = space.sample()
     muts = MutationSpace(space, reference, **distance_kwargs)
 
-    if muts.n_valid_variants == 0:
+    if muts.n_valid_sequences == 0:
         return
 
     for _ in range(100):
@@ -1116,22 +1116,22 @@ def test_updating_distance_constraints_rebuilds_from_base_view():
     cds = 'ATGATTAAAGAATAT'
     muts = MutationSpace(space, cds)
 
-    assert muts.n_valid_variants == 24
+    assert muts.n_valid_sequences == 24
 
     base_compiled = muts._base_view._compiled
 
     muts.set_distance_constraints(max_nts=0)
-    assert muts.n_valid_variants == 1
+    assert muts.n_valid_sequences == 1
     assert [*muts] == [cds]
 
     muts.set_distance_constraints(max_nts=1)
-    assert muts.n_valid_variants == 6
+    assert muts.n_valid_sequences == 6
 
     muts.set_distance_constraints(max_nts=2)
-    assert muts.n_valid_variants == 15
+    assert muts.n_valid_sequences == 15
 
     muts.clear_distance_constraints()
-    assert muts.n_valid_variants == 24
+    assert muts.n_valid_sequences == 24
 
     assert muts._base_view._compiled is base_compiled
 
@@ -1148,7 +1148,7 @@ def test_updating_distance_constraints_preserves_frozen_positions():
     }
 
     assert muts.pinned_codons == expected_pins
-    assert muts.n_valid_variants == 6
+    assert muts.n_valid_sequences == 6
 
     muts.set_distance_constraints(max_codons=0)
 
@@ -1158,7 +1158,7 @@ def test_updating_distance_constraints_preserves_frozen_positions():
     muts.set_distance_constraints(max_codons=1)
 
     assert muts.pinned_codons == expected_pins
-    assert muts.n_valid_variants == 4
+    assert muts.n_valid_sequences == 4
     assert all(
         seq[0:3] == cds[0:3]
         and seq[9:12] == cds[9:12]
@@ -1169,10 +1169,30 @@ def test_updating_distance_constraints_preserves_frozen_positions():
     muts.clear_distance_constraints()
 
     assert muts.pinned_codons == expected_pins
-    assert muts.n_valid_variants == 6
+    assert muts.n_valid_sequences == 6
 
 
 def test_coding_space_count():
     space = CodingSpace('MIKEY')
     muts = space.mutants(space[0], free_positions=[2, 3, 4])
-    assert muts.count() == muts.n_valid_variants == 12
+    assert muts.count() == muts.n_valid_sequences == 12
+
+
+def test_mutation_space_codon_options_respect_free_positions():
+    space = CodingSpace('MIKEY')
+    muts = space.mutants('ATGATTAAAGAATAT', free_positions=[2, 3])
+
+    assert muts.codon_options[1] == ('ATG',)
+    assert set(muts.codon_options[2]) == {'ATT', 'ATC', 'ATA'}
+    assert set(muts.codon_options[3]) == {'AAA', 'AAG'}
+    assert muts.codon_options[4] == ('GAA',)
+    assert muts.codon_options[5] == ('TAT',)
+
+
+def test_mutation_space_codon_options_respect_inherited_pins():
+    space = CodingSpace('MIKEY')
+    space.pin_codons({3: 'AAA'})
+
+    muts = space.mutants('ATGATTAAAGAATAT', free_positions=[2, 3])
+
+    assert muts.codon_options[3] == ('AAA',)
