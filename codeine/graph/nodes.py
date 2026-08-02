@@ -49,12 +49,7 @@ class ContextNode(Node):
         self.sequence = sequence
 
     def __repr__(self) -> str:
-        return (
-            f'ContextNode('
-            f'id={self.id}'
-            f', pos={self.pos}'
-            f')'
-        )
+        return f'ContextNode(id={self.id}, pos={self.pos})'
 
 
 class CodonNode(Node):
@@ -84,15 +79,7 @@ class CodonNode(Node):
         self.codons = tuple(codons)
 
     def __repr__(self) -> str:
-        codons = ','.join(self.codons)
-
-        return (
-            f'CodonNode('
-            f'id={self.id}'
-            f', pos={self.pos}'
-            #f', codons=[{codons}]'
-            f')'
-        )
+        return f'CodonNode(id={self.id}, pos={self.pos})'
 
 
 class EndNode(Node):
@@ -112,4 +99,4 @@ class EndNode(Node):
         super().__init__(pos=pos, id='end')
 
     def __repr__(self) -> str:
-        return (f'EndNode(id={self.id})')
+        return f'EndNode(id={self.id})'
