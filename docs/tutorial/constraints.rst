@@ -12,6 +12,9 @@ Currently **Codeine** handles:
 * `Forbidden motifs`_
 * `Max homopolymer length`_
 * `Tandem repeats`_
+* `Direct repeats`_
+* `Inverted repeats`_
+* `Exact hairpins`_
 
 As well as arbitrary `combinations of the above`_. Let's go through these!
 
@@ -80,7 +83,6 @@ The recognition sequences for these were taken from the
 
 .. _Max homopolymer length:
 
-
 Max homopolymer
 ---------------
 
@@ -88,7 +90,6 @@ Long homopolymer runs can be difficult to work with because they increase the ri
 
 For example, setting ``max_homopolymer=5`` excludes any coding sequence
 containing six or more consecutive identical nucleotides.
-
 
 .. code-block:: python
 
@@ -105,79 +106,52 @@ Homopolymer limits can either be specified via
 ``max_homopolymer``, or as a
 ``HomopolymerConstraint`` via the ``constraints`` argument.
 
-
-
 .. _Tandem repeats:
+.. _Direct repeats:
+.. _Inverted repeats:
+.. _Exact hairpins:
 
-Tandem repeats
---------------
+Repeat constraints
+------------------
 
-Tandem repeats can increase the risk of polymerase slippage during DNA
-replication. In **Codeine**, tandem repeats can be avoided using the
-``TandemRepeatConstraint``.
-
-For example, the following constraint forbids tandem repeats with a
-repeat unit of 4 nucleotides occurring three or more times consecutively.
+Repeat constraints are specified through the ``constraints`` argument to
+``CodingSpace``:
 
 .. code-block:: python
 
    from codeine import CodingSpace
-   from codeine.constraints import TandemRepeatConstraint
-
-   space = CodingSpace(
-       aa_seq,
-       constraints=[
-           TandemRepeatConstraint(repeat_length=4, min_copies=3),
-       ],
+   from codeine.constraints import (
+       DirectRepeatConstraint,
+       HairpinConstraint,
+       InvertedRepeatConstraint,
+       TandemRepeatConstraint,
    )
 
-   print(space.n_valid_sequences)
-
-Tandem repeats are, by design, exact. Different repeat lengths are
-therefore handled by separate constraints, which can be combined as
-desired:
-
-
-.. code-block:: python
-
    space = CodingSpace(
        aa_seq,
-       constraints=[
-           TandemRepeatConstraint(2, 4),  # e.g. ATATATAT
-           TandemRepeatConstraint(3, 3),  # e.g. GTCGTCGTC
-           TandemRepeatConstraint(4, 3),  # e.g. AGCTAGCTAGCT
-       ],
-   )
-
-.. _combinations of the above:
-
-Combining constraints
----------------------
-
-Convenience arguments and explicit constraints can be combined freely.
-
-.. code-block:: python
-
-   from codeine import CodingSpace, RestrictionSite
-
-   aa_seq = 'MKTLEFQNGSCPRYKKL'
-
-   space = CodingSpace(
-       aa_seq,
-       forbidden_motifs=[
-           RestrictionSite.EcoRI,
-           RestrictionSite.XhoI,
-           'TAGATA',
-       ],
        constraints=[
            TandemRepeatConstraint(4, 3),
+           DirectRepeatConstraint(
+               repeat_length=15,
+               min_distance=30,
+               max_distance=300,
+           ),
+           InvertedRepeatConstraint(
+               repeat_length=15,
+               min_distance=30,
+               max_distance=300,
+           ),
+           HairpinConstraint(
+               stem_length=12,
+               min_loop=3,
+               max_loop=20,
+           ),
        ],
-       max_homopolymer=5,
-       seed=42,
    )
 
    print(space.n_valid_sequences)
-   print(space.sample())
+
+See :doc:`repeat_constraints` for details and additional examples.
 
 Empty spaces
 ------------
@@ -199,3 +173,34 @@ For example:
     )
 
     print(f'Num. valid sequences: {space.n_valid_sequences}')
+
+.. _combinations of the above:
+
+Combining constraints
+---------------------
+
+Constraints can be combined freely. For example:
+
+.. code-block:: python
+
+   from codeine import CodingSpace, RestrictionSite
+   from codeine.constraints import TandemRepeatConstraint
+
+   aa_seq = 'MKTLEFQNGSCPRYKKL'
+
+   space = CodingSpace(
+       aa_seq,
+       forbidden_motifs=[
+           RestrictionSite.EcoRI,
+           RestrictionSite.XhoI,
+           'TAGATA',
+       ],
+       constraints=[
+           TandemRepeatConstraint(4, 3),
+       ],
+       max_homopolymer=5,
+       seed=42,
+   )
+
+   print(space.n_valid_sequences)
+   print(space.sample())
