@@ -37,8 +37,6 @@ def format_count(n: int) -> str:
     return f'{mantissa:.3g} × 10^{exponent}'
 
 
-import textwrap
-
 def format_sequence(
         sequence: str,
         max_lines: int = 4,
@@ -93,19 +91,24 @@ def format_forbidden_motifs(
         motifs: Sequence['Motif'],
         rna: bool,
         max_motifs: int = 8,
+        max_motif_length: int = 60,
 ) -> str:
     """
     Format forbidden motifs for repr output.
     """
     formatted = sorted({
-        format_forbidden_motif(motif, rna)
+        format_forbidden_motif(
+            motif,
+            rna=rna,
+            max_length=max_motif_length,
+        )
         for motif in motifs
     })
 
-    if len(formatted) <= max_motifs:
-        return ', '.join(formatted)
+    if len(formatted) > max_motifs:
+        return f'{len(formatted)} motifs'
 
-    return f'{len(formatted)} motifs'
+    return ', '.join(formatted)
 
 
 def format_constraints(
@@ -119,7 +122,10 @@ def format_constraints(
     from codeine.constraints.hairpins import HairpinConstraint
     from codeine.constraints.homopolymers import HomopolymerConstraint
     from codeine.constraints.motifs import ForbiddenMotifConstraint
-    from codeine.constraints.repeats import DirectRepeatConstraint, InvertedRepeatConstraint
+    from codeine.constraints.repeats import (
+        DirectRepeatConstraint,
+        InvertedRepeatConstraint,
+    )
     from codeine.constraints.tandem import TandemRepeatConstraint
 
     forbidden_motifs = []
@@ -160,9 +166,16 @@ def format_constraints(
         lines.append(f'    Forbidden motifs: {motifs}')
 
     if homopolymer_lengths:
-        lines.append(f'    Maximum homopolymer length: {min(homopolymer_lengths)}')
+        lines.append(
+            f'    Maximum homopolymer length: {min(homopolymer_lengths)}'
+        )
 
-    for label in ('Direct repeats', 'Inverted repeats', 'Tandem repeats', 'Hairpins'):
+    for label in (
+            'Direct repeats',
+            'Inverted repeats',
+            'Tandem repeats',
+            'Hairpins',
+    ):
         count = constraint_counts[label]
 
         if count:
@@ -184,7 +197,11 @@ def normalise_motif(seq: str, rna: bool) -> str:
     return seq.replace('T', 'U') if rna else seq.replace('U', 'T')
 
 
-def format_forbidden_motif(motif: 'Motif', rna: bool) -> str:
+def format_forbidden_motif(
+        motif: 'Motif',
+        rna: bool,
+        max_length: int = 60,
+) -> str:
     """
     Format a forbidden motif for display.
     """
@@ -192,7 +209,12 @@ def format_forbidden_motif(motif: 'Motif', rna: bool) -> str:
         sequences = [normalise_motif(seq, rna) for seq in motif.motifs]
         return f'{motif.name} ({", ".join(sequences)})'
 
-    return normalise_motif(motif, rna)
+    sequence = normalise_motif(motif, rna)
+
+    if len(sequence) > max_length:
+        sequence = sequence[:max_length - 3] + '...'
+
+    return sequence
 
 
 def format_positions(positions) -> str:
@@ -200,6 +222,7 @@ def format_positions(positions) -> str:
     Format positions nicely.
     """
     positions = sorted(positions)
+
     if not positions:
         return 'None'
 
