@@ -88,10 +88,10 @@ class MutationSpace(Space):
             f'Molecule type: {molecule}',
             '',
             f'Amino acid sequence ({len(self.aa_seq)} aa):',
-            *format_sequence(self.aa_seq, max_lines=4),
+            *format_sequence(self.aa_seq, max_lines=6),
             '',
             f'Reference CDS ({len(self.cds)} nt):',
-            *format_sequence(self.cds, max_lines=6),
+            *format_sequence(self.cds, max_lines=8),
             '',
         ]
 

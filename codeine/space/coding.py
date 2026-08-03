@@ -90,7 +90,7 @@ class CodingSpace(Space):
             f'Molecule type: {molecule}',
             '',
             f'Amino acid sequence ({len(self.aa_seq)} aa):',
-            *format_sequence(self.aa_seq, max_lines=4),
+            *format_sequence(self.aa_seq, max_lines=6),
             '',
         ]
 
