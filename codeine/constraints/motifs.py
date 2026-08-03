@@ -32,6 +32,8 @@ class ForbiddenMotifConstraint(SubPathConstraint):
         if isinstance(forbidden_motifs, (str, RestrictionSite)):
             forbidden_motifs = [forbidden_motifs]
 
+        self.motifs = tuple(forbidden_motifs)
+
         sequences = []
 
         for motif in forbidden_motifs:

@@ -7,12 +7,11 @@ from codeine.constraints.motifs import ForbiddenMotifConstraint, Motifs
 from codeine.constraints.homopolymers import HomopolymerConstraint
 from codeine.constraints.base import Constraint
 from codeine.graph.base import CodonGraph, CodonRestriction
-from codeine.motifs.restriction import RestrictionSite
 from codeine.space.base import Space
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
-from codeine.utils.display import format_forbidden_motifs, format_forbidden_motif,\
-    format_count, format_restrictions
+from codeine.utils.display import format_constraints, format_count, format_restrictions,\
+    format_sequence
 from codeine.utils.sampling import Seedable
 
 
@@ -91,7 +90,7 @@ class CodingSpace(Space):
             f'Molecule type: {molecule}',
             '',
             f'Amino acid sequence ({len(self.aa_seq)} aa):',
-            f'{self.aa_seq}',
+            *format_sequence(self.aa_seq, max_length=300),
             '',
         ]
 
@@ -106,28 +105,28 @@ class CodingSpace(Space):
                 '',
             ]
 
-        if self.forbidden_motifs:
-            motifs = self.forbidden_motifs
-
-            if isinstance(motifs, (str, RestrictionSite)):
-                motifs = [motifs]
-
+        if self.context_l:
             lines += [
-                'Forbidden motifs:',
-                *format_forbidden_motifs(
-                    [
-                        format_forbidden_motif(motif, rna=self.translation_table.rna)
-                        for motif in motifs
-                    ],
-                    max_lines=4,
-                ),
+                f'Left context ({len(self.context_l)} nt):',
+                *format_sequence(self.context_l, max_length=160),
                 '',
             ]
 
-        if self.max_homopolymer is not None:
+        if self.context_r:
             lines += [
-                'Maximum homopolymer length:',
-                f'  {self.max_homopolymer}',
+                f'Right context ({len(self.context_r)} nt):',
+                *format_sequence(self.context_r, max_length=160),
+                '',
+            ]
+
+        if self.view.constraints:
+            lines += [
+                'Constraints:',
+                *format_constraints(
+                    self.view.constraints,
+                    rna=self.translation_table.rna,
+                    max_motifs=4,
+                ),
                 '',
             ]
 
