@@ -79,6 +79,12 @@ class MutationSpace(Space):
         )
 
     def __repr__(self) -> str:
+        return self.info()
+
+    def info(self) -> str:
+        """
+        Return detailed information about this mutation space.
+        """
         molecule = 'RNA' if self.translation_table.rna else 'DNA'
 
         lines = [

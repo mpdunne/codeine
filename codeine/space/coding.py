@@ -81,6 +81,12 @@ class CodingSpace(Space):
         self._update_constraints()
 
     def __repr__(self) -> str:
+        return self.info()
+
+    def info(self) -> str:
+        """
+        Return detailed information about this coding space.
+        """
         molecule = 'RNA' if self.translation_table.rna else 'DNA'
 
         lines = [
