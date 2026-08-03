@@ -70,31 +70,6 @@ class CodonGraph:
 
         self._initialise_graph()
 
-    def __repr__(self) -> str:
-        molecule = 'RNA' if self.tt.rna else 'DNA'
-
-        lines = [
-            f'{type(self).__name__}',
-            '',
-            f'Translation table: {self.tt.table_id} ({self.tt.name})',
-            f'Molecule type: {molecule}',
-            '',
-            f'Amino acid sequence ({len(self.aa_seq)} aa)',
-            f'{self.aa_seq}',
-            ''
-        ]
-        if self.fixed_codons:
-            lines += [
-                'Codon restrictions:',
-                *format_restrictions(
-                    self.fixed_codons,
-                    label='restricted positions',
-                ),
-                '',
-            ]
-
-        return '\n'.join(lines)
-
     def validate_aa_seq(self) -> None:
         """
         Check that all amino acids in the sequence are supported.

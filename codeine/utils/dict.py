@@ -21,3 +21,6 @@ class FrozenDict(Mapping):
 
     def __repr__(self) -> str:
         return repr(self._data)
+
+    def _repr_pretty_(self, p, cycle) -> None:
+        return p.pretty(self._data)

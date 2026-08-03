@@ -71,13 +71,10 @@ class RestrictionSite(Enum):
     SapI = 'GCTCTTC'
 
     def __repr__(self) -> str:
-        return f'RestrictionSite.{self.name}'
+        return f'RestrictionSite.{self.name} ({" / ".join(self.motifs)})'
 
     def __str__(self) -> str:
-        if self.forward == self.reverse:
-            return f'{self.name} ({self.forward})'
-
-        return f'{self.name} ({self.forward} / {self.reverse})'
+        return f'RestrictionSite.{self.name}'
 
     @property
     def forward(self) -> str:
