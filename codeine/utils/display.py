@@ -37,18 +37,22 @@ def format_count(n: int) -> str:
     return f'{mantissa:.3g} × 10^{exponent}'
 
 
+import textwrap
+
 def format_sequence(
         sequence: str,
-        max_length: int,
+        max_lines: int = 4,
         line_length: int = 80,
 ) -> List[str]:
     """
     Format and, if necessary, truncate a sequence for repr output.
     """
+    max_length = max_lines * line_length
+
     if len(sequence) > max_length:
         sequence = sequence[:max_length - 3] + '...'
 
-    return textwrap.wrap(sequence, width=line_length) or ['']
+    return textwrap.wrap(sequence, width=line_length)
 
 
 def format_restrictions(

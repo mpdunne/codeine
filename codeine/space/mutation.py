@@ -88,10 +88,10 @@ class MutationSpace(Space):
             f'Molecule type: {molecule}',
             '',
             f'Amino acid sequence ({len(self.aa_seq)} aa):',
-            *format_sequence(self.aa_seq, max_length=300),
+            *format_sequence(self.aa_seq, max_lines=4),
             '',
             f'Reference CDS ({len(self.cds)} nt):',
-            *format_sequence(self.cds, max_length=600),
+            *format_sequence(self.cds, max_lines=6),
             '',
         ]
 
@@ -109,14 +109,14 @@ class MutationSpace(Space):
         if self.context_l:
             lines += [
                 f'Left context ({len(self.context_l)} nt):',
-                *format_sequence(self.context_l, max_length=160),
+                *format_sequence(self.context_l, max_lines=2),
                 '',
             ]
 
         if self.context_r:
             lines += [
                 f'Right context ({len(self.context_r)} nt):',
-                *format_sequence(self.context_r, max_length=160),
+                *format_sequence(self.context_r, max_lines=2),
                 '',
             ]
 

@@ -90,7 +90,7 @@ class CodingSpace(Space):
             f'Molecule type: {molecule}',
             '',
             f'Amino acid sequence ({len(self.aa_seq)} aa):',
-            *format_sequence(self.aa_seq, max_length=300),
+            *format_sequence(self.aa_seq, max_lines=4),
             '',
         ]
 
@@ -108,14 +108,14 @@ class CodingSpace(Space):
         if self.context_l:
             lines += [
                 f'Left context ({len(self.context_l)} nt):',
-                *format_sequence(self.context_l, max_length=160),
+                *format_sequence(self.context_l, max_lines=2),
                 '',
             ]
 
         if self.context_r:
             lines += [
                 f'Right context ({len(self.context_r)} nt):',
-                *format_sequence(self.context_r, max_length=160),
+                *format_sequence(self.context_r, max_lines=2),
                 '',
             ]
 
