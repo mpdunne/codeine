@@ -1,5 +1,6 @@
 import pickle
 
+from copy import deepcopy
 from pathlib import Path
 from typing import Dict, Iterator, List, Optional, TYPE_CHECKING, Type, Tuple, TypeVar, Union
 
@@ -35,6 +36,12 @@ class Space:
         """
         with Path(path).open('wb') as f:
             pickle.dump(self, f)
+
+    def copy(self: T) -> T:
+        """
+        Return an independent copy of this space.
+        """
+        return deepcopy(self)
 
     def __getitem__(self, index: Union[int, slice]) -> Union[str, List[str]]:
         """

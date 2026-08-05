@@ -1196,3 +1196,29 @@ def test_mutation_space_codon_options_respect_inherited_pins():
     muts = space.mutants('ATGATTAAAGAATAT', free_positions=[2, 3])
 
     assert muts.codon_options[3] == ('AAA',)
+
+def test_mutation_space_copy():
+    space = CodingSpace('MIKEY')
+    muts = space.mutants(
+        'ATGATTAAAGAATAT',
+        free_positions=[2, 3],
+        min_nts=1,
+        max_codons=2,
+    )
+
+    copied = muts.copy()
+
+    assert copied is not muts
+    assert copied.view is not muts.view
+    assert copied._base_view is not muts._base_view
+    assert copied.cds == muts.cds
+    assert copied.free_positions == muts.free_positions
+    assert copied.frozen_positions == muts.frozen_positions
+    assert copied.min_nts == muts.min_nts
+    assert copied.max_codons == muts.max_codons
+    assert copied.pinned_codons == muts.pinned_codons
+
+    copied.freeze_all()
+
+    assert copied.free_positions == frozenset()
+    assert muts.free_positions == frozenset({2, 3})
