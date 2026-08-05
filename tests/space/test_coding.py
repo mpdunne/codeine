@@ -806,3 +806,19 @@ def test_coding_space_codon_options():
     assert space.codon_options[1] == ('ATG',)
     assert set(space.codon_options[2]) == {'ATT', 'ATC'}
     assert space.codon_options[3] == ('TTC',)
+
+def test_coding_space_copy():
+    space = CodingSpace('MIKEY', seed=8675309)
+    space.pin_codons({2: 'ATC'})
+
+    copied = space.copy()
+
+    assert copied is not space
+    assert copied.view is not space.view
+    assert copied.pinned_codons == space.pinned_codons
+    assert copied.n_valid_sequences == space.n_valid_sequences
+
+    copied.clear_pins()
+
+    assert copied.pinned_codons == {}
+    assert space.pinned_codons == {2: ['ATC']}
