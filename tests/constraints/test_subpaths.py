@@ -2,7 +2,7 @@ import pytest
 
 from codeine.graph.base import CodonGraph
 from codeine.constraints.base import DEAD_STATE, SAFE_STATE
-from codeine.constraints.motifs import ForbiddenMotifConstraint
+from codeine.constraints.motifs import ForbiddenMotifs
 from codeine.constraints.subpaths import SubPath, SubPathConstraint
 
 
@@ -244,7 +244,7 @@ def test_state_is_a_frozenset():
 
 def test_watch_survives_until_partial_final_codon_match():
     graph = CodonGraph('MIKEY')
-    constraint = ForbiddenMotifConstraint(['ATTAAG'])
+    constraint = ForbiddenMotifs(['ATTAAG'])
     constraint.link(graph)
     path = helper_find_first_path_for(constraint, 'ATTAAG')
 
@@ -382,7 +382,7 @@ def test_safe_walk_drops_all_active_watches():
 )
 def test_found_paths_are_walkable(context_l, context_r, sequence):
     graph = CodonGraph('MIKEY', context_l=context_l, context_r=context_r)
-    constraint = ForbiddenMotifConstraint([sequence])
+    constraint = ForbiddenMotifs([sequence])
     constraint.link(graph)
     path = helper_find_first_path_for(constraint, sequence)
 
@@ -391,7 +391,7 @@ def test_found_paths_are_walkable(context_l, context_r, sequence):
 
 def test_path_steps_are_never_empty():
     graph = CodonGraph('MIKEY')
-    constraint = ForbiddenMotifConstraint(['A', 'AT', 'ATG', 'TCAAA'])
+    constraint = ForbiddenMotifs(['A', 'AT', 'ATG', 'TCAAA'])
     constraint.link(graph)
 
     assert constraint.paths

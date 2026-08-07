@@ -22,25 +22,6 @@ def reverse_complement(seq: str) -> str:
 class RestrictionSite(Enum):
     """
     Common restriction enzyme recognition sequences.
-
-    These can be passed directly to ``CodingSpace`` to forbid restriction
-    sites without specifying the DNA motifs manually. Both forward and reverse
-    sequences are passed.
-
-    Examples
-    --------
-    >>> CodingSpace(
-    ...     aa_seq,
-    ...     forbidden_motifs=[
-    ...         RestrictionSite.EcoRI,
-    ...         RestrictionSite.BsaI,
-    ...     ],
-    ... )
-
-    >>> RestrictionSite.EcoRI.forward
-    'GAATTC'
-    >>> RestrictionSite.EcoRI.reverse
-    'GAATTC'
     """
 
     # BioBricks

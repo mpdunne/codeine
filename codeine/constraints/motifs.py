@@ -11,7 +11,7 @@ Motif = Union[str, RestrictionSite]
 Motifs = Union[Motif, Sequence[Motif]]
 
 
-class ForbiddenMotifConstraint(SubPathConstraint):
+class ForbiddenMotifs(SubPathConstraint):
     """
     Prevent specified nucleotide motifs from occurring in generated sequences.
 
@@ -20,23 +20,23 @@ class ForbiddenMotifConstraint(SubPathConstraint):
     sequences during construction.
     """
 
-    def __init__(self, forbidden_motifs: Motifs) -> None:
+    def __init__(self, motifs: Motifs) -> None:
         """
         Parameters
         ----------
-        forbidden_motifs
+        motifs
             One or more nucleotide motifs or restriction sites that must not occur.
         """
         super().__init__()
 
-        if isinstance(forbidden_motifs, (str, RestrictionSite)):
-            forbidden_motifs = [forbidden_motifs]
+        if isinstance(motifs, (str, RestrictionSite)):
+            motifs = [motifs]
 
-        self.motifs = tuple(forbidden_motifs)
+        self.motifs = tuple(motifs)
 
         sequences = []
 
-        for motif in forbidden_motifs:
+        for motif in motifs:
             if isinstance(motif, RestrictionSite):
                 sequences.extend(motif.motifs)
                 continue

@@ -24,12 +24,12 @@ Forbidden motifs
 
 In biotechnology we often wish to exclude sequence motifs that interfere with cloning, synthesis, or downstream applications.
 
-**Codeine** can exclude such sequences using ``ForbiddenMotifConstraint``:
+**Codeine** can exclude such sequences using ``ForbiddenMotifs``:
 
 .. code-block:: python
 
     from codeine import CodingSpace, RestrictionSite
-    from codeine.constraints import ForbiddenMotifConstraint
+    from codeine.constraints import ForbiddenMotifs
 
     aa_seq = 'MKTLEFQNGSCPRYKKL'
 
@@ -37,7 +37,7 @@ In biotechnology we often wish to exclude sequence motifs that interfere with cl
 
     constrained = CodingSpace(
        aa_seq,
-       constraints=ForbiddenMotifConstraint([
+       constraints=ForbiddenMotifs([
            'GAATTC',
            'CTCGAG',
        ]),
@@ -48,7 +48,7 @@ In biotechnology we often wish to exclude sequence motifs that interfere with cl
     print(f'With constraints: {constrained.n_valid_sequences:,} sequences')
     print(constrained.sample())
 
-Forbidden motifs are specified with ``ForbiddenMotifConstraint`` via the
+Forbidden motifs are specified with ``ForbiddenMotifs`` via the
 ``constraints`` argument.
 
 For convenience, ``codeine.RestrictionSite`` provides a collection of commonly used restriction
@@ -57,11 +57,11 @@ enzyme recognition sequences. The built-in motifs can be used alongside custom m
 .. code-block:: python
 
    from codeine import CodingSpace, RestrictionSite
-   from codeine.constraints import ForbiddenMotifConstraint
+   from codeine.constraints import ForbiddenMotifs
 
    space = CodingSpace(
        aa_seq,
-       constraints=ForbiddenMotifConstraint([
+       constraints=ForbiddenMotifs([
            RestrictionSite.EcoRI,
            RestrictionSite.BsaI,
            'GATTACA',
@@ -86,19 +86,19 @@ The recognition sequences for these were taken from the
 Max homopolymer
 ---------------
 
-Long homopolymer runs can be difficult to work with because they increase the risk of polymerase slippage and sequencing errors. In **Codeine**, runs of identical nucleotides can be avoided using ``HomopolymerConstraint``.
+Long homopolymer runs can be difficult to work with because they increase the risk of polymerase slippage and sequencing errors. In **Codeine**, runs of identical nucleotides can be avoided using ``MaxHomopolymer``.
 
-For example, ``HomopolymerConstraint(5)`` excludes any coding sequence
+For example, ``MaxHomopolymer(5)`` excludes any coding sequence
 containing six or more consecutive identical nucleotides.
 
 .. code-block:: python
 
    from codeine import CodingSpace
-   from codeine.constraints import HomopolymerConstraint
+   from codeine.constraints import MaxHomopolymer
 
    space = CodingSpace(
        aa_seq,
-       constraints=HomopolymerConstraint(5),
+       constraints=MaxHomopolymer(5),
    )
 
    print(space.n_valid_sequences)
@@ -161,11 +161,11 @@ For example:
 .. code-block:: python
 
     from codeine import CodingSpace
-    from codeine.constraints import ForbiddenMotifConstraint
+    from codeine.constraints import ForbiddenMotifs
 
     space = CodingSpace(
         'MKTLEFQNGSCPRYKKL',
-        constraints=ForbiddenMotifConstraint([
+        constraints=ForbiddenMotifs([
             'ATGAAA',
             'ATGAAG',
         ]),
@@ -184,8 +184,8 @@ Constraints can be combined freely. For example:
 
    from codeine import CodingSpace, RestrictionSite
    from codeine.constraints import (
-       ForbiddenMotifConstraint,
-       HomopolymerConstraint,
+       ForbiddenMotifs,
+       MaxHomopolymer,
        TandemRepeatConstraint,
    )
 
@@ -194,12 +194,12 @@ Constraints can be combined freely. For example:
    space = CodingSpace(
        aa_seq,
        constraints=[
-           ForbiddenMotifConstraint([
+           ForbiddenMotifs([
                RestrictionSite.EcoRI,
                RestrictionSite.XhoI,
                'TAGATA',
            ]),
-           HomopolymerConstraint(5),
+           MaxHomopolymer(5),
            TandemRepeatConstraint(4, 3),
        ],
        seed=42,

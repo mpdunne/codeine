@@ -1,7 +1,7 @@
-from codeine.constraints.motifs import ForbiddenMotifConstraint
+from codeine.constraints.motifs import ForbiddenMotifs
 
 
-class HomopolymerConstraint(ForbiddenMotifConstraint):
+class MaxHomopolymer(ForbiddenMotifs):
     """
     Exclude homopolymers longer than a specified maximum length.
     """

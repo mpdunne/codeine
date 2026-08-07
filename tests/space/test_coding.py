@@ -9,8 +9,8 @@ from codeine.translation.tables import TranslationTable
 from codeine.space.coding import CodingSpace
 from codeine.motifs.restriction import RestrictionSite
 from codeine.constraints.base import Constraint, SAFE_STATE
-from codeine.constraints.motifs import ForbiddenMotifConstraint
-from codeine.constraints.homopolymers import HomopolymerConstraint
+from codeine.constraints.motifs import ForbiddenMotifs
+from codeine.constraints.homopolymers import MaxHomopolymer
 
 
 @pytest.mark.parametrize('aa_seq', ('MIKEY', 'MILDRED', 'STEVEN', 'WILLIAM'))
@@ -221,7 +221,7 @@ def test_coding_space_count():
 
 
 def helper_get_banned_sequences_from_constraints(space):
-    banned_sequence_constraints = [c for c in space.view.constraints if isinstance(c, ForbiddenMotifConstraint)]
+    banned_sequence_constraints = [c for c in space.view.constraints if isinstance(c, ForbiddenMotifs)]
     if len(banned_sequence_constraints) == 0:
         return set()
     else:
@@ -232,12 +232,12 @@ def helper_get_banned_sequences_from_constraints(space):
 
 
 def test_forbidden_motif_constraint_is_stored():
-    space = CodingSpace('MIKEY', constraints=[ForbiddenMotifConstraint([RestrictionSite.EcoRI, 'AAAA'])])
+    space = CodingSpace('MIKEY', constraints=[ForbiddenMotifs([RestrictionSite.EcoRI, 'AAAA'])])
     assert helper_get_banned_sequences_from_constraints(space) == {'AAAA', 'GAATTC'}
 
 
 def test_homopolymer_constraint_is_stored():
-    constraint = HomopolymerConstraint(4)
+    constraint = MaxHomopolymer(4)
     space = CodingSpace('MIKEY', constraints=[constraint])
     assert space.constraints == (constraint,)
 
@@ -247,22 +247,22 @@ def test_homopolymer_constraint_is_expanded_correctly():
     banned_sequences = helper_get_banned_sequences_from_constraints(space)
     assert not banned_sequences
 
-    space = CodingSpace('MIKEY', constraints=[HomopolymerConstraint(4)])
+    space = CodingSpace('MIKEY', constraints=[MaxHomopolymer(4)])
     banned_sequences = helper_get_banned_sequences_from_constraints(space)
     assert all(nt * 5 in banned_sequences for nt in 'ACGT')
 
 
 def test_mixed_constraints():
     space = CodingSpace('MIKEY', constraints=[
-        ForbiddenMotifConstraint([RestrictionSite.BsaI, 'GGTTCC']),
-        HomopolymerConstraint(4),
+        ForbiddenMotifs([RestrictionSite.BsaI, 'GGTTCC']),
+        MaxHomopolymer(4),
     ])
     banned_sequences = helper_get_banned_sequences_from_constraints(space)
     assert banned_sequences == {'GAGACC', 'GGTCTC', 'GGTTCC', 'AAAAA', 'CCCCC', 'GGGGG', 'TTTTT'}
 
 
 def test_forbidden_motif_constraint_repr():
-    space = CodingSpace('MIKEY', constraints=[ForbiddenMotifConstraint([RestrictionSite.EcoRI, 'AAAA'])])
+    space = CodingSpace('MIKEY', constraints=[ForbiddenMotifs([RestrictionSite.EcoRI, 'AAAA'])])
 
     text = repr(space)
     assert 'Forbidden motifs:' in text
@@ -272,7 +272,7 @@ def test_forbidden_motif_constraint_repr():
 
 
 def test_homopolymer_constraint_repr():
-    space = CodingSpace('MIKEY', constraints=[HomopolymerConstraint(4)])
+    space = CodingSpace('MIKEY', constraints=[MaxHomopolymer(4)])
 
     text = repr(space)
     assert 'Maximum homopolymer' in text
@@ -326,7 +326,7 @@ def test_coding_space_pickle_preserves_constraints():
     space = CodingSpace(
         'MIKEY',
         fixed_codons={2: 'ATC'},
-        constraints=[ForbiddenMotifConstraint(['AAAA']), HomopolymerConstraint(4)],
+        constraints=[ForbiddenMotifs(['AAAA']), MaxHomopolymer(4)],
         seed=8675309,
     )
 
@@ -448,7 +448,7 @@ def test_coding_space_exposes_pins():
 
 def test_coding_space_can_set_forbidden_motif_constraint():
     space = CodingSpace('MIKEY')
-    constraint = ForbiddenMotifConstraint(['AAA'])
+    constraint = ForbiddenMotifs(['AAA'])
 
     space.set_constraints(constraint)
 
@@ -463,7 +463,7 @@ def test_coding_space_can_set_forbidden_motif_constraint():
 
 def test_coding_space_can_set_homopolymer_constraint():
     space = CodingSpace('MIKEY')
-    constraint = HomopolymerConstraint(2)
+    constraint = MaxHomopolymer(2)
 
     space.set_constraints(constraint)
 
@@ -478,8 +478,8 @@ def test_coding_space_can_set_homopolymer_constraint():
 
 def test_coding_space_constraints_combine():
     space = CodingSpace('MIKEY')
-    forbidden = ForbiddenMotifConstraint(['GAG'])
-    homopolymer = HomopolymerConstraint(2)
+    forbidden = ForbiddenMotifs(['GAG'])
+    homopolymer = MaxHomopolymer(2)
 
     space.set_constraints([forbidden, homopolymer])
 
@@ -606,7 +606,7 @@ def test_coding_space_rna_flag_normalises_inputs_to_rna():
 
 
 def test_forbidden_motif_constraint_normalises_to_space_molecule_type():
-    space = CodingSpace('M', rna=True, constraints=[ForbiddenMotifConstraint(['ATG'])])
+    space = CodingSpace('M', rna=True, constraints=[ForbiddenMotifs(['ATG'])])
     assert space.n_valid_sequences == 0
 
 
@@ -617,7 +617,7 @@ def test_contains_normalises_dna_input_for_rna_space():
 
 
 def test_coding_space_accepts_constraints():
-    constraint = ForbiddenMotifConstraint(['GAA'])
+    constraint = ForbiddenMotifs(['GAA'])
     space = CodingSpace('E')
     space.set_constraints([constraint])
 
@@ -626,12 +626,12 @@ def test_coding_space_accepts_constraints():
 
 
 def test_coding_space_constraints_are_view_constraints():
-    constraint = ForbiddenMotifConstraint(['GAA'])
+    constraint = ForbiddenMotifs(['GAA'])
     space = CodingSpace('E', constraints=constraint)
 
     assert space.constraints is space.view.constraints
 
-    replacement = ForbiddenMotifConstraint(['GAG'])
+    replacement = ForbiddenMotifs(['GAG'])
     space.set_constraints(replacement)
 
     assert space.constraints is space.view.constraints
@@ -640,7 +640,7 @@ def test_coding_space_constraints_are_view_constraints():
 
 def test_coding_space_can_set_and_clear_constraints():
     space = CodingSpace('E')
-    constraint = ForbiddenMotifConstraint(['GAA'])
+    constraint = ForbiddenMotifs(['GAA'])
 
     space.set_constraints([constraint])
     assert set(space.enumerate()) == {'GAG'}
@@ -652,8 +652,8 @@ def test_coding_space_can_set_and_clear_constraints():
 def test_coding_space_can_set_multiple_constraints():
     space = CodingSpace('E')
     constraints = [
-        ForbiddenMotifConstraint(['AAA']),
-        ForbiddenMotifConstraint(['GAA']),
+        ForbiddenMotifs(['AAA']),
+        ForbiddenMotifs(['GAA']),
     ]
 
     space.set_constraints(constraints)
@@ -664,7 +664,7 @@ def test_coding_space_can_set_multiple_constraints():
 
 def test_coding_space_can_add_constraints():
     space = CodingSpace('MIKEY')
-    constraint = ForbiddenMotifConstraint(['AAA'])
+    constraint = ForbiddenMotifs(['AAA'])
 
     space.add_constraints(constraint)
 
@@ -673,7 +673,7 @@ def test_coding_space_can_add_constraints():
 
 
 def test_coding_space_accepts_single_constraint_at_initialisation():
-    constraint = ForbiddenMotifConstraint(['GAA'])
+    constraint = ForbiddenMotifs(['GAA'])
 
     space = CodingSpace('E', constraints=constraint)
 
@@ -682,7 +682,7 @@ def test_coding_space_accepts_single_constraint_at_initialisation():
 
 
 def test_coding_space_accepts_constraints_at_initialisation():
-    constraint = ForbiddenMotifConstraint(['GAA'])
+    constraint = ForbiddenMotifs(['GAA'])
 
     space = CodingSpace('E', constraints=constraint)
 
@@ -707,7 +707,7 @@ def test_coding_space_pickle_preserves_constraints():
 
     space = CodingSpace(
         'MIKEY',
-        constraints=[constraint, ForbiddenMotifConstraint(['CCC']), HomopolymerConstraint(4)],
+        constraints=[constraint, ForbiddenMotifs(['CCC']), MaxHomopolymer(4)],
         seed=8675309,
     )
 
@@ -715,8 +715,8 @@ def test_coding_space_pickle_preserves_constraints():
 
     assert len(loaded.constraints) == 3
     assert isinstance(loaded.constraints[0], SafeConstraint)
-    assert isinstance(loaded.constraints[1], ForbiddenMotifConstraint)
-    assert isinstance(loaded.constraints[2], HomopolymerConstraint)
+    assert isinstance(loaded.constraints[1], ForbiddenMotifs)
+    assert isinstance(loaded.constraints[2], MaxHomopolymer)
     assert loaded.n_valid_sequences == space.n_valid_sequences
     assert set(loaded.enumerate()) == set(space.enumerate())
 
