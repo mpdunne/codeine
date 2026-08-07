@@ -10,6 +10,7 @@ from codeine.space.coding import CodingSpace
 from codeine.motifs.restriction import RestrictionSite
 from codeine.constraints.base import Constraint, SAFE_STATE
 from codeine.constraints.motifs import ForbiddenMotifConstraint
+from codeine.constraints.homopolymers import HomopolymerConstraint
 
 
 @pytest.mark.parametrize('aa_seq', ('MIKEY', 'MILDRED', 'STEVEN', 'WILLIAM'))
@@ -230,34 +231,38 @@ def helper_get_banned_sequences_from_constraints(space):
         return set(seqs)
 
 
-def test_forbidden_motifs_are_stored():
-    space = CodingSpace('MIKEY', forbidden_motifs=[RestrictionSite.EcoRI, 'AAAA'])
+def test_forbidden_motif_constraint_is_stored():
+    space = CodingSpace('MIKEY', constraints=[ForbiddenMotifConstraint([RestrictionSite.EcoRI, 'AAAA'])])
     assert helper_get_banned_sequences_from_constraints(space) == {'AAAA', 'GAATTC'}
 
 
-def test_max_homopolymer_is_stored():
-    space = CodingSpace('MIKEY', max_homopolymer=4)
-    assert space.max_homopolymer == 4
+def test_homopolymer_constraint_is_stored():
+    constraint = HomopolymerConstraint(4)
+    space = CodingSpace('MIKEY', constraints=[constraint])
+    assert space.constraints == (constraint,)
 
 
-def test_max_homopolymer_is_expanded_correctly():
-    space = CodingSpace('MIKEY', max_homopolymer=None)
+def test_homopolymer_constraint_is_expanded_correctly():
+    space = CodingSpace('MIKEY')
     banned_sequences = helper_get_banned_sequences_from_constraints(space)
     assert not banned_sequences
 
-    space = CodingSpace('MIKEY', max_homopolymer=4)
+    space = CodingSpace('MIKEY', constraints=[HomopolymerConstraint(4)])
     banned_sequences = helper_get_banned_sequences_from_constraints(space)
     assert all(nt * 5 in banned_sequences for nt in 'ACGT')
 
 
-def test_mixed_restrictions():
-    space = CodingSpace('MIKEY', max_homopolymer=4, forbidden_motifs=[RestrictionSite.BsaI, 'GGTTCC'])
+def test_mixed_constraints():
+    space = CodingSpace('MIKEY', constraints=[
+        ForbiddenMotifConstraint([RestrictionSite.BsaI, 'GGTTCC']),
+        HomopolymerConstraint(4),
+    ])
     banned_sequences = helper_get_banned_sequences_from_constraints(space)
     assert banned_sequences == {'GAGACC', 'GGTCTC', 'GGTTCC', 'AAAAA', 'CCCCC', 'GGGGG', 'TTTTT'}
 
 
-def test_forbidden_motifs_repr():
-    space = CodingSpace('MIKEY', forbidden_motifs=[RestrictionSite.EcoRI, 'AAAA'])
+def test_forbidden_motif_constraint_repr():
+    space = CodingSpace('MIKEY', constraints=[ForbiddenMotifConstraint([RestrictionSite.EcoRI, 'AAAA'])])
 
     text = repr(space)
     assert 'Forbidden motifs:' in text
@@ -266,8 +271,8 @@ def test_forbidden_motifs_repr():
     assert 'AAAA' in text
 
 
-def test_max_homopolymer_repr():
-    space = CodingSpace('MIKEY', max_homopolymer=4)
+def test_homopolymer_constraint_repr():
+    space = CodingSpace('MIKEY', constraints=[HomopolymerConstraint(4)])
 
     text = repr(space)
     assert 'Maximum homopolymer' in text
@@ -321,15 +326,14 @@ def test_coding_space_pickle_preserves_constraints():
     space = CodingSpace(
         'MIKEY',
         fixed_codons={2: 'ATC'},
-        forbidden_motifs=['AAAA'],
-        max_homopolymer=4,
+        constraints=[ForbiddenMotifConstraint(['AAAA']), HomopolymerConstraint(4)],
         seed=8675309,
     )
 
     loaded = pickle.loads(pickle.dumps(space))
 
-    assert loaded.forbidden_motifs == space.forbidden_motifs
-    assert loaded.max_homopolymer == space.max_homopolymer
+    assert len(loaded.constraints) == 2
+    assert all(type(a) is type(b) for a, b in zip(loaded.constraints, space.constraints))
     assert loaded.n_valid_sequences == space.n_valid_sequences
 
 
@@ -442,49 +446,45 @@ def test_coding_space_exposes_pins():
     assert space.pinned_codons == {}
 
 
-def test_coding_space_can_set_forbidden_motifs():
+def test_coding_space_can_set_forbidden_motif_constraint():
     space = CodingSpace('MIKEY')
+    constraint = ForbiddenMotifConstraint(['AAA'])
 
-    space.set_forbidden_motifs(['AAA'])
-    assert space.forbidden_motifs == ['AAA']
-    banned_sequences = helper_get_banned_sequences_from_constraints(space)
-    assert banned_sequences == {'AAA'}
+    space.set_constraints([constraint])
 
-    space.clear_forbidden_motifs()
-    assert space.forbidden_motifs is None
-    banned_sequences = helper_get_banned_sequences_from_constraints(space)
-    assert banned_sequences == set()
+    assert space.constraints == (constraint,)
+    assert helper_get_banned_sequences_from_constraints(space) == {'AAA'}
+
+    space.clear_constraints()
+
+    assert space.constraints == ()
+    assert helper_get_banned_sequences_from_constraints(space) == set()
 
 
-def test_coding_space_can_set_max_homopolymer():
+def test_coding_space_can_set_homopolymer_constraint():
     space = CodingSpace('MIKEY')
+    constraint = HomopolymerConstraint(2)
 
-    space.set_max_homopolymer(2)
-    assert space.max_homopolymer == 2
+    space.set_constraints([constraint])
+
     banned_sequences = helper_get_banned_sequences_from_constraints(space)
     assert banned_sequences == {'AAA', 'CCC', 'GGG', 'TTT'}
 
-    space.clear_max_homopolymer()
-    assert space.max_homopolymer is None
-    banned_sequences = helper_get_banned_sequences_from_constraints(space)
-    assert banned_sequences == set()
+    space.clear_constraints()
+
+    assert space.constraints == ()
+    assert helper_get_banned_sequences_from_constraints(space) == set()
 
 
-def test_coding_space_forbidden_motifs_and_max_homopolymer_combine():
+def test_coding_space_constraints_combine():
     space = CodingSpace('MIKEY')
+    forbidden = ForbiddenMotifConstraint(['GAG'])
+    homopolymer = HomopolymerConstraint(2)
 
-    space.set_forbidden_motifs(['GAG'])
-    space.set_max_homopolymer(2)
+    space.set_constraints([forbidden, homopolymer])
+
     banned_sequences = helper_get_banned_sequences_from_constraints(space)
     assert banned_sequences == {'AAA', 'CCC', 'GGG', 'TTT', 'GAG'}
-
-    space.clear_forbidden_motifs()
-    banned_sequences = helper_get_banned_sequences_from_constraints(space)
-    assert banned_sequences == {'AAA', 'CCC', 'GGG', 'TTT'}
-
-    space.clear_max_homopolymer()
-    banned_sequences = helper_get_banned_sequences_from_constraints(space)
-    assert banned_sequences == set()
 
 
 def test_coding_space_can_set_codon_weights():
@@ -605,9 +605,8 @@ def test_coding_space_rna_flag_normalises_inputs_to_rna():
     assert space.context_r == 'UAA'
 
 
-def test_set_forbidden_motifs_normalises_to_space_molecule_type():
-    space = CodingSpace('M', rna=True)
-    space.set_forbidden_motifs(['ATG'])
+def test_forbidden_motif_constraint_normalises_to_space_molecule_type():
+    space = CodingSpace('M', rna=True, constraints=[ForbiddenMotifConstraint(['ATG'])])
     assert space.n_valid_sequences == 0
 
 
@@ -615,30 +614,6 @@ def test_contains_normalises_dna_input_for_rna_space():
     space = CodingSpace('M', rna=True)
     assert space.contains('ATG')
     assert 'ATG' in space
-
-
-def test_setting_forbidden_motifs_rebulids_constraint():
-    space = CodingSpace('MIKEY')
-    space.set_forbidden_motifs(['GAATTC'])
-
-    constraints = space.view.constraints
-    banned_sequence_constraints = [c for c in constraints if isinstance(c, ForbiddenMotifConstraint)]
-    assert len(banned_sequence_constraints) == 1
-    bsc = banned_sequence_constraints[0]
-
-    space.set_forbidden_motifs(['GAATTC'])
-    constraints = space.view.constraints
-    banned_sequence_constraints = [c for c in constraints if isinstance(c, ForbiddenMotifConstraint)]
-    assert len(banned_sequence_constraints) == 1
-    bsc_new = banned_sequence_constraints[0]
-    assert bsc_new is not bsc
-
-    space.set_forbidden_motifs(['GAATTC', 'ccgatt'])
-    constraints = space.view.constraints
-    banned_sequence_constraints = [c for c in constraints if isinstance(c, ForbiddenMotifConstraint)]
-    assert len(banned_sequence_constraints) == 1
-    bsc_new = banned_sequence_constraints[0]
-    assert bsc_new is not bsc
 
 
 def test_coding_space_accepts_constraints():
@@ -671,14 +646,6 @@ def test_coding_space_can_add_constraints():
     assert constraint in space.view.constraints
 
 
-def test_coding_space_constraints_combine_with_forbidden_motifs():
-    constraint = ForbiddenMotifConstraint(['GAG'])
-    space = CodingSpace('E', forbidden_motifs=['GAA'])
-    space.set_constraints([constraint])
-
-    assert space.n_valid_sequences == 0
-
-
 def test_coding_space_accepts_constraints_at_initialisation():
     constraint = ForbiddenMotifConstraint(['GAA'])
 
@@ -703,44 +670,20 @@ class SafeConstraint(Constraint):
 def test_coding_space_pickle_preserves_constraints():
     constraint = SafeConstraint()
 
-    space = CodingSpace('MIKEY', constraints=[constraint],
-                        forbidden_motifs=['CCC'], max_homopolymer=4, seed=8675309)
+    space = CodingSpace(
+        'MIKEY',
+        constraints=[constraint, ForbiddenMotifConstraint(['CCC']), HomopolymerConstraint(4)],
+        seed=8675309,
+    )
 
     loaded = pickle.loads(pickle.dumps(space))
 
-    assert len(loaded.constraints) == 1
+    assert len(loaded.constraints) == 3
     assert isinstance(loaded.constraints[0], SafeConstraint)
-    assert loaded.forbidden_motifs == space.forbidden_motifs
-    assert loaded.max_homopolymer == space.max_homopolymer
+    assert isinstance(loaded.constraints[1], ForbiddenMotifConstraint)
+    assert isinstance(loaded.constraints[2], HomopolymerConstraint)
     assert loaded.n_valid_sequences == space.n_valid_sequences
     assert set(loaded.enumerate()) == set(space.enumerate())
-
-
-def test_coding_space_initial_constraints_combine_with_forbidden_motifs():
-    constraint = ForbiddenMotifConstraint(['GAG'])
-
-    space = CodingSpace('E', constraints=[constraint], forbidden_motifs=['GAA'])
-
-    assert space.n_valid_sequences == 0
-
-
-def test_coding_space_initial_constraints_combine_with_max_homopolymer():
-    constraint = ForbiddenMotifConstraint(['AAG'])
-
-    space = CodingSpace('K', constraints=[constraint], max_homopolymer=2)
-
-    assert space.n_valid_sequences == 0
-
-
-def test_coding_space_clear_constraints_preserves_convenience_constraints():
-    constraint = ForbiddenMotifConstraint(['GAG'])
-
-    space = CodingSpace('E', constraints=[constraint], forbidden_motifs=['GAA'])
-
-    space.clear_constraints()
-
-    assert space.constraints == ()
-    assert set(space.enumerate()) == {'GAG'}
 
 
 def test_zero_weight_codons_are_valid_but_not_sampled():

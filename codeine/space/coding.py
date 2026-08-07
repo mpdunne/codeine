@@ -3,8 +3,6 @@ from typing import Dict, Optional, Sequence, Tuple, Union, TYPE_CHECKING
 if TYPE_CHECKING:
     from codeine.space.mutation import MutationSpace
 
-from codeine.constraints.motifs import ForbiddenMotifConstraint, Motifs
-from codeine.constraints.homopolymers import HomopolymerConstraint
 from codeine.constraints.base import Constraint
 from codeine.graph.base import CodonGraph, CodonRestriction
 from codeine.space.base import Space
@@ -27,8 +25,6 @@ class CodingSpace(Space):
         rna: Optional[bool] = None,
         fixed_codons: Optional[Dict[int, CodonRestriction]] = None,
         constraints: Optional[Sequence[Constraint]] = None,
-        forbidden_motifs: Optional[Motifs] = None,
-        max_homopolymer: Optional[int] = None,
         context_l: str = '',
         context_r: str = '',
         codon_weights: Optional[CodonWeights] = None,
@@ -47,10 +43,6 @@ class CodingSpace(Space):
             Any codon restrictions in the format e.g. ``{4: 'TCC'}`` or ``{5: ['AGT', 'AGC']}``. Positions are 1-based.
         constraints
             Constraints to apply to this coding space.
-        forbidden_motifs
-            Forbidden motifs, either as strings or as ``codeine.RestrictionSite``.
-        max_homopolymer
-            The maximum allowed length of nucleotide homopolymer
         context_l
             The context sequence to the left of the coding sequence.
         context_r
@@ -75,10 +67,7 @@ class CodingSpace(Space):
         self.view = view
 
         self.constraints = tuple(constraints or ())
-        self.forbidden_motifs = forbidden_motifs
-        self.max_homopolymer = max_homopolymer
-
-        self._update_constraints()
+        self.view.set_constraints(self.constraints)
 
     def __repr__(self) -> str:
         return self.info()
@@ -235,42 +224,6 @@ class CodingSpace(Space):
         """
         self.view.clear_pins()
 
-    def set_forbidden_motifs(self, forbidden_motifs: Optional[Motifs]) -> None:
-        """
-        Set the forbidden motifs for this coding space.
-
-        Parameters
-        ----------
-        forbidden_motifs
-            Motifs that should be forbidden in generated sequences.
-        """
-        self.forbidden_motifs = forbidden_motifs
-        self._update_constraints()
-
-    def clear_forbidden_motifs(self) -> None:
-        """
-        Remove all forbidden motifs from this coding space.
-        """
-        self.set_forbidden_motifs(None)
-
-    def set_max_homopolymer(self, max_homopolymer: Optional[int]) -> None:
-        """
-        Set the maximum allowed homopolymer length.
-
-        Parameters
-        ----------
-        max_homopolymer
-            The longest allowed repeated run of one nucleotide, or None for no limit.
-        """
-        self.max_homopolymer = max_homopolymer
-        self._update_constraints()
-
-    def clear_max_homopolymer(self) -> None:
-        """
-        Remove the maximum homopolymer constraint from this coding space.
-        """
-        self.set_max_homopolymer(None)
-
     def add_constraints(self, constraints: Union[Constraint, Sequence[Constraint]]) -> None:
         """
         Add one or more constraints to this coding space.
@@ -301,34 +254,13 @@ class CodingSpace(Space):
             The constraints to set, as ``Constraint`` objects.
         """
         self.constraints = tuple(constraints)
-        self._update_constraints()
+        self.view.set_constraints(self.constraints)
 
     def clear_constraints(self) -> None:
         """
-        Remove all additional constraints. Constraints configured through
-        ``forbidden_motifs`` and ``max_homopolymer`` are unaffected.
+        Remove all constraints from this coding space.
         """
         self.set_constraints(())
-
-    def _update_constraints(self) -> None:
-        """
-        Rebuild and apply all constraints for this coding space.
-        """
-        constraints = self.constraints
-
-        if self.forbidden_motifs is not None:
-            constraints = (
-                ForbiddenMotifConstraint(self.forbidden_motifs),
-                *constraints,
-            )
-
-        if self.max_homopolymer is not None:
-            constraints = (
-                HomopolymerConstraint(self.max_homopolymer),
-                *constraints,
-            )
-
-        self.view.set_constraints(constraints)
 
     @staticmethod
     def _resolve_tables(
