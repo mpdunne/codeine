@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Sequence, Tuple, Union, TYPE_CHECKING
+from typing import Dict, Optional, Collection, Tuple, Union, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from codeine.space.mutation import MutationSpace
@@ -24,7 +24,7 @@ class CodingSpace(Space):
         translation_table: Optional[TranslationTable] = None,
         rna: Optional[bool] = None,
         fixed_codons: Optional[Dict[int, CodonRestriction]] = None,
-        constraints: Optional[Sequence[Constraint]] = None,
+        constraints: Optional[Union[Constraint, Collection[Constraint]]] = None,
         context_l: str = '',
         context_r: str = '',
         codon_weights: Optional[CodonWeights] = None,
@@ -63,11 +63,7 @@ class CodingSpace(Space):
             context_r=context_r,
         )
 
-        view = graph.view(seed=seed, weights=codon_weights)
-        self.view = view
-
-        self.constraints = tuple(constraints or ())
-        self.view.set_constraints(self.constraints)
+        self.view = graph.view(seed=seed, weights=codon_weights, constraints=constraints)
 
     def __repr__(self) -> str:
         return self.info()
@@ -143,7 +139,7 @@ class CodingSpace(Space):
     def mutants(
             self,
             cds: str,
-            free_positions: Optional[Sequence[int]] = None,
+            free_positions: Optional[Union[int, Collection[int]]] = None,
             min_nts: Optional[int] = None,
             max_nts: Optional[int] = None,
             min_codons: Optional[int] = None,
@@ -196,7 +192,7 @@ class CodingSpace(Space):
         """
         self.view.pin_codons(pinned_codons)
 
-    def unpin_codons(self, positions: Sequence[int]) -> None:
+    def unpin_codons(self, positions: Union[int, Collection[int]]) -> None:
         """
         Remove temporary codon pins by position.
 
@@ -224,43 +220,40 @@ class CodingSpace(Space):
         """
         self.view.clear_pins()
 
-    def add_constraints(self, constraints: Union[Constraint, Sequence[Constraint]]) -> None:
+    def add_constraints(self, constraints: Union[Constraint, Collection[Constraint]]) -> None:
         """
         Add one or more constraints to this coding space.
 
         Parameters
         ----------
         constraints
-            Constraints to add.
+            Constraint or constraints to add.
         """
-        if isinstance(constraints, Constraint):
-            constraints = [constraints]
-
-        constraints = tuple(constraints)
-
-        if not constraints:
-            return
-
-        self.constraints += constraints
         self.view.add_constraints(constraints)
 
-    def set_constraints(self, constraints: Sequence[Constraint]) -> None:
+    def set_constraints(self, constraints: Union[Constraint, Collection[Constraint]]) -> None:
         """
-        Replace the additional constraints for this coding space.
+        Replace the constraints for this coding space.
 
         Parameters
         ----------
         constraints
-            The constraints to set, as ``Constraint`` objects.
+            Constraint or constraints to set.
         """
-        self.constraints = tuple(constraints)
-        self.view.set_constraints(self.constraints)
+        self.view.set_constraints(constraints)
 
     def clear_constraints(self) -> None:
         """
         Remove all constraints from this coding space.
         """
-        self.set_constraints(())
+        self.view.clear_constraints()
+
+    @property
+    def constraints(self) -> Tuple[Constraint, ...]:
+        """
+        Constraints applied to this coding space.
+        """
+        return self.view.constraints
 
     @staticmethod
     def _resolve_tables(

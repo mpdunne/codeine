@@ -45,7 +45,7 @@ def test_view_can_pin_codons():
 def test_view_can_unpin_codons():
     view = CodonGraph('MIKEY').view()
     view.pin_codons({3: 'AAA'})
-    view.unpin_codons([3])
+    view.unpin_codons(3)
     assert 3 not in view.pinned_codons
 
 
@@ -287,16 +287,34 @@ class RejectAllConstraint(Constraint):
         pass
 
 
+def test_view_accepts_single_constraint_at_construction():
+    constraint = RejectAllConstraint()
+    view = CodonGraph('MIKEY').view(constraints=constraint)
+
+    assert view.constraints == (constraint,)
+    assert view.n_valid_sequences == 0
+
+
 def test_constraint_can_reject_all_sequences():
     view = CodonGraph('MIKEY', context_l='aaa', context_r='ttt').view()
 
-    view.set_constraints([RejectAllConstraint()])
+    view.set_constraints(RejectAllConstraint())
 
     assert view.n_valid_sequences == 0
     assert [*view.enumerate()] == []
 
     with pytest.raises(ValueError):
         view.sample()
+
+
+def test_view_can_add_single_constraint():
+    view = CodonGraph('MIKEY').view()
+    constraint = RejectAllConstraint()
+
+    view.add_constraints(constraint)
+
+    assert view.constraints == (constraint,)
+    assert view.n_valid_sequences == 0
 
 
 def test_clear_constraints_restores_default_behaviour():
@@ -704,7 +722,7 @@ def test_unpin_codons_marks_view_for_compile():
     view.pin_codons({2: 'ATC'})
     _ = view.n_valid_sequences
 
-    view.unpin_codons([2])
+    view.unpin_codons(2)
 
     assert view._compile_status
     assert view.n_valid_sequences == 24

@@ -1,10 +1,11 @@
-from typing import Collection, FrozenSet, Optional, Set
+from typing import Collection, FrozenSet, Optional, Set, Union
 
 from codeine.constraints.mutations import MutationDistanceConstraint
 from codeine.space.base import Space
 from codeine.space.coding import CodingSpace
 from codeine.utils.display import format_constraints, format_count, format_restrictions,\
     format_positions, format_sequence
+from codeine.utils.tuples import tuplify
 
 
 class MutationSpace(Space):
@@ -26,7 +27,7 @@ class MutationSpace(Space):
                  space: CodingSpace,
                  cds: str,
                  *,
-                 free_positions: Optional[Collection[int]] = None,
+                 free_positions: Optional[Union[int, Collection[int]]] = None,
                  min_nts: Optional[int] = None,
                  max_nts: Optional[int] = None,
                  min_codons: Optional[int] = None,
@@ -50,9 +51,6 @@ class MutationSpace(Space):
         max_codons
             Maximum number of codon differences from the reference CDS.
         """
-        self.forbidden_motifs = space.forbidden_motifs
-        self.max_homopolymer = space.max_homopolymer
-
         self._base_view = space.view.copy()
         self._base_pins = dict(self._base_view.pinned_codons)
 
@@ -166,14 +164,14 @@ class MutationSpace(Space):
 
         return '\n'.join(lines)
 
-    def set_free_positions(self, positions: Collection[int]) -> None:
+    def set_free_positions(self, positions: Union[int, Collection[int]]) -> None:
         """
         Replace the current set of free positions.
         """
         self._free_positions = self._validate_positions(positions)
         self._update_pins()
 
-    def freeze_positions(self, positions: Collection[int]) -> None:
+    def freeze_positions(self, positions: Union[int, Collection[int]]) -> None:
         """
         Freeze the given codon positions.
         """
@@ -182,7 +180,7 @@ class MutationSpace(Space):
         self._free_positions -= positions
         self._update_pins()
 
-    def unfreeze_positions(self, positions: Collection[int]) -> None:
+    def unfreeze_positions(self, positions: Union[int, Collection[int]]) -> None:
         """
         Unfreeze the given codon positions.
         """
@@ -286,11 +284,11 @@ class MutationSpace(Space):
                 )
             )
 
-    def _validate_positions(self, positions: Collection[int]) -> Set[int]:
+    def _validate_positions(self, positions: Union[int, Collection[int]]) -> Set[int]:
         """
         Validate a collection of codon positions.
         """
-        positions = set(positions)
+        positions = set(tuplify(positions, int))
         invalid = [pos for pos in positions if pos < 1 or pos > len(self.view.aa_seq)]
         if invalid:
             raise ValueError(f'Invalid codon positions: {sorted(invalid)}')

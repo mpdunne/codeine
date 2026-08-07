@@ -58,7 +58,7 @@ def test_coding_space_pinned_codons_are_fixed():
 def test_coding_space_unpin_codons_restores_sampling():
     space = CodingSpace('MIKEY')
     space.pin_codons({3: 'AAA'})
-    space.unpin_codons([3])
+    space.unpin_codons(3)
     sampled = set()
     for _ in range(100):
         cds = space.sample()
@@ -450,7 +450,7 @@ def test_coding_space_can_set_forbidden_motif_constraint():
     space = CodingSpace('MIKEY')
     constraint = ForbiddenMotifConstraint(['AAA'])
 
-    space.set_constraints([constraint])
+    space.set_constraints(constraint)
 
     assert space.constraints == (constraint,)
     assert helper_get_banned_sequences_from_constraints(space) == {'AAA'}
@@ -465,7 +465,7 @@ def test_coding_space_can_set_homopolymer_constraint():
     space = CodingSpace('MIKEY')
     constraint = HomopolymerConstraint(2)
 
-    space.set_constraints([constraint])
+    space.set_constraints(constraint)
 
     banned_sequences = helper_get_banned_sequences_from_constraints(space)
     assert banned_sequences == {'AAA', 'CCC', 'GGG', 'TTT'}
@@ -625,6 +625,19 @@ def test_coding_space_accepts_constraints():
     assert set(space.enumerate()) == {'GAG'}
 
 
+def test_coding_space_constraints_are_view_constraints():
+    constraint = ForbiddenMotifConstraint(['GAA'])
+    space = CodingSpace('E', constraints=constraint)
+
+    assert space.constraints is space.view.constraints
+
+    replacement = ForbiddenMotifConstraint(['GAG'])
+    space.set_constraints(replacement)
+
+    assert space.constraints is space.view.constraints
+    assert space.constraints == (replacement,)
+
+
 def test_coding_space_can_set_and_clear_constraints():
     space = CodingSpace('E')
     constraint = ForbiddenMotifConstraint(['GAA'])
@@ -634,6 +647,19 @@ def test_coding_space_can_set_and_clear_constraints():
 
     space.clear_constraints()
     assert set(space.enumerate()) == {'GAA', 'GAG'}
+
+
+def test_coding_space_can_set_multiple_constraints():
+    space = CodingSpace('E')
+    constraints = [
+        ForbiddenMotifConstraint(['AAA']),
+        ForbiddenMotifConstraint(['GAA']),
+    ]
+
+    space.set_constraints(constraints)
+
+    assert space.constraints == tuple(constraints)
+    assert set(space.enumerate()) == {'GAG'}
 
 
 def test_coding_space_can_add_constraints():
@@ -646,10 +672,19 @@ def test_coding_space_can_add_constraints():
     assert constraint in space.view.constraints
 
 
+def test_coding_space_accepts_single_constraint_at_initialisation():
+    constraint = ForbiddenMotifConstraint(['GAA'])
+
+    space = CodingSpace('E', constraints=constraint)
+
+    assert space.constraints == (constraint,)
+    assert set(space.enumerate()) == {'GAG'}
+
+
 def test_coding_space_accepts_constraints_at_initialisation():
     constraint = ForbiddenMotifConstraint(['GAA'])
 
-    space = CodingSpace('E', constraints=[constraint])
+    space = CodingSpace('E', constraints=constraint)
 
     assert space.constraints == (constraint,)
     assert set(space.enumerate()) == {'GAG'}
