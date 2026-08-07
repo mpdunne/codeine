@@ -10,7 +10,7 @@ from codeine.space.mutation import MutationSpace
 from codeine.motifs.restriction import RestrictionSite
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
-from codeine.constraints.motifs import ForbiddenMotifConstraint
+from codeine.constraints.motifs import ForbiddenMotifs
 
 
 from tests.data import NORMAL_PROTEINS, DIFFICULT_PROTEINS, ANTIBODIES, LARGE_PROTEINS
@@ -772,7 +772,7 @@ def test_banned_sequences_work_with_distance_constraints():
     space = CodingSpace('SASSAFRAS', context_l='AAAAAA', context_r='GGGGGG')
     assert space.n_valid_sequences == 995328
 
-    banned=ForbiddenMotifConstraint(['TTTT', 'AAATCT', 'TCTGGG'])
+    banned=ForbiddenMotifs(['TTTT', 'AAATCT', 'TCTGGG'])
     space = CodingSpace('SASSAFRAS', context_l='AAAAAA', context_r='GGGGGG', constraints=banned)
     assert space.n_valid_sequences == 604800
 
@@ -872,7 +872,7 @@ def test_mutation_space_matches_naive_combinatorial(
 ):
     context_l, context_r = context
 
-    constraint = ForbiddenMotifConstraint(banned_sequences) if banned_sequences else None
+    constraint = ForbiddenMotifs(banned_sequences) if banned_sequences else None
     space = CodingSpace(aa_seq, context_l=context_l, context_r=context_r, constraints=constraint)
 
     if space.n_valid_sequences == 0:
@@ -935,7 +935,7 @@ def test_mutation_space_samples_real_proteins(
 ):
     context_l, context_r = context
 
-    constraint = ForbiddenMotifConstraint(banned_sequences) if banned_sequences else None
+    constraint = ForbiddenMotifs(banned_sequences) if banned_sequences else None
     space = CodingSpace(aa_seq, context_l=context_l, context_r=context_r, constraints=constraint)
 
     if space.n_valid_sequences == 0:
@@ -995,7 +995,7 @@ def helper_mutation_counts_by_block(seqs, ref, block_size):
     dict(min_nts=10, max_nts=20, min_codons=8, max_codons=15),
 ))
 def test_mutation_sampling_is_even_across_sequence(aa_seq, banned, distance_constraints):
-    constraint = ForbiddenMotifConstraint(banned) if banned else None
+    constraint = ForbiddenMotifs(banned) if banned else None
     space = CodingSpace(aa_seq, context_l='aaa', context_r='ttt', constraints=constraint)
 
     ref = space[0]
@@ -1056,7 +1056,7 @@ def helper_codon_counts_by_block_position(seqs, block_size=5):
     dict(min_nts=10, max_nts=20, min_codons=8, max_codons=15),
 ))
 def test_mutation_codon_distributions_are_stable_across_sequence(aa_seq, banned, distance_constraints):
-    constraint = ForbiddenMotifConstraint(banned) if banned else None
+    constraint = ForbiddenMotifs(banned) if banned else None
     space = CodingSpace(aa_seq, context_l='aaa', context_r='ttt', constraints=constraint, seed=8765309)
 
     ref = space[0]
@@ -1111,7 +1111,7 @@ def test_mutation_space_repr_includes_variant_count_with_distance_constraints():
 
 
 def test_setting_distance_constraints_preserves_base_constraints():
-    constraint = ForbiddenMotifConstraint(['GAA'])
+    constraint = ForbiddenMotifs(['GAA'])
     space = CodingSpace('E')
     space.set_constraints(constraint)
     mutants = MutationSpace(space, 'GAG')

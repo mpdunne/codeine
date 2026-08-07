@@ -79,7 +79,7 @@ Apply constraints:
 
 ```python
 from codeine import CodingSpace, RestrictionSite
-from codeine.constraints import ForbiddenMotifConstraint, HomopolymerConstraint, TandemRepeatConstraint
+from codeine.constraints import ForbiddenMotifs, MaxHomopolymer
 
 space = CodingSpace(
     'MKTLEFQNGSCPRYKKL',
@@ -88,13 +88,12 @@ space = CodingSpace(
         16: 'AAG',
     },
     constraints=[
-        ForbiddenMotifConstraint([
+        ForbiddenMotifs([
             RestrictionSite.EcoRI,
             RestrictionSite.BamHI,
             'CTGCAG',
         ]),
-        HomopolymerConstraint(4),
-        TandemRepeatConstraint(repeat_length=3, copies=3),
+        MaxHomopolymer(max_length=4),
     ],
 )
 

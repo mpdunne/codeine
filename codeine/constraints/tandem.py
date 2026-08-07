@@ -2,7 +2,7 @@ from codeine.constraints.subpaths import SubPath, SubPathConstraint
 from codeine.utils.bitmasks import choices_to_nt_bitmasks
 
 
-class TandemRepeatConstraint(SubPathConstraint):
+class TandemRepeats(SubPathConstraint):
     """
     Forbid exact tandem repeats of a specified repeat-unit length.
     """

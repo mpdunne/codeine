@@ -4,7 +4,7 @@ from itertools import product
 
 from codeine.graph.base import CodonGraph
 from codeine.constraints.base import DEAD_STATE
-from codeine.constraints.motifs import ForbiddenMotifConstraint
+from codeine.constraints.motifs import ForbiddenMotifs
 from codeine.motifs.restriction import RestrictionSite
 from codeine.translation.tables import TranslationTable
 
@@ -48,7 +48,7 @@ def helper_get_paths(graph, motifs):
     if isinstance(motifs, str):
         motifs = [motifs]
 
-    constraint = ForbiddenMotifConstraint(forbidden_motifs=motifs)
+    constraint = ForbiddenMotifs(motifs=motifs)
     constraint.link(graph)
 
     return constraint.paths
@@ -67,44 +67,44 @@ def helper_yield_sequences(aa_seq):
 
 def test_empty_forbidden_motif_raises():
     with pytest.raises(ValueError):
-        ForbiddenMotifConstraint([''])
+        ForbiddenMotifs([''])
 
 
 def test_forbidden_motifs_must_be_strings_or_restriction_sites():
     with pytest.raises(TypeError, match='strings or RestrictionSite objects'):
-        ForbiddenMotifConstraint(['ATG', 123])
+        ForbiddenMotifs(['ATG', 123])
 
 
 @pytest.mark.parametrize('sequence', ['ATX', 'HELLO', ' '])
 def test_forbidden_motifs_must_contain_only_nucleotides(sequence):
     with pytest.raises(ValueError):
-        ForbiddenMotifConstraint([sequence])
+        ForbiddenMotifs([sequence])
 
 
 def test_forbidden_motifs_are_uppercased_and_deduplicated():
-    constraint = ForbiddenMotifConstraint(['atgc', 'ATGC', 'augg'])
+    constraint = ForbiddenMotifs(['atgc', 'ATGC', 'augg'])
     assert constraint.forbidden_sequences == ('ATGC', 'AUGG')
 
 
 def test_forbidden_motif_can_be_passed_as_a_string():
-    constraint = ForbiddenMotifConstraint('atgc')
+    constraint = ForbiddenMotifs('atgc')
     assert constraint.forbidden_sequences == ('ATGC',)
 
 
 def test_restriction_site_can_be_passed_directly():
-    constraint = ForbiddenMotifConstraint(RestrictionSite.BsaI)
+    constraint = ForbiddenMotifs(RestrictionSite.BsaI)
     assert constraint.forbidden_sequences == tuple(sorted(set(RestrictionSite.BsaI.motifs)))
 
 
 def test_restriction_sites_and_strings_can_be_combined():
-    constraint = ForbiddenMotifConstraint([RestrictionSite.BsaI, 'AAAAAA'])
+    constraint = ForbiddenMotifs([RestrictionSite.BsaI, 'AAAAAA'])
 
     assert constraint.forbidden_sequences == tuple(sorted({*RestrictionSite.BsaI.motifs, 'AAAAAA'}))
 
 
 def test_forbidden_motifs_are_normalised_to_dna_when_linked():
     graph = CodonGraph('M')
-    constraint = ForbiddenMotifConstraint(['AUG'])
+    constraint = ForbiddenMotifs(['AUG'])
     constraint.link(graph)
     assert not constraint.is_trivial
     assert tuple(path.sequence for path in constraint.paths) == ('ATG',)
@@ -112,14 +112,14 @@ def test_forbidden_motifs_are_normalised_to_dna_when_linked():
 
 def test_forbidden_motifs_are_normalised_to_rna_when_linked():
     graph = CodonGraph('M', translation_table=TranslationTable(rna=True))
-    constraint = ForbiddenMotifConstraint(['ATG'])
+    constraint = ForbiddenMotifs(['ATG'])
     constraint.link(graph)
     assert tuple(path.sequence for path in constraint.paths) == ('AUG',)
 
 
 def test_forbidden_motif_constraint_is_trivial_without_motifs():
     graph = CodonGraph(aa_seq='MIKEY')
-    constraint = ForbiddenMotifConstraint([])
+    constraint = ForbiddenMotifs([])
     constraint.link(graph)
 
     assert constraint.is_trivial
@@ -131,7 +131,7 @@ def test_forbidden_motif_constraint_is_trivial_without_motifs():
 
 def test_forbidden_motif_constraint_finds_matching_paths():
     graph = CodonGraph(aa_seq='MIKEY')
-    constraint = ForbiddenMotifConstraint(['TCAAA'])
+    constraint = ForbiddenMotifs(['TCAAA'])
     constraint.link(graph)
 
     assert not constraint.is_trivial
@@ -141,7 +141,7 @@ def test_forbidden_motif_constraint_finds_matching_paths():
 
 def test_forbidden_motif_constraint_has_no_matching_paths():
     graph = CodonGraph(aa_seq='MIKEY')
-    constraint = ForbiddenMotifConstraint(['CCCCCC'])
+    constraint = ForbiddenMotifs(['CCCCCC'])
     constraint.link(graph)
 
     assert constraint.is_trivial
@@ -157,7 +157,7 @@ def test_forbidden_motif_constraint_finds_ban_inside_left_context():
         'ATTAAGG',
         'GAATAC',
     )
-    constraint = ForbiddenMotifConstraint(forbidden_motifs)
+    constraint = ForbiddenMotifs(forbidden_motifs)
     constraint.link(graph)
     assert constraint.paths
 
@@ -177,7 +177,7 @@ def test_forbidden_motif_constraint_finds_ban_inside_left_context():
 )
 def test_offsets_are_correct(sequence, expected_offset):
     graph = CodonGraph('MIKEY')
-    constraint = ForbiddenMotifConstraint([sequence])
+    constraint = ForbiddenMotifs([sequence])
     constraint.link(graph)
     path = helper_find_first_path_for(constraint, sequence)
 
@@ -186,7 +186,7 @@ def test_offsets_are_correct(sequence, expected_offset):
 
 def test_every_found_path_really_contains_banned_sequence():
     graph = CodonGraph('MIKEY', context_l='AAGG', context_r='TTCC')
-    constraint = ForbiddenMotifConstraint(['GGATG', 'TACAAG', 'ATTAAG'])
+    constraint = ForbiddenMotifs(['GGATG', 'TACAAG', 'ATTAAG'])
     constraint.link(graph)
 
     for path in constraint.paths:
@@ -202,14 +202,14 @@ def test_every_found_path_really_contains_banned_sequence():
 
 def test_forbidden_motif_constraint_finds_banned_sequence_crossing_left_context():
     graph = CodonGraph(aa_seq='MIKEY', context_l='TCA')
-    constraint = ForbiddenMotifConstraint(['TCAATG'])
+    constraint = ForbiddenMotifs(['TCAATG'])
     constraint.link(graph)
     assert not constraint.is_trivial
 
 
 def test_left_context_can_immediately_complete_ban():
     graph = CodonGraph(aa_seq='MIKEY', context_l='TCA')
-    constraint = ForbiddenMotifConstraint(['TCAATG'])
+    constraint = ForbiddenMotifs(['TCAATG'])
     constraint.link(graph)
     path = helper_find_first_path_for(constraint, 'TCAATG')
     result = helper_walk_path(constraint, path)
@@ -219,19 +219,19 @@ def test_left_context_can_immediately_complete_ban():
 
 def test_forbidden_motif_constraint_finds_banned_sequence_crossing_right_context():
     graph = CodonGraph(aa_seq='MIKEY', context_r='AAA')
-    constraint = ForbiddenMotifConstraint(['ATACAAA'])
+    constraint = ForbiddenMotifs(['ATACAAA'])
     constraint.link(graph)
     assert not constraint.is_trivial
 
     graph = CodonGraph(aa_seq='MIKEY', context_r='AAA')
-    constraint = ForbiddenMotifConstraint(['GGGAAA'])
+    constraint = ForbiddenMotifs(['GGGAAA'])
     constraint.link(graph)
     assert constraint.is_trivial
 
 
 def test_existing_watch_can_complete_in_right_context():
     graph = CodonGraph(aa_seq='MIKEY', context_r='AAA')
-    constraint = ForbiddenMotifConstraint(['ATACAAA'])
+    constraint = ForbiddenMotifs(['ATACAAA'])
     constraint.link(graph)
     path = helper_find_first_path_for(constraint, 'ATACAAA')
     result = helper_walk_path(constraint, path)
@@ -249,7 +249,7 @@ def test_existing_watch_can_complete_in_right_context():
 )
 def test_banned_sequence_entirely_in_left_context_is_dead(banned_sequence):
     graph = CodonGraph('MIKEY', context_l='GAATTC')
-    constraint = ForbiddenMotifConstraint([banned_sequence])
+    constraint = ForbiddenMotifs([banned_sequence])
     constraint.link(graph)
     state = constraint.advance(constraint.initial_state, 0, graph.left_context_node.sequence)
     assert state == DEAD_STATE
@@ -265,7 +265,7 @@ def test_banned_sequence_entirely_in_left_context_is_dead(banned_sequence):
 )
 def test_banned_sequence_entirely_in_right_context_gives_empty_space(banned_sequence):
     graph = CodonGraph('MIKEY', context_r='GAATTC')
-    constraint = ForbiddenMotifConstraint([banned_sequence])
+    constraint = ForbiddenMotifs([banned_sequence])
     constraint.link(graph)
     state = constraint.advance(constraint.initial_state, graph.right_context_node.pos, graph.right_context_node.sequence)
     assert state == DEAD_STATE
@@ -273,7 +273,7 @@ def test_banned_sequence_entirely_in_right_context_gives_empty_space(banned_sequ
 
 def test_banned_sequence_spanning_left_context_and_first_codon_is_dead():
     graph = CodonGraph('ELEPHANT', context_l='AAGGATGATG')
-    constraint = ForbiddenMotifConstraint(['AAGGATGATGGAA'])
+    constraint = ForbiddenMotifs(['AAGGATGATGGAA'])
     constraint.link(graph)
 
     state = constraint.advance(constraint.initial_state, graph.left_context_node.pos, graph.left_context_node.sequence)
@@ -284,7 +284,7 @@ def test_banned_sequence_spanning_left_context_and_first_codon_is_dead():
 
 def test_banned_sequence_spanning_last_codon_and_right_context_is_dead():
     graph = CodonGraph('ELEPHANT', context_r='AAGGATGATG')
-    constraint = ForbiddenMotifConstraint(['CGAAGGATGATG'])
+    constraint = ForbiddenMotifs(['CGAAGGATGATG'])
     constraint.link(graph)
 
     state = constraint.advance(constraint.initial_state, graph.codon_nodes[-1].pos, 'ACG')
@@ -297,7 +297,7 @@ def test_banned_sequence_spanning_both_contexts_is_dead():
     coding_sequence = 'GAGCTTGAGCCGCATGCCAATACG'
 
     graph = CodonGraph('ELEPHANT', context_l='TTAA', context_r='AAGG')
-    constraint = ForbiddenMotifConstraint(['AA' + coding_sequence + 'AA'])
+    constraint = ForbiddenMotifs(['AA' + coding_sequence + 'AA'])
     constraint.link(graph)
 
     state = constraint.advance(
