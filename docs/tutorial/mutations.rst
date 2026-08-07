@@ -147,14 +147,17 @@ Mutation spaces inherit constraints from the parent ``CodingSpace``.
 .. code-block:: python
 
     from codeine import CodingSpace, RestrictionSite
+    from codeine.constraints import ForbiddenMotifConstraint, HomopolymerConstraint
 
     space = CodingSpace(
             aa_seq,
-            forbidden_motifs=[
-                RestrictionSite.EcoRI,
-                RestrictionSite.NotI,
+            constraints=[
+                ForbiddenMotifConstraint([
+                    RestrictionSite.EcoRI,
+                    RestrictionSite.NotI,
+                ]),
+                HomopolymerConstraint(5),
             ],
-            max_homopolymer=5,
     )
 
     muts = space.mutants(

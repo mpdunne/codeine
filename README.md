@@ -12,7 +12,7 @@
 pip install codeine
 ```
 
-Full documentation: **https://codeine.readthedocs.io/**.
+Full documentation: **[https://codeine.readthedocs.io/](https://codeine.readthedocs.io/)**.
 
 ## Quick start
 
@@ -24,7 +24,6 @@ space = CodingSpace('MKTIIALSYIFCLVF')
 print(space.n_valid_sequences)
 print(space.sample())
 ```
-
 
 ## Overview
 
@@ -80,21 +79,21 @@ Apply constraints:
 
 ```python
 from codeine import CodingSpace, RestrictionSite
-from codeine.constraints import TandemRepeatConstraint
+from codeine.constraints import ForbiddenMotifConstraint, HomopolymerConstraint, TandemRepeatConstraint
 
 space = CodingSpace(
     'MKTLEFQNGSCPRYKKL',
-    forbidden_motifs=[
-        RestrictionSite.EcoRI,
-        RestrictionSite.BamHI,
-        'CTGCAG',
-    ],
     fixed_codons={
         2: 'AAG',
         16: 'AAG',
     },
-    max_homopolymer=4,
     constraints=[
+        ForbiddenMotifConstraint([
+            RestrictionSite.EcoRI,
+            RestrictionSite.BamHI,
+            'CTGCAG',
+        ]),
+        HomopolymerConstraint(4),
         TandemRepeatConstraint(repeat_length=3, copies=3),
     ],
 )
@@ -155,3 +154,4 @@ mutants = space.mutants(
 )
 
 print(mutants.sample())
+```
