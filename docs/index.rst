@@ -39,11 +39,14 @@ Example
 .. code-block:: python
 
     from codeine import CodingSpace, RestrictionSite
+    from codeine.constraints import ForbiddenMotifConstraint, HomopolymerConstraint
 
     space = CodingSpace(
         'CYIQNCPLG',
-        forbidden_motifs=[RestrictionSite.EcoRI],
-        max_homopolymer=5
+        constraints=[
+            ForbiddenMotifConstraint(RestrictionSite.EcoRI),
+            HomopolymerConstraint(5),
+        ],
     )
 
     print(space.n_valid_sequences)

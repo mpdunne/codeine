@@ -17,12 +17,13 @@ Sequence contexts can be supplied to ``CodingSpace`` via the ``context_l`` and
 .. code-block:: python
 
     from codeine import CodingSpace, RestrictionSite
+    from codeine.constraints import ForbiddenMotifConstraint
 
     space = CodingSpace(
         'CYIQNCPLG',
         context_l='GCGGCCGCGAAT',
         context_r='ATTCAGAATTCC',
-        forbidden_motifs=[RestrictionSite.EcoRI],
+        constraints=ForbiddenMotifConstraint(RestrictionSite.EcoRI),
     )
 
     print(space.n_valid_sequences)

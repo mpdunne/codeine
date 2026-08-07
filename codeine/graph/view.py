@@ -12,6 +12,7 @@ from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
 from codeine.utils.display import format_count, format_restrictions
 from codeine.utils.sampling import Seedable, Sampler, SingletonSampler, UniformSampler, WeightedSampler
+from codeine.utils.tuples import tuplify
 
 
 # Sentinels for compile status, indicating what, if
@@ -32,7 +33,7 @@ class CodonGraphView:
     def __init__(self,
                  graph: CodonGraph,
                  *,
-                 constraints: Optional[Sequence[Constraint]] = None,
+                 constraints: Optional[Union[Constraint, Sequence[Constraint]]] = None,
                  weights: Optional[CodonWeights] = None,
                  seed: Seedable = None,
                  ) -> None:
@@ -53,7 +54,7 @@ class CodonGraphView:
 
         self.graph = graph
         self.pinned_codons: Dict[int, CodonRestriction] = {}
-        self.constraints: Tuple[Constraint, ...] = tuple(constraints or ())
+        self.constraints: Tuple[Constraint, ...] = tuplify(constraints, Constraint)
 
         if weights is None:
             weights = CodonWeights.uniform(table=self.graph.tt)
@@ -373,7 +374,7 @@ class CodonGraphView:
         self.pinned_codons.update(pinned_codons)
         self._update_compile_status(COMPILE_SHALLOW)
 
-    def unpin_codons(self, positions: Sequence[int]) -> None:
+    def unpin_codons(self, positions: Union[int, Sequence[int]]) -> None:
         """
         Unpin codon nodes by pos.
 
@@ -382,7 +383,7 @@ class CodonGraphView:
         positions
             A list of positions to unpin.
         """
-        for pos in positions:
+        for pos in tuplify(positions, int):
             if pos < 1 or pos > len(self.graph.codon_nodes):
                 raise ValueError(f'Pinned codon position {pos} is out of range.')
 
@@ -417,12 +418,9 @@ class CodonGraphView:
         Parameters
         ----------
         constraints
-            Constraints to add.
+            Constraint or constraints to add.
         """
-        if isinstance(constraints, Constraint):
-            constraints = [constraints]
-
-        constraints = tuple(constraints)
+        constraints = tuplify(constraints, Constraint)
 
         if not constraints:
             return
@@ -431,7 +429,7 @@ class CodonGraphView:
         self._pending_constraints += constraints
         self._update_compile_status(COMPILE_EXTEND)
 
-    def set_constraints(self, constraints: Sequence[Constraint]) -> None:
+    def set_constraints(self, constraints: Union[Constraint, Sequence[Constraint]]) -> None:
         """
         Set the constraints for this view.
 
@@ -440,7 +438,7 @@ class CodonGraphView:
         constraints
             Constraints to apply during graph traversal.
         """
-        self.constraints = tuple(constraints)
+        self.constraints = tuplify(constraints, Constraint)
         self._pending_constraints = ()
         self._update_compile_status(COMPILE_DEEP)
 

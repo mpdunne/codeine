@@ -100,6 +100,17 @@ def test_mutation_space_mutates_only_specified_positions(aa_seq, positions):
     assert len(set(values_at_unfixed_positions)) != 1
 
 
+def test_mutation_space_accepts_single_free_position():
+    space = CodingSpace('MIKEY')
+    cds = 'ATGATTAAAGAATAT'
+
+    direct = MutationSpace(space, cds, free_positions=2)
+    derived = space.mutants(cds, free_positions=2)
+
+    assert direct.free_positions == frozenset({2})
+    assert derived.free_positions == frozenset({2})
+
+
 def test_mutation_space_n_valid_sequences():
     aa_seq = 'MIKEY'
     ref_cds = 'ATGATTAAAGAATAT'
@@ -205,12 +216,23 @@ def test_mutation_space_can_set_free_positions():
     assert muts.frozen_positions == frozenset({2, 4, 5})
 
 
+def test_mutation_space_can_set_single_free_position():
+    space = CodingSpace('MIKEY')
+    cds = space[0]
+    muts = MutationSpace(space, cds)
+
+    muts.set_free_positions(3)
+
+    assert muts.free_positions == frozenset({3})
+    assert muts.frozen_positions == frozenset({1, 2, 4, 5})
+
+
 def test_mutation_space_can_freeze_positions():
     space = CodingSpace('MIKEY')
     cds = space[0]
     muts = MutationSpace(space, cds)
 
-    muts.freeze_positions([1])
+    muts.freeze_positions(1)
 
     assert 1 not in muts.free_positions
     assert 1 in muts.frozen_positions
@@ -221,7 +243,7 @@ def test_mutation_space_can_unfreeze_positions():
     cds = space[0]
     muts = MutationSpace(space, cds, free_positions=[3])
 
-    muts.unfreeze_positions([1])
+    muts.unfreeze_positions(1)
 
     assert muts.free_positions == frozenset({1, 3})
 
@@ -329,7 +351,7 @@ def test_mutation_space_exposes_pins_including_frozen_positions():
 
     assert muts.pinned_codons == {2: ['ATC']}
 
-    muts.unfreeze_positions([2])
+    muts.unfreeze_positions(2)
 
     assert muts.pinned_codons == {}
 
@@ -750,8 +772,8 @@ def test_banned_sequences_work_with_distance_constraints():
     space = CodingSpace('SASSAFRAS', context_l='AAAAAA', context_r='GGGGGG')
     assert space.n_valid_sequences == 995328
 
-    banned = ['TTTT', 'AAATCT', 'TCTGGG']
-    space = CodingSpace('SASSAFRAS', context_l='AAAAAA', context_r='GGGGGG', forbidden_motifs=banned)
+    banned=ForbiddenMotifConstraint(['TTTT', 'AAATCT', 'TCTGGG'])
+    space = CodingSpace('SASSAFRAS', context_l='AAAAAA', context_r='GGGGGG', constraints=banned)
     assert space.n_valid_sequences == 604800
 
     reference = 'TCCGCTTCTTCTGCTTTCCGTGCTTCC'
@@ -850,12 +872,8 @@ def test_mutation_space_matches_naive_combinatorial(
 ):
     context_l, context_r = context
 
-    space = CodingSpace(
-        aa_seq,
-        context_l=context_l,
-        context_r=context_r,
-        forbidden_motifs=banned_sequences,
-    )
+    constraint = ForbiddenMotifConstraint(banned_sequences) if banned_sequences else None
+    space = CodingSpace(aa_seq, context_l=context_l, context_r=context_r, constraints=constraint)
 
     if space.n_valid_sequences == 0:
         return
@@ -917,12 +935,8 @@ def test_mutation_space_samples_real_proteins(
 ):
     context_l, context_r = context
 
-    space = CodingSpace(
-        aa_seq,
-        context_l=context_l,
-        context_r=context_r,
-        forbidden_motifs=banned_sequences,
-    )
+    constraint = ForbiddenMotifConstraint(banned_sequences) if banned_sequences else None
+    space = CodingSpace(aa_seq, context_l=context_l, context_r=context_r, constraints=constraint)
 
     if space.n_valid_sequences == 0:
         return
@@ -981,7 +995,8 @@ def helper_mutation_counts_by_block(seqs, ref, block_size):
     dict(min_nts=10, max_nts=20, min_codons=8, max_codons=15),
 ))
 def test_mutation_sampling_is_even_across_sequence(aa_seq, banned, distance_constraints):
-    space = CodingSpace(aa_seq, context_l='aaa', context_r='ttt', forbidden_motifs=banned)
+    constraint = ForbiddenMotifConstraint(banned) if banned else None
+    space = CodingSpace(aa_seq, context_l='aaa', context_r='ttt', constraints=constraint)
 
     ref = space[0]
 
@@ -1041,8 +1056,8 @@ def helper_codon_counts_by_block_position(seqs, block_size=5):
     dict(min_nts=10, max_nts=20, min_codons=8, max_codons=15),
 ))
 def test_mutation_codon_distributions_are_stable_across_sequence(aa_seq, banned, distance_constraints):
-
-    space = CodingSpace(aa_seq, context_l='aaa', context_r='ttt', forbidden_motifs=banned, seed=8765309)
+    constraint = ForbiddenMotifConstraint(banned) if banned else None
+    space = CodingSpace(aa_seq, context_l='aaa', context_r='ttt', constraints=constraint, seed=8765309)
 
     ref = space[0]
 
@@ -1087,11 +1102,7 @@ def test_mutation_space_direct_construction_normalises_dna_reference_for_rna_spa
 
 def test_mutation_space_repr_includes_variant_count_with_distance_constraints():
     space = CodingSpace('F')
-    mutants = MutationSpace(
-        space,
-        'TTT',
-        min_nts=1,
-    )
+    mutants = MutationSpace(space,'TTT', min_nts=1,)
 
     text = repr(mutants)
 
@@ -1102,7 +1113,7 @@ def test_mutation_space_repr_includes_variant_count_with_distance_constraints():
 def test_setting_distance_constraints_preserves_base_constraints():
     constraint = ForbiddenMotifConstraint(['GAA'])
     space = CodingSpace('E')
-    space.set_constraints([constraint])
+    space.set_constraints(constraint)
     mutants = MutationSpace(space, 'GAG')
 
     mutants.set_distance_constraints(max_nts=1)
@@ -1199,12 +1210,7 @@ def test_mutation_space_codon_options_respect_inherited_pins():
 
 def test_mutation_space_copy():
     space = CodingSpace('MIKEY')
-    muts = space.mutants(
-        'ATGATTAAAGAATAT',
-        free_positions=[2, 3],
-        min_nts=1,
-        max_codons=2,
-    )
+    muts = space.mutants('ATGATTAAAGAATAT', free_positions=[2, 3], min_nts=1, max_codons=2)
 
     copied = muts.copy()
 
