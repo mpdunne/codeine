@@ -22,7 +22,7 @@ Tandem repeats are stretches of DNA that contain the same sequence repeated mult
 times without gaps. Tandem repeats can increase the risk of polymerase slippage, repeat expansion,
 and DNA synthesis failures.
 
-The following example uses a ``TandemRepeats`` to forbid tandem repeats with a repeat unit of
+The following example uses ``TandemRepeats`` to forbid tandem repeats with a repeat unit of
 4 nucleotides occurring three or more times consecutively.
 
 .. code-block:: python
@@ -65,7 +65,7 @@ A direct repeat is a stretch of nucleotides that is repeated exactly elsewhere i
 Direct repeats can increase the risk of homologous recombination, leading to deletions and
 reduced genetic stability.
 
-The following example uses a ``DirectRepeats`` to exclude direct repeats of length 20
+The following example uses ``DirectRepeats`` to exclude direct repeats of length 20
 nucleotides occurring within a specified distance range.
 
 .. code-block:: python
@@ -97,7 +97,7 @@ Inverted repeats
 Inverted repeats are stretches of nucleotides that are exact reverse-complements of other
 stretches in the sequence. These can form undesirable secondary structures.
 
-The syntax for an ``InvertedRepeats`` is the same as for ``DirectRepeats``:
+The syntax for ``InvertedRepeats`` is the same as for ``DirectRepeats``:
 
 
 .. code-block:: python
@@ -125,9 +125,9 @@ Hairpins
 --------------
 
 Hairpins are a special case of inverted repeats, where the gap between complementary sequences
-is small, forming highly stable"stem and loop" structures.
+is small, forming highly stable "stem and loop" structures.
 
-These can be avoided using the ``Hairpins``:
+These can be excluded using with ``Hairpins``:
 
 .. code-block:: python
 
@@ -147,7 +147,7 @@ These can be avoided using the ``Hairpins``:
 
    print(space.n_valid_sequences)
 
-Note that the ``Hairpins`` requires exact base pairing: wobble bases are not considered.
+Note that ``Hairpins`` requires exact base pairing: wobble bases are not considered.
 
 
 Combining repeat constraints

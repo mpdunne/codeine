@@ -23,7 +23,9 @@ Sequence contexts can be supplied to ``CodingSpace`` via the ``context_l`` and
         'CYIQNCPLG',
         context_l='GCGGCCGCGAAT',
         context_r='ATTCAGAATTCC',
-        constraints=ForbiddenMotifs(RestrictionSite.EcoRI),
+        constraints=[
+            ForbiddenMotifs(RestrictionSite.EcoRI)
+        ],
     )
 
     print(space.n_valid_sequences)

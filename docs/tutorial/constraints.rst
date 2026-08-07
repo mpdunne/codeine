@@ -3,8 +3,7 @@ Adding constraints
 
 Sequence constraints are central to **Codeine**'s design philosophy, allowing you to easily narrow the space of valid coding sequences to match your requirements.
 
-Constraints are specified via the ``constraints`` argument to
-``CodingSpace``.
+Constraints are specified via the ``constraints`` argument to ``CodingSpace``.
 
 Currently **Codeine** handles:
 
@@ -24,11 +23,11 @@ Forbidden motifs
 
 In biotechnology we often wish to exclude sequence motifs that interfere with cloning, synthesis, or downstream applications.
 
-**Codeine** can exclude such sequences using ``ForbiddenMotifs``:
+**Codeine** can exclude such sequences by passing ``ForbiddenMotifs`` to the `constraints` argument:
 
 .. code-block:: python
 
-    from codeine import CodingSpace, RestrictionSite
+    from codeine import CodingSpace
     from codeine.constraints import ForbiddenMotifs
 
     aa_seq = 'MKTLEFQNGSCPRYKKL'
@@ -36,20 +35,16 @@ In biotechnology we often wish to exclude sequence motifs that interfere with cl
     unconstrained = CodingSpace(aa_seq)
 
     constrained = CodingSpace(
-       aa_seq,
-       constraints=ForbiddenMotifs([
-           'GAATTC',
-           'CTCGAG',
-       ]),
-       seed=42,
+        aa_seq,
+        constraints=[
+            ForbiddenMotifs(['GAATTC', 'CTCGAG']),
+        ],
+        seed=42,
     )
 
     print(f'Without constraints: {unconstrained.n_valid_sequences:,} sequences')
     print(f'With constraints: {constrained.n_valid_sequences:,} sequences')
     print(constrained.sample())
-
-Forbidden motifs are specified with ``ForbiddenMotifs`` via the
-``constraints`` argument.
 
 For convenience, ``codeine.RestrictionSite`` provides a collection of commonly used restriction
 enzyme recognition sequences. The built-in motifs can be used alongside custom motifs:
@@ -61,11 +56,13 @@ enzyme recognition sequences. The built-in motifs can be used alongside custom m
 
    space = CodingSpace(
        aa_seq,
-       constraints=ForbiddenMotifs([
-           RestrictionSite.EcoRI,
-           RestrictionSite.BsaI,
-           'GATTACA',
-       ]),
+       constraints=[
+           ForbiddenMotifs([
+               RestrictionSite.EcoRI,
+               RestrictionSite.BsaI,
+               'GATTACA',
+           ]),
+       ],
    )
 
 Each named restriction site is automatically interpreted to mean both the recognition sequence and its
@@ -83,8 +80,8 @@ The recognition sequences for these were taken from the
 
 .. _Max homopolymer length:
 
-Max homopolymer
----------------
+Maximum homopolymer length
+--------------------------
 
 Long homopolymer runs can be difficult to work with because they increase the risk of polymerase slippage and sequencing errors. In **Codeine**, runs of identical nucleotides can be avoided using ``MaxHomopolymer``.
 
@@ -98,7 +95,9 @@ containing six or more consecutive identical nucleotides.
 
    space = CodingSpace(
        aa_seq,
-       constraints=MaxHomopolymer(5),
+       constraints=[
+           MaxHomopolymer(5),
+       ],
    )
 
    print(space.n_valid_sequences)
@@ -112,23 +111,20 @@ containing six or more consecutive identical nucleotides.
 Repeat constraints
 ------------------
 
-Repeat constraints are specified through the ``constraints`` argument to
-``CodingSpace``:
+Repeat constraints are specified through the ``constraints`` argument to ``CodingSpace``:
 
 .. code-block:: python
 
    from codeine import CodingSpace
-   from codeine.constraints import (
-       DirectRepeats,
-       Hairpins,
-       InvertedRepeats,
-       TandemRepeats,
-   )
+   from codeine.constraints import DirectRepeats, Hairpins, InvertedRepeats, TandemRepeats
 
    space = CodingSpace(
        aa_seq,
        constraints=[
-           TandemRepeats(4, 3),
+           TandemRepeats(
+               repeat_length=4,
+               copies=3,
+           ),
            DirectRepeats(
                repeat_length=15,
                min_distance=30,
@@ -165,10 +161,9 @@ For example:
 
     space = CodingSpace(
         'MKTLEFQNGSCPRYKKL',
-        constraints=ForbiddenMotifs([
-            'ATGAAA',
-            'ATGAAG',
-        ]),
+        constraints=[
+            ForbiddenMotifs(['ATGAAA', 'ATGAAG']),
+        ],
     )
 
     print(f'Num. valid sequences: {space.n_valid_sequences}')
