@@ -145,7 +145,7 @@ Repeat constraints are specified through the ``constraints`` argument to ``Codin
 
    print(space.n_valid_sequences)
 
-See :doc:`repeat_constraints` for details and additional examples.
+See :doc:`repeats` for details and additional examples.
 
 Empty spaces
 ------------

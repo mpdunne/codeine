@@ -12,5 +12,6 @@ This guide introduces the main concepts in **Codeine**, via various worked examp
    tables
    contexts
    constraints
+   repeats
    weights
    mutations
