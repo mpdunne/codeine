@@ -1,7 +1,7 @@
-from codeine.constraints.repeats import InvertedRepeatConstraint
+from codeine.constraints.repeats import InvertedRepeats
 
 
-class HairpinConstraint(InvertedRepeatConstraint):
+class Hairpins(InvertedRepeats):
     """
     Forbid nucleotide sequences capable of forming specified hairpins.
     """

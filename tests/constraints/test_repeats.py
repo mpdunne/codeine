@@ -1,7 +1,7 @@
 import random
 import pytest
 
-from codeine.constraints.repeats import DirectRepeatConstraint, InvertedRepeatConstraint, RepeatConstraint
+from codeine.constraints.repeats import DirectRepeats, InvertedRepeats, RepeatConstraint
 from codeine.graph.base import CodonGraph
 from codeine.translation.tables import TranslationTable
 from codeine.tools.repeats import contains_direct_repeat, contains_inverted_repeat
@@ -76,7 +76,7 @@ def test_inverted_must_be_boolean(inverted):
 
 
 def test_direct_repeat_stores_values_correctly():
-    constraint = DirectRepeatConstraint(repeat_length=10, min_distance=3, max_distance=20)
+    constraint = DirectRepeats(repeat_length=10, min_distance=3, max_distance=20)
 
     assert constraint.repeat_length == 10
     assert constraint.min_distance == 3
@@ -85,7 +85,7 @@ def test_direct_repeat_stores_values_correctly():
 
 
 def test_inverted_repeat_stores_values_correctly():
-    constraint = InvertedRepeatConstraint(repeat_length=10, min_distance=3, max_distance=20)
+    constraint = InvertedRepeats(repeat_length=10, min_distance=3, max_distance=20)
 
     assert constraint.repeat_length == 10
     assert constraint.min_distance == 3
@@ -547,7 +547,7 @@ def test_direct_repeat_constraint_enumeration(context_l, aa_seq, context_r, repe
     view = CodonGraph(aa_seq, context_l=context_l, context_r=context_r).view()
     unconstrained = [*view.enumerate()]
 
-    view.set_constraints([DirectRepeatConstraint(repeat_length)])
+    view.set_constraints([DirectRepeats(repeat_length)])
     constrained = [*view.enumerate()]
 
     filtered = [cds for cds in unconstrained if not contains_direct_repeat(context_l + cds + context_r, repeat_length)]
@@ -579,7 +579,7 @@ def test_inverted_repeat_constraint_enumeration(context_l, aa_seq, context_r, re
     view = CodonGraph(aa_seq, context_l=context_l, context_r=context_r).view()
     unconstrained = [*view.enumerate()]
 
-    view.set_constraints([InvertedRepeatConstraint(repeat_length)])
+    view.set_constraints([InvertedRepeats(repeat_length)])
     constrained = [*view.enumerate()]
 
     filtered = [cds for cds in unconstrained if not contains_inverted_repeat(context_l + cds + context_r, repeat_length)]
@@ -610,7 +610,7 @@ def test_inverted_repeat_constraint_enumeration(context_l, aa_seq, context_r, re
 )
 def test_direct_repeat_constraint_empty_space(context_l, aa_seq, context_r, repeat_length):
     view = CodonGraph(aa_seq, context_l=context_l, context_r=context_r).view()
-    view.set_constraints([DirectRepeatConstraint(repeat_length)])
+    view.set_constraints([DirectRepeats(repeat_length)])
 
     assert not [*view.enumerate()]
 
@@ -637,7 +637,7 @@ def test_direct_repeat_constraint_empty_space(context_l, aa_seq, context_r, repe
 )
 def test_inverted_repeat_constraint_empty_space(context_l, aa_seq, context_r, repeat_length):
     view = CodonGraph(aa_seq, context_l=context_l, context_r=context_r).view()
-    view.set_constraints([InvertedRepeatConstraint(repeat_length)])
+    view.set_constraints([InvertedRepeats(repeat_length)])
 
     assert not [*view.enumerate()]
 
@@ -660,7 +660,7 @@ def test_inverted_repeat_constraint_empty_space(context_l, aa_seq, context_r, re
 def test_direct_repeat_constraint_sampling(aa_seq, repeat_length, min_distance, max_distance):
     view = CodonGraph(aa_seq).view()
 
-    constraint = DirectRepeatConstraint(repeat_length, min_distance=min_distance, max_distance=max_distance)
+    constraint = DirectRepeats(repeat_length, min_distance=min_distance, max_distance=max_distance)
     view.set_constraints([constraint])
 
     for _ in range(100):
@@ -681,7 +681,7 @@ def test_direct_repeat_constraint_sampling(aa_seq, repeat_length, min_distance, 
 def test_inverted_repeat_constraint_sampling(aa_seq, repeat_length, min_distance, max_distance):
     view = CodonGraph(aa_seq).view()
 
-    constraint = InvertedRepeatConstraint(repeat_length, min_distance=min_distance, max_distance=max_distance)
+    constraint = InvertedRepeats(repeat_length, min_distance=min_distance, max_distance=max_distance)
     view.set_constraints([constraint])
 
     for _ in range(100):

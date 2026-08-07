@@ -119,27 +119,27 @@ Repeat constraints are specified through the ``constraints`` argument to
 
    from codeine import CodingSpace
    from codeine.constraints import (
-       DirectRepeatConstraint,
-       HairpinConstraint,
-       InvertedRepeatConstraint,
-       TandemRepeatConstraint,
+       DirectRepeats,
+       Hairpins,
+       InvertedRepeats,
+       TandemRepeats,
    )
 
    space = CodingSpace(
        aa_seq,
        constraints=[
-           TandemRepeatConstraint(4, 3),
-           DirectRepeatConstraint(
+           TandemRepeats(4, 3),
+           DirectRepeats(
                repeat_length=15,
                min_distance=30,
                max_distance=300,
            ),
-           InvertedRepeatConstraint(
+           InvertedRepeats(
                repeat_length=15,
                min_distance=30,
                max_distance=300,
            ),
-           HairpinConstraint(
+           Hairpins(
                stem_length=12,
                min_loop=3,
                max_loop=20,
@@ -186,7 +186,7 @@ Constraints can be combined freely. For example:
    from codeine.constraints import (
        ForbiddenMotifs,
        MaxHomopolymer,
-       TandemRepeatConstraint,
+       TandemRepeats,
    )
 
    aa_seq = 'MKTLEFQNGSCPRYKKL'
@@ -200,7 +200,7 @@ Constraints can be combined freely. For example:
                'TAGATA',
            ]),
            MaxHomopolymer(5),
-           TandemRepeatConstraint(4, 3),
+           TandemRepeats(4, 3),
        ],
        seed=42,
    )

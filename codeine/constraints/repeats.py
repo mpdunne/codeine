@@ -549,7 +549,7 @@ class RepeatConstraint(Constraint, ABC):
         return requirements
 
 
-class DirectRepeatConstraint(RepeatConstraint):
+class DirectRepeats(RepeatConstraint):
     """
     Forbid identical nucleotide sequences separated by a specified distance.
     """
@@ -579,7 +579,7 @@ class DirectRepeatConstraint(RepeatConstraint):
         )
 
 
-class InvertedRepeatConstraint(RepeatConstraint):
+class InvertedRepeats(RepeatConstraint):
     """
     Forbid reverse-complementary nucleotide sequences separated by a specified
     distance.

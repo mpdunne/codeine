@@ -119,14 +119,14 @@ def format_constraints(
     """
     Summarise constraints for repr output.
     """
-    from codeine.constraints.hairpins import HairpinConstraint
+    from codeine.constraints.hairpins import Hairpins
     from codeine.constraints.homopolymers import MaxHomopolymer
     from codeine.constraints.motifs import ForbiddenMotifs
     from codeine.constraints.repeats import (
-        DirectRepeatConstraint,
-        InvertedRepeatConstraint,
+        DirectRepeats,
+        InvertedRepeats,
     )
-    from codeine.constraints.tandem import TandemRepeatConstraint
+    from codeine.constraints.tandem import TandemRepeats
 
     forbidden_motifs = []
     homopolymer_lengths = []
@@ -140,16 +140,16 @@ def format_constraints(
         elif isinstance(constraint, ForbiddenMotifs):
             forbidden_motifs.extend(constraint.motifs)
 
-        elif isinstance(constraint, HairpinConstraint):
+        elif isinstance(constraint, Hairpins):
             constraint_counts['Hairpins'] += 1
 
-        elif isinstance(constraint, DirectRepeatConstraint):
+        elif isinstance(constraint, DirectRepeats):
             constraint_counts['Direct repeats'] += 1
 
-        elif isinstance(constraint, InvertedRepeatConstraint):
+        elif isinstance(constraint, InvertedRepeats):
             constraint_counts['Inverted repeats'] += 1
 
-        elif isinstance(constraint, TandemRepeatConstraint):
+        elif isinstance(constraint, TandemRepeats):
             constraint_counts['Tandem repeats'] += 1
 
         else:

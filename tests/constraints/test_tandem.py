@@ -1,6 +1,6 @@
 import pytest
 
-from codeine.constraints.tandem import TandemRepeatConstraint
+from codeine.constraints.tandem import TandemRepeats
 from codeine.graph.base import CodonGraph
 from codeine.translation.tables import TranslationTable
 
@@ -83,14 +83,14 @@ def helper_enumerate_expected(
 
 
 def test_tandem_repeat_constraint_stores_parameters():
-    constraint = TandemRepeatConstraint(repeat_length=4, copies=3)
+    constraint = TandemRepeats(repeat_length=4, copies=3)
 
     assert constraint.repeat_length == 4
     assert constraint.copies == 3
 
 
 def test_tandem_repeat_constraint_defaults_to_two_copies():
-    constraint = TandemRepeatConstraint(repeat_length=4)
+    constraint = TandemRepeats(repeat_length=4)
 
     assert constraint.copies == 2
 
@@ -98,25 +98,25 @@ def test_tandem_repeat_constraint_defaults_to_two_copies():
 @pytest.mark.parametrize('repeat_length', [0, -1])
 def test_repeat_length_must_be_positive(repeat_length):
     with pytest.raises(ValueError, match='repeat_length must be at least 1'):
-        TandemRepeatConstraint(repeat_length=repeat_length)
+        TandemRepeats(repeat_length=repeat_length)
 
 
 @pytest.mark.parametrize('repeat_length', [None, 1.5, '4', True])
 def test_repeat_length_must_be_an_integer(repeat_length):
     with pytest.raises(TypeError, match='repeat_length must be an integer'):
-        TandemRepeatConstraint(repeat_length=repeat_length)
+        TandemRepeats(repeat_length=repeat_length)
 
 
 @pytest.mark.parametrize('copies', [0, 1, -1])
 def test_copies_must_be_at_least_two(copies):
     with pytest.raises(ValueError, match='copies must be at least 2'):
-        TandemRepeatConstraint(repeat_length=4, copies=copies)
+        TandemRepeats(repeat_length=4, copies=copies)
 
 
 @pytest.mark.parametrize('copies', [None, 2.5, '2', True])
 def test_copies_must_be_an_integer(copies):
     with pytest.raises(TypeError, match='copies must be an integer'):
-        TandemRepeatConstraint(repeat_length=4, copies=copies)
+        TandemRepeats(repeat_length=4, copies=copies)
 
 
 ###############################
@@ -170,7 +170,7 @@ def test_enumerated_sequences_do_not_contain_tandem_repeats(aa_seq, repeat_lengt
 
     view = CodonGraph(aa_seq).view()
 
-    constraint = TandemRepeatConstraint(repeat_length=repeat_length, copies=copies)
+    constraint = TandemRepeats(repeat_length=repeat_length, copies=copies)
     view.set_constraints([constraint])
 
     observed = set(view.enumerate())
@@ -205,7 +205,7 @@ def test_enumerated_sequences_do_not_contain_tandem_repeats(aa_seq, repeat_lengt
 def test_sampled_sequences_do_not_contain_tandem_repeats(aa_seq, repeat_length, copies):
     view = CodonGraph(aa_seq).view(seed=8675309)
 
-    constraint = TandemRepeatConstraint(repeat_length=repeat_length, copies=copies)
+    constraint = TandemRepeats(repeat_length=repeat_length, copies=copies)
     view.set_constraints([constraint])
 
     for sequence in view.sample(n=1000):
@@ -273,7 +273,7 @@ def test_tandem_repeats_in_contexts(
 
     view = CodonGraph(aa_seq, context_l=context_l, context_r=context_r).view()
 
-    constraint = TandemRepeatConstraint(repeat_length=repeat_length, copies=copies)
+    constraint = TandemRepeats(repeat_length=repeat_length, copies=copies)
     view.set_constraints([constraint])
 
     observed = set(view.enumerate())
@@ -306,7 +306,7 @@ def test_tandem_repeats_in_contexts(
 def test_repeat_entirely_within_context_makes_space_empty(context_l, context_r):
     view = CodonGraph('MIKEY', context_l=context_l, context_r=context_r).view()
 
-    constraint = TandemRepeatConstraint(repeat_length=2, copies=2)
+    constraint = TandemRepeats(repeat_length=2, copies=2)
     view.set_constraints([constraint])
 
     assert view.n_valid_sequences == 0
@@ -335,7 +335,7 @@ def test_real_protein_samples_do_not_contain_tandem_repeats(
 ):
     view = CodonGraph(aa_seq).view(seed=8675309)
 
-    constraint = TandemRepeatConstraint(repeat_length=repeat_length, copies=copies)
+    constraint = TandemRepeats(repeat_length=repeat_length, copies=copies)
     view.set_constraints([constraint])
 
     for sequence in view.sample(n=100):
@@ -358,7 +358,7 @@ def test_real_protein_samples_with_contexts(
 ):
     view = CodonGraph(aa_seq, context_l=context_l, context_r=context_r).view(seed=8675309)
 
-    constraint = TandemRepeatConstraint(repeat_length=repeat_length, copies=copies)
+    constraint = TandemRepeats(repeat_length=repeat_length, copies=copies)
     view.set_constraints([constraint])
 
     for sequence in view.sample(n=100):
@@ -376,9 +376,9 @@ def test_multiple_tandem_repeat_constraints():
     aa_seq = 'FIYFI'
 
     constraints = [
-        TandemRepeatConstraint(2, 3),
-        TandemRepeatConstraint(3, 2),
-        TandemRepeatConstraint(5, 2),
+        TandemRepeats(2, 3),
+        TandemRepeats(3, 2),
+        TandemRepeats(5, 2),
     ]
 
     expected = {
@@ -411,12 +411,12 @@ def test_multiple_tandem_repeat_constraints():
 )
 def test_sampled_sequences_satisfy_multiple_tandem_repeat_constraints(aa_seq):
     constraints = [
-        TandemRepeatConstraint(1, 6),
-        TandemRepeatConstraint(2, 4),
-        TandemRepeatConstraint(3, 3),
-        TandemRepeatConstraint(4, 3),
-        TandemRepeatConstraint(5, 2),
-        TandemRepeatConstraint(6, 2),
+        TandemRepeats(1, 6),
+        TandemRepeats(2, 4),
+        TandemRepeats(3, 3),
+        TandemRepeats(4, 3),
+        TandemRepeats(5, 2),
+        TandemRepeats(6, 2),
     ]
 
     view = CodonGraph(aa_seq).view(seed=8675309)
@@ -446,7 +446,7 @@ def test_long_and_possible_repeat_unit(seq, repeat_length, copies):
     view = CodonGraph(aa_seq).view()
     unconstrained_n = view.n_valid_sequences
 
-    view.set_constraints([TandemRepeatConstraint(repeat_length=repeat_length, copies=copies)])
+    view.set_constraints([TandemRepeats(repeat_length=repeat_length, copies=copies)])
     view.compile()
     constrained_n = view.n_valid_sequences
 
@@ -469,7 +469,7 @@ def test_long_but_impossible_repeat_unit(seq, repeat_length, copies):
     view = CodonGraph(aa_seq).view()
     unconstrained_n = view.n_valid_sequences
 
-    view.set_constraints([TandemRepeatConstraint(repeat_length=repeat_length, copies=copies)])
+    view.set_constraints([TandemRepeats(repeat_length=repeat_length, copies=copies)])
     view.compile()
     constrained_n = view.n_valid_sequences
 
