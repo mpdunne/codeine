@@ -872,7 +872,7 @@ def test_mutation_space_matches_naive_combinatorial(
 ):
     context_l, context_r = context
 
-    constraint = ForbiddenMotifConstraint(banned_sequences) if banned_sequences else None,
+    constraint = ForbiddenMotifConstraint(banned_sequences) if banned_sequences else None
     space = CodingSpace(aa_seq, context_l=context_l, context_r=context_r, constraints=constraint)
 
     if space.n_valid_sequences == 0:
