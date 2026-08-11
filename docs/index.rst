@@ -64,4 +64,5 @@ Features
    installation
    quickstart
    tutorial/index
+   examples/index
    api
