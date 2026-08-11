@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "codeine"
 version = "0.5.1"
-description = "A Python library for exploring constrained synonymous protein-coding space."
+description = "A Python library for constrained reverse translation of protein sequences."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
