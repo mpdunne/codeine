@@ -1,14 +1,36 @@
 Codeine
 =======
 
-**Codeine** is a Python library for exploring synonymous coding sequence spaces under biological constraints.
+**Codeine** is a Python library for constrained reverse translation of protein sequences.
+
+
+Example
+-------
+
+.. code-block:: python
+
+    from codeine import CodingSpace, RestrictionSite
+    from codeine.constraints import ForbiddenMotifs, MaxHomopolymer
+
+    space = CodingSpace(
+        'CYIQNCPLG',
+        constraints=[
+            ForbiddenMotifs(RestrictionSite.EcoRI),
+            MaxHomopolymer(5),
+        ],
+    )
+
+    print(space.n_valid_sequences)
+    print(space.sample())
+
+
 
 
 Why Codeine?
 ------------
 
 Codeine compiles biological constraints into a ``CodingSpace``, an
-exact representation of the feasible design space for a given amino
+exact representation of the feasible coding sequence space for a given amino
 acid sequence.
 
 Sequences sampled or enumerated from a ``CodingSpace`` are
@@ -31,27 +53,6 @@ Features
 * Restriction sites & arbitrary motif avoidance
 * Homopolymer and tandem repeat avoidance
 * Custom translation tables
-
-
-Example
--------
-
-.. code-block:: python
-
-    from codeine import CodingSpace, RestrictionSite
-    from codeine.constraints import ForbiddenMotifs, MaxHomopolymer
-
-    space = CodingSpace(
-        'CYIQNCPLG',
-        constraints=[
-            ForbiddenMotifs(RestrictionSite.EcoRI),
-            MaxHomopolymer(5),
-        ],
-    )
-
-    print(space.n_valid_sequences)
-    print(space.sample())
-
 
 
 .. toctree::
