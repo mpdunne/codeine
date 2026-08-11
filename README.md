@@ -1,8 +1,6 @@
 # 🧬 Codeine
 
-**Codeine** is a Python library for exploring synonymous protein-coding sequence spaces under biological constraints.
-
-
+**Codeine** is a Python library for constrained reverse translation of protein sequences.
 
 ## Installation & documentation
 
@@ -12,7 +10,7 @@
 pip install codeine
 ```
 
-Full documentation: **[https://codeine.readthedocs.io/](https://codeine.readthedocs.io/)**.
+Full documentation: **https://codeine.readthedocs.io/**.
 
 ## Quick start
 
@@ -39,7 +37,7 @@ For many biotechnological applications, such as recombinant expression, we must 
 
 Identifying valid coding sequences under such constraints quickly becomes challenging, especially for longer proteins.
 
-**Codeine** represents the complete valid coding sequence space exactly for a given protein and experimental setup. It enables efficient counting, sampling, enumeration and mutation library design while guaranteeing that every generated sequence satisfies the specified constraints.
+**Codeine** exactly represents the complete set of coding sequences for a given protein under specified constraints. It enables efficient counting, sampling, enumeration and mutation library design without the need for sequence filtering or repair.
 
 ## Examples
 
