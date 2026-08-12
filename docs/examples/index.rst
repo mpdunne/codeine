@@ -10,3 +10,4 @@ Examples demonstrating Codeine in practical sequence design workflows.
 
    spcas9
    gfp
+   impossible_proteins
