@@ -38,6 +38,7 @@ class RestrictionSite(Enum):
     KpnI = 'GGTACC'
     SacI = 'GAGCTC'
     NcoI = 'CCATGG'
+    PciI = 'ACATGT'
     NdeI = 'CATATG'
     NotI = 'GCGGCCGC'
     MluI = 'ACGCGT'
