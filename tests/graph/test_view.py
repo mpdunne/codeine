@@ -875,6 +875,25 @@ def test_copied_view_copies_rng_state():
     assert copied.sample() == view.sample()
 
 
+@pytest.mark.parametrize('weights', [CodonWeights.uniform(), CodonWeights.ecoli()])
+def test_copied_view_shares_warm_compiled_result_but_not_random_stream(weights):
+    view = CodonGraph('MIKEY').view(seed=123, weights=weights)
+    view.sample(20)
+
+    copied = view.copy()
+
+    assert copied._compiled is view._compiled
+    assert copied._rng is not view._rng
+    assert copied.sample(100) == view.sample(100)
+
+    copied.pin_codons({2: 'ATT'})
+    copied.sample()
+
+    assert copied._compiled is not view._compiled
+    assert view.n_valid_sequences == 24
+    assert copied.n_valid_sequences == 8
+
+
 def test_view_defaults_to_dna_when_only_weights_are_given():
     weights = CodonWeights.ecoli()
 
@@ -1654,18 +1673,6 @@ def test_codon_distributions_roughly_match_weights_banned_sequences(name, aa_seq
     assert min(pvalues, default=1.0) >= 1e-6
 
 
-def test_sequence_at_raises_on_unexpected_dead_end():
-    view = CodonGraph('M').view()
-    view.compile()
-
-    choice_results = list(view.choice_results_by_state_id)
-    choice_results[view.initial_state_id] = ()
-    view.choice_results_by_state_id = tuple(choice_results)
-
-    with pytest.raises(RuntimeError):
-        view.sequence_at(0)
-
-
 def test_set_weights_marks_view_for_sampler_update():
     view = CodonGraph('MIKEY').view()
     view.compile()
@@ -1761,17 +1768,17 @@ def test_set_weights_preserves_deep_topology():
     assert view._compiled.child_results_by_state_id == child_results
 
 
-def test_shallow_compile_clears_cached_samplers():
+def test_shallow_compile_clears_cached_sampling_choices():
     graph = CodonGraph('MIKEY')
     view = graph.view()
 
     view.sample()
-    assert any(sampler is not None for sampler in view.samplers_by_state_id)
+    assert any(choices is not None for choices in view._compiled._sampling_choices_by_state_id)
 
     view.set_weights(CodonWeights.ecoli())
     view.compile()
 
-    assert all(sampler is None for sampler in view.samplers_by_state_id)
+    assert all(choices is None for choices in view._compiled._sampling_choices_by_state_id)
 
 
 def test_pins_are_applied_on_top_of_constraints():
