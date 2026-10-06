@@ -1122,6 +1122,19 @@ def test_setting_distance_constraints_preserves_base_constraints():
     assert set(mutants.enumerate()) == {'GAG'}
 
 
+def test_mutation_space_inherits_compiler_when_rebuilding_view():
+    space = CodingSpace('MK', compiler='flat')
+    muts = space.mutants('ATGAAA')
+
+    assert muts.compiler == muts._base_view.compiler == space.compiler
+    assert muts.count() == 2
+
+    muts.set_distance_constraints(min_nts=1)
+
+    assert muts.compiler == space.compiler
+    assert list(muts) == ['ATGAAG']
+
+
 def test_updating_distance_constraints_rebuilds_from_base_view():
     space = CodingSpace('MIKEY')
     cds = 'ATGATTAAAGAATAT'
@@ -1214,6 +1227,7 @@ def test_mutation_space_copy():
 
     copied = muts.copy()
 
+    assert copied.compiler == muts.compiler == 'flat'
     assert copied is not muts
     assert copied.view is not muts.view
     assert copied._base_view is not muts._base_view

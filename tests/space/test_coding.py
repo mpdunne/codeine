@@ -412,9 +412,45 @@ def test_coding_space_save_load_preserves_pins(tmp_path):
     space.save(path)
     loaded = CodingSpace.load(path)
 
+    assert loaded.compiler == space.compiler == 'flat'
     assert loaded.view.pinned_codons == space.view.pinned_codons
     assert loaded.n_valid_sequences == space.n_valid_sequences
     assert [*loaded.enumerate()] == [*space.enumerate()]
+
+
+def test_coding_space_compiler_selection():
+    assert CodingSpace('MK').compiler == 'flat'
+
+    space = CodingSpace('MK', compiler='flat')
+
+    assert space.compiler == space.view.compiler == 'flat'
+
+    with pytest.raises(ValueError, match="supported compilers: 'flat'"):
+        CodingSpace('MK', compiler='unknown')
+
+    with pytest.raises(AttributeError):
+        space.compiler = 'factorised'
+
+
+def test_coding_space_explicit_flat_matches_default():
+    default = CodingSpace('MKK', constraints=ForbiddenMotifs('AAAAAA'), seed=42)
+    explicit = CodingSpace(
+        'MKK',
+        constraints=ForbiddenMotifs('AAAAAA'),
+        seed=42,
+        compiler='flat',
+    )
+
+    assert default.count() == explicit.count() == 3
+    assert list(default) == list(explicit)
+    assert default.sample(20) == explicit.sample(20)
+
+    for space in (default, explicit):
+        space.pin_codons({2: 'AAA'})
+        space.compile()
+
+    assert default.count() == explicit.count() == 1
+    assert list(default) == list(explicit)
 
 
 def test_coding_space_exposes_graph_properties():
@@ -791,6 +827,7 @@ def test_coding_space_copy():
 
     copied = space.copy()
 
+    assert copied.compiler == space.compiler == 'flat'
     assert copied is not space
     assert copied.view is not space.view
     assert copied.pinned_codons == space.pinned_codons

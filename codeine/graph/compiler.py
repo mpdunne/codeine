@@ -1,60 +1,16 @@
 import math
 
-from typing import Dict, List, NamedTuple, Optional, Sequence, Tuple, TYPE_CHECKING
+from dataclasses import replace
+from typing import Dict, List, Optional, Sequence, Tuple, TYPE_CHECKING
 
 from codeine.constraints.base import Constraint, ConstraintState, DEAD_STATE, SAFE_STATE
+from codeine.graph.compiled import ChoiceResult, FlatCompiledView, TraversalState
 
 if TYPE_CHECKING:
     from codeine.graph.view import CodonGraphView
 
 
-# The traversal state consists of the current graph position
-# and the current state of each active constraint.
-TraversalState = Tuple[int, Tuple[ConstraintState, ...]]
 TraversalStateKey = TraversalState
-
-
-class ChoiceResult(NamedTuple):
-    """
-    Cached result of taking one graph choice from one compiled state. The
-    "choice" is the graph edge label, i.e. a codon or a context sequence.
-
-    Each ChoiceResult is specific to its location in the graph. The descendant
-    counts and log mass are calculated iteratively by summing the values of
-    downstream states.
-    """
-    choice: str
-    descendant_count: int
-    descendant_log_mass: float
-    next_state_id: Optional[int]
-    is_coding: bool
-
-
-class CompiledView(NamedTuple):
-    """
-    Cached data for a compiled CodonGraphView, to speed up sampling and enumeration.
-    """
-    initial_state: TraversalState
-    initial_state_id: int
-    states: Tuple[TraversalState, ...]
-
-    # Deep compiled transitions:
-    # state ID -> ((choice, child state ID), ...)
-    # These include every transition allowed by the graph and constraints,
-    # before temporary view pins are applied.
-    child_results_by_state_id: Tuple[Tuple[Tuple[str, int], ...], ...]
-
-    # Compiled graph choices (lookup):
-    # state ID -> choice -> ChoiceResult
-    # Used for fast sequence validation and graph traversal in the graph view.
-    choices_by_state_id: Tuple[Dict[str, ChoiceResult], ...]
-
-    # Compiled graph choices (iteration):
-    # state ID -> ChoiceResults in graph order
-    # Used for fast sampling and sequence enumeration in the graph view.
-    choice_results_by_state_id: Tuple[Tuple[ChoiceResult, ...], ...]
-
-    n_valid_sequences: int
 
 
 class ViewCompiler:
@@ -85,7 +41,7 @@ class ViewCompiler:
 
         # Compiled graph choices (lookup):
         # state ID -> choice -> ChoiceResult
-        # Used for fast sequence validation and graph traversal in the graph view.
+        # Used for fast sequence validation and graph traversal.
         self.choices_by_state_id: List[Optional[Dict[str, ChoiceResult]]] = []
 
         # The cached log-ified codon weights, to avoid repeated log calculations.
@@ -133,13 +89,13 @@ class ViewCompiler:
             for constraint in self.constraints
         )
 
-    def compile(self) -> CompiledView:
+    def compile(self) -> FlatCompiledView:
         """
         Compile descendant counts, graph choices, and sampling masses.
 
         Returns
         -------
-        CompiledView
+        FlatCompiledView
             A compiled view.
         """
         self._set_constraints(self.view.constraints)
@@ -156,7 +112,7 @@ class ViewCompiler:
 
         return self._compiled_view(initial_state_id)
 
-    def compile_shallow(self, compiled: CompiledView) -> CompiledView:
+    def compile_shallow(self, compiled: FlatCompiledView) -> FlatCompiledView:
         """
         Recompile choices, counts, and probability masses using an existing
         deep topology.
@@ -168,7 +124,7 @@ class ViewCompiler:
 
         Returns
         -------
-        CompiledView
+        FlatCompiledView
             The compiled view with updated shallow data.
         """
         self.states = list(compiled.states)
@@ -192,7 +148,8 @@ class ViewCompiler:
         initial_total = self.totals_by_state_id[compiled.initial_state_id]
         assert initial_total is not None
 
-        return compiled._replace(
+        return replace(
+            compiled,
             choices_by_state_id=choices_by_state_id,
             choice_results_by_state_id=choice_results_by_state_id,
             n_valid_sequences=initial_total[0],
@@ -200,9 +157,9 @@ class ViewCompiler:
 
     def extend(
             self,
-            compiled: CompiledView,
+            compiled: FlatCompiledView,
             constraints: Sequence[Constraint],
-    ) -> CompiledView:
+    ) -> FlatCompiledView:
         """
         Extend an existing compiled topology with additional constraints.
 
@@ -219,7 +176,7 @@ class ViewCompiler:
 
         Returns
         -------
-        CompiledView
+        FlatCompiledView
             An updated compiled view.
         """
         self._set_constraints(constraints)
@@ -305,7 +262,7 @@ class ViewCompiler:
 
             stack.extend(self._uncompiled_children(state_id))
 
-    def _compile_extended_topology(self, compiled: CompiledView, initial_state_id: int) -> None:
+    def _compile_extended_topology(self, compiled: FlatCompiledView, initial_state_id: int) -> None:
         """
         Compile additional constraints over an existing compiled topology.
 
@@ -474,9 +431,9 @@ class ViewCompiler:
         self.choices_by_state_id[state_id] = choice_results
         self.totals_by_state_id[state_id] = (descendant_count, descendant_log_mass)
 
-    def _compiled_view(self, initial_state_id: int) -> CompiledView:
+    def _compiled_view(self, initial_state_id: int) -> FlatCompiledView:
         """
-        Build an immutable CompiledView from the compiler's current state.
+        Build an immutable FlatCompiledView from the compiler's current state.
 
         Parameters
         ----------
@@ -488,7 +445,8 @@ class ViewCompiler:
 
         choices_by_state_id = tuple(choices or {} for choices in self.choices_by_state_id)
 
-        return CompiledView(
+        return FlatCompiledView(
+            graph=self.graph,
             initial_state=self.states[initial_state_id],
             initial_state_id=initial_state_id,
             states=tuple(self.states),

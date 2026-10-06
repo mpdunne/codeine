@@ -29,6 +29,7 @@ class CodingSpace(Space):
         context_r: str = '',
         codon_weights: Optional[CodonWeights] = None,
         seed: Optional[Seedable] = None,
+        compiler: str = 'flat',
     ) -> None:
         """
         Parameters
@@ -51,6 +52,8 @@ class CodingSpace(Space):
             The codon weights to use. Leave blank to sample uniformly.
         seed
             Seed used to initialise the random number generator for sampling.
+        compiler
+            Compilation engine. Currently only ``'flat'`` is supported.
         """
 
         translation_table, codon_weights = self._resolve_tables(translation_table, codon_weights, rna)
@@ -63,7 +66,7 @@ class CodingSpace(Space):
             context_r=context_r,
         )
 
-        self.view = graph.view(seed=seed, weights=codon_weights, constraints=constraints)
+        self.view = graph.view(seed=seed, weights=codon_weights, constraints=constraints, compiler=compiler)
 
     def __repr__(self) -> str:
         return self.info()
