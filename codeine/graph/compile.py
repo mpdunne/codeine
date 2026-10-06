@@ -4,8 +4,7 @@ import random
 from bisect import bisect_left
 from dataclasses import dataclass, field, replace
 from itertools import islice
-
-from typing import Dict, Iterator, List, NamedTuple, Optional, Sequence, Tuple, TYPE_CHECKING, Union
+from typing import Dict, Iterator, List, NamedTuple, Optional, Protocol, Sequence, Tuple, TYPE_CHECKING, Union
 
 from codeine.constraints.base import Constraint, ConstraintState, DEAD_STATE, SAFE_STATE
 from codeine.graph.base import CodonGraph
@@ -13,6 +12,58 @@ from codeine.graph.nodes import CodonNode
 
 if TYPE_CHECKING:
     from codeine.graph.view import CodonGraphView
+
+
+class CompiledView(Protocol):
+    """
+    Sequence operations shared by compiled representations.
+
+    Implementations own their traversal data and caches. Sampling uses the
+    caller's random generator so a compiled result can be shared between views.
+    """
+
+    @property
+    def n_valid_sequences(self) -> int:
+        """
+        The number of valid sequences, irrespective of sampling weights.
+        """
+        pass
+
+    def contains(self, seq: str) -> bool:
+        """
+        Check membership, normalising the input to the graph's DNA/RNA alphabet.
+        """
+        pass
+
+    def sample(self, rng: random.Random, n: Optional[int] = None) -> Union[str, List[str]]:
+        """
+        Sample one sequence, or n sequences, using the supplied generator.
+        """
+        pass
+
+    def enumerate(self) -> Iterator[str]:
+        """
+        Yield valid sequences in graph order.
+        """
+        pass
+
+    def enumerate_range(self, start: int = 0, stop: Optional[int] = None) -> Iterator[str]:
+        """
+        Enumerate valid sequences from start up to, but not including, stop.
+        """
+        pass
+
+    def sequence_at(self, index: int) -> str:
+        """
+        Return a sequence by index, accepting negative indices.
+        """
+        pass
+
+    def sequences_at(self, index_slice: slice) -> List[str]:
+        """
+        Return sequences selected by a Python slice.
+        """
+        pass
 
 
 # The traversal state consists of the current graph position
@@ -42,12 +93,13 @@ SamplingChoices = Tuple[Tuple[Tuple[str, bool, Optional[int]], ...], Optional[Tu
 
 
 @dataclass(frozen=True)
-class CompiledView:
+class FlatCompiledView:
     """
     A compiled snapshot supporting sequence queries and sampling.
 
     Topology and counts are fixed. Lazy sampling caches contain only choices and
-    probabilities, so views can share this result while using independent RNGs.
+    probabilities, so views can share this result while using independent random
+    number generators.
     """
     graph: CodonGraph
     initial_state: TraversalState
@@ -73,14 +125,19 @@ class CompiledView:
     n_valid_sequences: int
 
     _sampling_choices_by_state_id: List[Optional[SamplingChoices]] = field(
-        default_factory=list, init=False, repr=False, compare=False,
+        default_factory=list,
+        init=False,
+        repr=False,
+        compare=False,
     )
 
     def __post_init__(self) -> None:
         self._sampling_choices_by_state_id.extend([None] * len(self.states))
 
     def contains(self, seq: str) -> bool:
-        """Check whether a DNA or RNA sequence belongs to this compiled space."""
+        """
+        Check whether a DNA or RNA sequence belongs to this compiled space.
+        """
         seq = self.graph.tt.normalise_sequence(seq)
 
         if len(seq) != len(self.graph.aa_seq) * 3:
@@ -119,7 +176,9 @@ class CompiledView:
         return True
 
     def sample(self, rng: random.Random, n: Optional[int] = None) -> Union[str, List[str]]:
-        """Sample one or more sequences using the caller's random number generator."""
+        """
+        Sample one or more sequences using the caller's random number generator.
+        """
         if self.n_valid_sequences == 0:
             raise ValueError('Cannot sample from an empty coding space.')
 
@@ -132,11 +191,15 @@ class CompiledView:
         return [self._sample(rng) for _ in range(n)]
 
     def enumerate(self) -> Iterator[str]:
-        """Yield all valid coding sequences in graph order."""
+        """
+        Yield all valid coding sequences in graph order.
+        """
         return self._iter_all_sequences()
 
     def enumerate_range(self, start: int = 0, stop: Optional[int] = None) -> Iterator[str]:
-        """Yield sequences in the half-open index range [start, stop)."""
+        """
+        Enumerate valid sequences from start up to, but not including, stop.
+        """
         n_sequences = self.n_valid_sequences
 
         if stop is None:
@@ -159,7 +222,9 @@ class CompiledView:
         yield from self._iter_sequence_range(start, stop)
 
     def sequence_at(self, index: int) -> str:
-        """Return the sequence at an index, accepting negative indices."""
+        """
+        Return the sequence at an index, accepting negative indices.
+        """
         n_valid_sequences = self.n_valid_sequences
 
         if index < -n_valid_sequences or index >= n_valid_sequences:
@@ -171,7 +236,9 @@ class CompiledView:
         return self._sequence_at(index)
 
     def sequences_at(self, index_slice: slice) -> List[str]:
-        """Return the sequences selected by a Python slice."""
+        """
+        Return the sequences selected by a Python slice.
+        """
         n_sequences = self.n_valid_sequences
         start, stop, step = index_slice.indices(n_sequences)
 
@@ -190,14 +257,17 @@ class CompiledView:
         return [*self._iter_sequence_range(start, stop)]
 
     def _sampling_choices_for_state_id(self, state_id: int) -> Optional[SamplingChoices]:
-        """Cache choices and cumulative probabilities without binding a random generator."""
+        """
+        Cache choices and cumulative probabilities without binding a random generator.
+        """
         cached = self._sampling_choices_by_state_id[state_id]
 
         if cached is not None:
             return cached
 
         choices = tuple(
-            result for result in self.choice_results_by_state_id[state_id]
+            result
+            for result in self.choice_results_by_state_id[state_id]
             if result.descendant_log_mass != -math.inf
         )
 
@@ -226,7 +296,9 @@ class CompiledView:
         return cached
 
     def _sample(self, rng: random.Random) -> str:
-        """Sample one sequence using cached choices and the caller's random generator."""
+        """
+        Sample one sequence using cached choices and the caller's random generator.
+        """
         state_id = self.initial_state_id
         sampling_choices_by_state_id = self._sampling_choices_by_state_id
         random_choice = rng.random
@@ -510,13 +582,13 @@ class ViewCompiler:
             for constraint in self.constraints
         )
 
-    def compile(self) -> CompiledView:
+    def compile(self) -> FlatCompiledView:
         """
         Compile descendant counts, graph choices, and sampling masses.
 
         Returns
         -------
-        CompiledView
+        FlatCompiledView
             A compiled view.
         """
         self._set_constraints(self.view.constraints)
@@ -533,7 +605,7 @@ class ViewCompiler:
 
         return self._compiled_view(initial_state_id)
 
-    def compile_shallow(self, compiled: CompiledView) -> CompiledView:
+    def compile_shallow(self, compiled: FlatCompiledView) -> FlatCompiledView:
         """
         Recompile choices, counts, and probability masses using an existing
         deep topology.
@@ -545,7 +617,7 @@ class ViewCompiler:
 
         Returns
         -------
-        CompiledView
+        FlatCompiledView
             The compiled view with updated shallow data.
         """
         self.states = list(compiled.states)
@@ -578,9 +650,9 @@ class ViewCompiler:
 
     def extend(
             self,
-            compiled: CompiledView,
+            compiled: FlatCompiledView,
             constraints: Sequence[Constraint],
-    ) -> CompiledView:
+    ) -> FlatCompiledView:
         """
         Extend an existing compiled topology with additional constraints.
 
@@ -597,7 +669,7 @@ class ViewCompiler:
 
         Returns
         -------
-        CompiledView
+        FlatCompiledView
             An updated compiled view.
         """
         self._set_constraints(constraints)
@@ -683,7 +755,7 @@ class ViewCompiler:
 
             stack.extend(self._uncompiled_children(state_id))
 
-    def _compile_extended_topology(self, compiled: CompiledView, initial_state_id: int) -> None:
+    def _compile_extended_topology(self, compiled: FlatCompiledView, initial_state_id: int) -> None:
         """
         Compile additional constraints over an existing compiled topology.
 
@@ -852,9 +924,9 @@ class ViewCompiler:
         self.choices_by_state_id[state_id] = choice_results
         self.totals_by_state_id[state_id] = (descendant_count, descendant_log_mass)
 
-    def _compiled_view(self, initial_state_id: int) -> CompiledView:
+    def _compiled_view(self, initial_state_id: int) -> FlatCompiledView:
         """
-        Build an immutable CompiledView from the compiler's current state.
+        Build an immutable FlatCompiledView from the compiler's current state.
 
         Parameters
         ----------
@@ -866,7 +938,7 @@ class ViewCompiler:
 
         choices_by_state_id = tuple(choices or {} for choices in self.choices_by_state_id)
 
-        return CompiledView(
+        return FlatCompiledView(
             graph=self.graph,
             initial_state=self.states[initial_state_id],
             initial_state_id=initial_state_id,

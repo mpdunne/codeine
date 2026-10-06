@@ -434,8 +434,12 @@ def test_coding_space_compiler_selection():
 
 def test_coding_space_explicit_flat_matches_default():
     default = CodingSpace('MKK', constraints=ForbiddenMotifs('AAAAAA'), seed=42)
-    explicit = CodingSpace('MKK', constraints=ForbiddenMotifs('AAAAAA'),
-                           seed=42, compiler='flat')
+    explicit = CodingSpace(
+        'MKK',
+        constraints=ForbiddenMotifs('AAAAAA'),
+        seed=42,
+        compiler='flat',
+    )
 
     assert default.count() == explicit.count() == 3
     assert list(default) == list(explicit)

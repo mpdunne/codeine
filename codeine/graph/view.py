@@ -4,7 +4,7 @@ from typing import Dict, Iterator, List, Optional, Sequence, Tuple, Union
 
 from codeine.constraints.base import Constraint
 from codeine.graph.base import CodonGraph, CodonRestriction
-from codeine.graph.compile import ViewCompiler
+from codeine.graph.compile import CompiledView, ViewCompiler
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
 from codeine.utils.sampling import Seedable
@@ -69,7 +69,7 @@ class CodonGraphView:
         self._codon_weights = weights
         self._rng = random.Random(seed)
 
-        self._compiled = None
+        self._compiled: Optional[CompiledView] = None
         self._compile_status = COMPILE_DEEP
         self._pending_constraints: Tuple[Constraint, ...] = ()
 

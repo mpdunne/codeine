@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 from codeine.constraints.base import Constraint, DEAD_STATE, SAFE_STATE
 from codeine.graph.base import CodonGraph
-from codeine.graph.compile import ViewCompiler
+from codeine.graph.compile import CompiledView, ViewCompiler
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
 
@@ -185,9 +185,13 @@ def test_extended_state_ids_are_dense():
 
 @pytest.mark.parametrize('rna', [False, True])
 def test_compiled_result_supports_queries_without_the_view(rna):
-    graph = CodonGraph('MK', translation_table=TranslationTable(rna=rna),
-                       context_l='CCC', context_r='GGG')
-    compiled = ViewCompiler(graph.view()).compile()
+    graph = CodonGraph(
+        'MK',
+        translation_table=TranslationTable(rna=rna),
+        context_l='CCC',
+        context_r='GGG',
+    )
+    compiled: CompiledView = ViewCompiler(graph.view()).compile()
     expected = ['AUGAAA', 'AUGAAG'] if rna else ['ATGAAA', 'ATGAAG']
 
     assert compiled.n_valid_sequences == 2
