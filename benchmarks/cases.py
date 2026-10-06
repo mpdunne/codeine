@@ -16,7 +16,7 @@ from codeine.constraints import (
     TandemRepeats,
 )
 
-from benchmarks.proteins import DIFFICULT_PROTEINS, LARGE_PROTEINS, NORMAL_PROTEINS
+from benchmarks.proteins import ANTIBODIES, DIFFICULT_PROTEINS, LARGE_PROTEINS, NORMAL_PROTEINS
 
 
 CONSTRAINT_SETS = {
@@ -24,7 +24,7 @@ CONSTRAINT_SETS = {
 
     # Individual constraints at useful levels of stringency.
     'motifs-small': [ForbiddenMotifs(['GAATTC', 'GGATCC', 'GGTCTC'])],
-    'motifs-large': [ForbiddenMotifs(['GAATTC', 'GGATCC', 'GGTCTC', 'GAGACC', 'CTCGAG', 'AAGCTT'])],
+    'motifs-large': [ForbiddenMotifs(['GAATTC', 'GGATCC', 'GGTCTC', 'CGTCTC', 'GAAGAC', 'AAGCTT'])],
     'homopolymer-6': [MaxHomopolymer(6)],
     'homopolymer-4': [MaxHomopolymer(4)],
     'tandem-6x2': [TandemRepeats(6, 2)],
@@ -36,18 +36,21 @@ CONSTRAINT_SETS = {
     'hairpin-15': [Hairpins(15, 3, 90)],
     'hairpin-10': [Hairpins(10, 3, 90)],
 
-    # Representative combinations used in ordinary biotech workflows.
-    'cloning': [ForbiddenMotifs(['GAATTC', 'GGATCC', 'GGTCTC']), MaxHomopolymer(6)],
-    'gene-synthesis': [
-        ForbiddenMotifs(['GAATTC', 'GGATCC', 'GGTCTC', 'GAGACC', 'CTCGAG', 'AAGCTT']),
-        MaxHomopolymer(5),
-        TandemRepeats(6, 2),
+    # Representative gene-synthesis constraint combinations.
+    'basic': [
+        ForbiddenMotifs(['GGTCTC', 'CGTCTC', 'GAAGAC', 'GAATTC', 'GGATCC', 'AAGCTT']),
+        MaxHomopolymer(6),
+        TandemRepeats(2, 4), TandemRepeats(3, 3), TandemRepeats(4, 3),
+        TandemRepeats(5, 3), TandemRepeats(6, 3),
     ],
-    'repeat-sensitive': [
-        MaxHomopolymer(4),
-        TandemRepeats(3, 3),
-        DirectRepeats(18, max_distance=120),
-        Hairpins(12, 3, 90),
+    'gene-synthesis': [
+        ForbiddenMotifs(['GGTCTC', 'CGTCTC', 'GAAGAC', 'GAATTC', 'GGATCC', 'AAGCTT']),
+        MaxHomopolymer(6),
+        TandemRepeats(2, 4), TandemRepeats(3, 3), TandemRepeats(4, 3),
+        TandemRepeats(5, 3), TandemRepeats(6, 3),
+        DirectRepeats(18),
+        InvertedRepeats(18),
+        Hairpins(12, 3, 8),
     ],
 }
 
@@ -69,10 +72,10 @@ class Case:
         Name of a constraint set in ``CONSTRAINT_SETS``.
     codon_weights
         Optional codon weights passed to ``CodingSpace``.
-    quick
-        Whether to include the case in the quick benchmark suite.
     mutation_fraction
         Fraction of positions left free in a mutation-space benchmark.
+    quick
+        Whether to include the case in the quick benchmark suite.
     max_codons
         Optional maximum codon distance for a mutation-space benchmark.
     """
@@ -82,8 +85,8 @@ class Case:
     sequence: str
     constraint_set: str = 'none'
     codon_weights: Optional[CodonWeights] = None
-    quick: bool = False
     mutation_fraction: Optional[float] = None
+    quick: bool = True
     max_codons: Optional[int] = None
 
     def build(self):
@@ -102,101 +105,53 @@ class Case:
         return space.mutants(coding_sequence, free_positions=range(1, free_count + 1), max_codons=self.max_codons)
 
 
-def synthetic_sequence(length: int, unit: str = 'ACDEFGHIKLMNPQRSTVWY') -> str:
-    """
-    Build a deterministic synthetic protein sequence.
-    """
-    repeats = (length + len(unit) - 1) // len(unit)
-    return (unit * repeats)[:length]
-
-
-def synthetic_cases() -> List[Case]:
-    """
-    Return synthetic scaling benchmarks.
-    """
-    cases = []
-
-    for length in (10, 25, 50, 100, 250, 500, 1000):
-        cases.append(Case(f'synthetic/{length:04d}/plain', 'scaling', synthetic_sequence(length), quick=length <= 250))
-
-    for length in (50, 100, 250, 500):
-        cases.append(Case(f'synthetic/{length:04d}/gene-synthesis', 'scaling', synthetic_sequence(length), 'gene-synthesis', quick=length <= 100))
-
-    return cases
-
-
-def real_protein_cases() -> List[Case]:
-    """
-    Return benchmarks based on representative real proteins.
-    """
-    cases = []
-
-    for name, sequence in NORMAL_PROTEINS.items():
-        quick = name in ('ubiquitin', 'gfp')
-        cases.append(Case(f'real/{name}/plain', 'real', sequence, quick=quick))
-        cases.append(Case(f'real/{name}/weighted', 'weights', sequence, codon_weights=CodonWeights.ecoli(), quick=quick))
-
-        for constraint_set in ('motifs-small', 'homopolymer-6', 'tandem-6x2', 'direct-repeat-18', 'cloning'):
-            cases.append(Case(f'real/{name}/{constraint_set}', 'constraints', sequence, constraint_set, quick=quick))
-
-        for constraint_set in (
-            'motifs-large', 'homopolymer-4', 'tandem-3x3', 'direct-repeat-12',
-            'inverted-repeat-15', 'inverted-repeat-10', 'hairpin-15', 'hairpin-10',
-            'gene-synthesis', 'repeat-sensitive',
-        ):
-            cases.append(Case(f'real/{name}/{constraint_set}', 'constraints', sequence, constraint_set))
-
-    return cases
-
-
-def pathological_cases() -> List[Case]:
-    """
-    Return deliberately repetitive and difficult benchmarks.
-    """
-    cases = []
-
-    for name, sequence in DIFFICULT_PROTEINS.items():
-        cases.append(Case(f'pathological/{name}/plain', 'pathological', sequence))
-        cases.append(Case(f'pathological/{name}/tandem-3x3', 'pathological', sequence, 'tandem-3x3'))
-        cases.append(Case(f'pathological/{name}/direct-repeat-18', 'pathological', sequence, 'direct-repeat-18'))
-        cases.append(Case(f'pathological/{name}/direct-repeat-12', 'pathological', sequence, 'direct-repeat-12'))
-        cases.append(Case(f'pathological/{name}/repeat-sensitive', 'pathological', sequence, 'repeat-sensitive'))
-
-    return cases
-
-
-def large_cases() -> List[Case]:
-    """
-    Return benchmarks for large protein sequences.
-    """
-    cases = []
-
-    for name, sequence in LARGE_PROTEINS.items():
-        cases.append(Case(f'large/{name}/plain', 'large', sequence))
-        cases.append(Case(f'large/{name}/gene-synthesis', 'large', sequence, 'gene-synthesis'))
-
-    return cases
-
-
-def mutation_cases() -> List[Case]:
-    """
-    Return mutation-space benchmarks.
-    """
-    cases = []
-
-    for fraction in (0.05, 0.20, 0.50):
-        percent = int(fraction * 100)
-        quick = fraction <= 0.20
-        sequence = NORMAL_PROTEINS['gfp']
-        max_codons = max(1, int(len(sequence) * fraction / 2))
-        cases.append(Case(f'mutation/gfp/free-{percent:02d}pct', 'mutation', sequence, quick=quick, mutation_fraction=fraction))
-        cases.append(Case(f'mutation/gfp/free-{percent:02d}pct-distance', 'mutation', sequence, mutation_fraction=fraction, max_codons=max_codons))
-
-    return cases
-
-
 def all_cases() -> List[Case]:
     """
-    Return every benchmark case in stable display order.
+    Return the standard benchmark suite in stable display order.
     """
-    return synthetic_cases() + real_protein_cases() + pathological_cases() + large_cases() + mutation_cases()
+    ubiquitin = NORMAL_PROTEINS['ubiquitin']
+    gfp = NORMAL_PROTEINS['gfp']
+    sfgfp = NORMAL_PROTEINS['sfgfp']
+    mcherry = NORMAL_PROTEINS['mcherry']
+    luciferase = NORMAL_PROTEINS['luciferase']
+    caplacizumab = ANTIBODIES['caplacizumab']
+    spcas9 = LARGE_PROTEINS['spcas9']
+
+    return [
+        # Unconstrained baselines across proteins of different sizes and character.
+        Case('baseline/ubiquitin', 'baseline', ubiquitin),
+        Case('baseline/gfp', 'baseline', gfp),
+        Case('baseline/mcherry', 'baseline', mcherry),
+        Case('baseline/luciferase', 'baseline', luciferase),
+        Case('baseline/caplacizumab', 'baseline', caplacizumab),
+        Case('baseline/spcas9', 'baseline', spcas9),
+
+        # Individual constraints at two useful levels. Ordinary proteins cover the
+        # simpler cases; naturally repetitive proteins exercise repeat constraints.
+        Case('constraints/gfp/motifs-small', 'constraints', gfp, 'motifs-small'),
+        Case('constraints/gfp/motifs-large', 'constraints', gfp, 'motifs-large'),
+        Case('constraints/gfp/homopolymer-6', 'constraints', gfp, 'homopolymer-6'),
+        Case('constraints/luciferase/homopolymer-4', 'constraints', luciferase, 'homopolymer-4'),
+        Case('constraints/collagen/tandem-6x2', 'constraints', DIFFICULT_PROTEINS['collagen'], 'tandem-6x2'),
+        Case('constraints/collagen/tandem-3x3', 'constraints', DIFFICULT_PROTEINS['collagen'], 'tandem-3x3'),
+        Case('constraints/elastin/direct-repeat-18', 'constraints', DIFFICULT_PROTEINS['elastin'], 'direct-repeat-18'),
+        Case('constraints/elastin/direct-repeat-12', 'constraints', DIFFICULT_PROTEINS['elastin'], 'direct-repeat-12', quick=False),
+        Case('constraints/luciferase/inverted-repeat-15', 'constraints', luciferase, 'inverted-repeat-15'),
+        Case('constraints/luciferase/inverted-repeat-10', 'constraints', luciferase, 'inverted-repeat-10', quick=False),
+        Case('constraints/luciferase/hairpin-15', 'constraints', luciferase, 'hairpin-15'),
+        Case('constraints/luciferase/hairpin-10', 'constraints', luciferase, 'hairpin-10', quick=False),
+
+        # Full practical constraint stacks on several proteins. sfGFP and SpCas9
+        # reproduce the documentation examples; the others broaden the workload.
+        Case('full/sfgfp/gene-synthesis', 'full', sfgfp, 'gene-synthesis', CodonWeights.ecoli()),
+        Case('full/luciferase/gene-synthesis', 'full', luciferase, 'gene-synthesis'),
+        Case('full/caplacizumab/gene-synthesis', 'full', caplacizumab, 'gene-synthesis'),
+        Case('full/spcas9/basic', 'full', spcas9, 'basic', quick=False),
+
+        # A deliberately awkward repeat-heavy sequence retained as a stress case.
+        Case('pathological/hard/direct-repeat-18', 'pathological', DIFFICULT_PROTEINS['hard'], 'direct-repeat-18'),
+
+        # Representative local redesign workloads.
+        Case('mutation/sfgfp/free-20pct', 'mutation', sfgfp, mutation_fraction=0.20),
+        Case('mutation/sfgfp/gene-synthesis-distance', 'mutation', sfgfp, 'gene-synthesis', mutation_fraction=0.20, max_codons=25),
+    ]
