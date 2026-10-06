@@ -36,6 +36,7 @@ class CodonGraphView:
                  constraints: Optional[Union[Constraint, Sequence[Constraint]]] = None,
                  weights: Optional[CodonWeights] = None,
                  seed: Seedable = None,
+                 compiler: str = 'flat',
                  ) -> None:
         """
         Constructor for the CodonGraphView
@@ -50,7 +51,14 @@ class CodonGraphView:
             The codon weights to use when sampling.
         seed
             Seed used to initialise a random number generator.
+        compiler
+            Compilation engine, fixed at construction. Currently only ``'flat'``
+            is supported.
         """
+
+        if compiler != 'flat':
+            raise ValueError(f"Unknown compiler {compiler!r}; supported compilers: 'flat'.")
+        self._compiler = compiler
 
         self.graph = graph
         self.pinned_codons: Dict[int, CodonRestriction] = {}
@@ -310,7 +318,7 @@ class CodonGraphView:
         -------
         A copy of the view.
         """
-        view = self.graph.view()
+        view = self.graph.view(compiler=self.compiler)
         view._rng.setstate(self._rng.getstate())
         view._codon_weights = self._codon_weights
 
@@ -470,6 +478,13 @@ class CodonGraphView:
         Reset sampling to uniform codon weights.
         """
         self.set_weights()
+
+    @property
+    def compiler(self) -> str:
+        """
+        The compilation engine selected at construction.
+        """
+        return self._compiler
 
     @property
     def aa_seq(self) -> str:

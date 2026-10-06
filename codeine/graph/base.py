@@ -204,6 +204,7 @@ class CodonGraph:
              constraints: Optional[Sequence[Constraint]] = None,
              weights: Optional[CodonWeights] = None,
              seed: Seedable = None,
+             compiler: str = 'flat',
              ) -> 'CodonGraphView':
         """
         Return
@@ -216,10 +217,12 @@ class CodonGraph:
             The codon weights to use when sampling.
         seed
             Seed used to initialise a random number generator.
+        compiler
+            Compilation engine. Currently only ``'flat'`` is supported.
 
         Returns
         -------
         A constrained view over this graph.
         """
         from codeine.graph.view import CodonGraphView
-        return CodonGraphView(self, seed=seed, weights=weights, constraints=constraints)
+        return CodonGraphView(self, seed=seed, weights=weights, constraints=constraints, compiler=compiler)

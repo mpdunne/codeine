@@ -663,6 +663,18 @@ def test_view_copy_copies_constraints():
     assert [*copied.enumerate()] == [*view.enumerate()]
 
 
+@pytest.mark.parametrize('compiled', [False, True])
+def test_view_copy_and_pickle_preserve_compiler(compiled):
+    view = CodonGraph('MK').view(compiler='flat')
+
+    if compiled:
+        view.compile()
+
+    for copied in (view.copy(), pickle.loads(pickle.dumps(view))):
+        assert copied.compiler == 'flat'
+        assert list(copied) == list(view)
+
+
 def test_codon_graph_view_pickle_preserves_random_state():
     view = CodonGraph('MIKEY').view(seed=8675309)
     _ = [view.sample() for _ in range(100)]
@@ -681,6 +693,25 @@ def test_codon_graph_view_pickle_preserves_pins():
     assert loaded.pinned_codons == view.pinned_codons
     assert loaded.n_valid_sequences == view.n_valid_sequences
     assert [*loaded.enumerate()] == [*view.enumerate()]
+
+
+def test_view_compiler_defaults_to_flat():
+    assert CodonGraphView(CodonGraph('MK')).compiler == 'flat'
+
+
+def test_view_compiler_is_read_only():
+    view = CodonGraphView(CodonGraph('MK'), compiler='flat')
+
+    assert view.compiler == 'flat'
+
+    with pytest.raises(AttributeError):
+        view.compiler = 'factorised'
+
+
+@pytest.mark.parametrize('compiler', ['factorised', 'auto', 'unknown', None])
+def test_view_rejects_unsupported_compiler(compiler):
+    with pytest.raises(ValueError, match="supported compilers: 'flat'"):
+        CodonGraphView(CodonGraph('MK'), compiler=compiler)
 
 
 def test_view_doesnt_compile_immediately():

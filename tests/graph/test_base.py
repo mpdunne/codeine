@@ -212,6 +212,16 @@ def test_view_passes_constraints():
     assert view.constraints == (constraint,)
 
 
+def test_graph_view_accepts_compiler():
+    graph = CodonGraph('MK')
+
+    assert graph.view().compiler == 'flat'
+    assert graph.view(compiler='flat').compiler == 'flat'
+
+    with pytest.raises(ValueError, match="supported compilers: 'flat'"):
+        graph.view(compiler='unknown')
+
+
 def test_view_passes_seed():
     graph = CodonGraph("MIKEY")
 

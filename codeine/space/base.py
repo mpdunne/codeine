@@ -166,6 +166,13 @@ class Space:
         self.view.set_weights(codon_weights)
 
     @property
+    def compiler(self) -> str:
+        """
+        The compilation engine used by this space's view.
+        """
+        return self.view.compiler
+
+    @property
     def n_valid_sequences(self) -> int:
         """
         The number of valid sequences in this space.
