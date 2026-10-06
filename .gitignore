@@ -218,3 +218,6 @@ Scratch.ipynb
 
 # DS_STORE
 .DS_STORE
+
+# Local benchmark results
+benchmarks/results/
