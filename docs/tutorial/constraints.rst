@@ -86,7 +86,9 @@ Maximum homopolymer length
 Long homopolymer runs can be difficult to work with because they increase the risk of polymerase slippage and sequencing errors. In **Codeine**, runs of identical nucleotides can be avoided using ``MaxHomopolymer``.
 
 For example, ``MaxHomopolymer(5)`` excludes any coding sequence
-containing six or more consecutive identical nucleotides.
+containing six or more identical nucleotides, either consecutively
+or with a single different nucleotide interrupting the run.
+The interrupting nucleotide does not count toward the homopolymer length.
 
 .. code-block:: python
 
@@ -101,6 +103,13 @@ containing six or more consecutive identical nucleotides.
    )
 
    print(space.n_valid_sequences)
+
+
+To consider only consecutive identical nucleotides, set ``allow_single_interruption=False``:
+
+.. code-block:: python
+
+    MaxHomopolymer(5, allow_single_interruption=False)
 
 
 .. _Tandem repeats:

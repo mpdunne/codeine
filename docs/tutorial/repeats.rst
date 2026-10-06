@@ -13,7 +13,7 @@ As a result, they are often avoided in synthetic biology applications.
 
 Let's take a closer look!
 
-.. _Tandem repeats:
+.. _repeats-tandem:
 
 Tandem repeats
 --------------
@@ -56,7 +56,7 @@ by separate constraints, which can be combined as desired:
        ],
    )
 
-.. _Direct repeats:
+.. _repeats-direct:
 
 Direct repeats
 --------------
@@ -89,7 +89,7 @@ nucleotides occurring within a specified distance range.
 Here, the distance is measured between the end of the first repeated sequence and the start of the second.
 
 
-.. _Inverted repeats:
+.. _repeats-inverted:
 
 Inverted repeats
 ----------------
@@ -119,7 +119,7 @@ The syntax for ``InvertedRepeats`` is the same as for ``DirectRepeats``:
    print(space.n_valid_sequences)
 
 
-.. _Hairpins:
+.. _repeats-hairpins:
 
 Hairpins
 --------------
