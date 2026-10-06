@@ -7,7 +7,8 @@ from unittest.mock import MagicMock
 
 from codeine.constraints.base import Constraint, DEAD_STATE, SAFE_STATE
 from codeine.graph.base import CodonGraph
-from codeine.graph.compile import CompiledView, ViewCompiler
+from codeine.graph.compile import ViewCompiler
+from codeine.graph.compiled import CompiledView
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
 
