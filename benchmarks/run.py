@@ -150,7 +150,7 @@ def parse_args() -> argparse.Namespace:
         help='operation to benchmark; may be repeated',
     )
     parser.add_argument('--repeat', type=positive_int, default=3)
-    parser.add_argument('--timeout', type=positive_float, default=30)
+    parser.add_argument('--timeout', type=positive_float, default=10)
     parser.add_argument('--label', help='human-readable label stored with the run')
     parser.add_argument(
         '--compiler',
