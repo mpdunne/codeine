@@ -4,7 +4,7 @@ from typing import Dict, Iterator, List, Optional, Sequence, Tuple, Union
 
 from codeine.constraints.base import Constraint
 from codeine.graph.base import CodonGraph, CodonRestriction
-from codeine.graph.compile import ViewCompiler
+from codeine.graph.compiler import ViewCompiler
 from codeine.graph.compiled import CompiledView
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
