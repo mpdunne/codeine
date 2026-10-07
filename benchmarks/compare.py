@@ -63,7 +63,7 @@ def empty_result() -> PooledResult:
     -------
     A pooled-result structure representing a missing benchmark.
     """
-    return {'timings': [], 'statuses': []}
+    return {'timings': [], 'statuses': [], 'counts': []}
 
 
 def load_results(paths: List[str]) -> Tuple[List[dict], Dict[BenchmarkKey, PooledResult]]:
@@ -91,6 +91,7 @@ def load_results(paths: List[str]) -> Tuple[List[dict], Dict[BenchmarkKey, Poole
             pooled_result = pooled.setdefault(key, empty_result())
             pooled_result['timings'].extend(result.get('timings_s', []))
             pooled_result['statuses'].append(result['status'])
+            pooled_result['counts'].extend(result.get('counts', []))
 
     return documents, pooled
 
@@ -251,6 +252,10 @@ def comparison_status(
     """
     before = median_time(before_result)
     after = median_time(after_result)
+    counts = set(before_result.get('counts', []) + after_result.get('counts', []))
+
+    if len(counts) > 1:
+        return 'COUNT MISMATCH', '-', None
 
     if before is not None and after is not None:
         status, change_percent, ratio = classify_change(before, after)
@@ -314,6 +319,10 @@ def compare_results(baseline_paths: List[str], candidate_paths: List[str]) -> No
     """
     baseline_documents, baseline = load_results(baseline_paths)
     candidate_documents, candidate = load_results(candidate_paths)
+    versions = {document.get('schema_version', 1) for document in baseline_documents + candidate_documents}
+
+    if len(versions) > 1:
+        raise ValueError('Benchmark timing definitions differ; rerun both sides with the same harness.')
 
     print(
         f"Baseline: {len(baseline_documents)} run(s)  ->  "

@@ -89,13 +89,13 @@ class Case:
     quick: bool = True
     max_codons: Optional[int] = None
 
-    def build(self):
+    def build(self, compiler='flat'):
         """
         Construct a fresh space for this benchmark case.
         """
         # Constraints are stateful once linked to a graph, so each space gets its own copy.
         constraints = deepcopy(CONSTRAINT_SETS[self.constraint_set])
-        space = CodingSpace(self.sequence, constraints=constraints, codon_weights=self.codon_weights, seed=1)
+        space = CodingSpace(self.sequence, constraints=constraints, codon_weights=self.codon_weights, seed=1, compiler=compiler)
 
         if self.mutation_fraction is None:
             return space

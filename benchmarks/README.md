@@ -53,10 +53,24 @@ If no compiler is specified, benchmarks use Codeine normally and call `compile()
 python benchmarks/run.py --suite full --label before
 ```
 
-When Codeine exposes an alternative compiler, pass its name directly:
+Select the alternative compiler at construction using:
 
 ```bash
 python benchmarks/run.py --suite full --compiler factorised --label factorised
 ```
 
 The runner passes the string unchanged to Codeine and records it in the result JSON. Invalid compiler names are left for Codeine to reject.
+
+## Timing definitions (schema 2)
+
+`compile` includes construction and compilation. All other operations start from
+an already compiled space: `sample-1` includes first-use sampling preparation,
+while `sample-100` and `sample-10000` warm the sampling cache before timing the
+batch. `contains` measures 1,000 checks of a valid sequence prepared outside the
+timer. `index` and `slice-100` measure the first index and first 100 sequences.
+
+Each worker's timeout includes setup and all repetitions, even when setup is
+outside the timed operation. A timeout is therefore a workload timeout, not a
+lower bound on that operation's steady-state latency. Counts are recorded as
+strings and comparisons flag disagreements. Schema 1 timings included setup in
+every operation; comparisons reject mixing the two definitions.

@@ -25,6 +25,7 @@ OPERATIONS = (
     'count',
     'sample-1',
     'sample-100',
+    'sample-10000',
     'contains',
     'index',
     'slice-100',
@@ -156,7 +157,7 @@ def parse_args() -> argparse.Namespace:
         '--compiler',
         help=(
             'compiler name passed unchanged to Codeine; if omitted, '
-            'compile() is called normally'
+            'the default compiler is used'
         ),
     )
     parser.add_argument('--output', type=Path, help='result JSON path')
@@ -316,8 +317,10 @@ def run_benchmark(
         error = output[-4000:].strip()
         return benchmark_result(case, operation, 'ERROR', error=error)
 
-    timings = json.loads(completed.stdout)['timings_s']
-    return benchmark_result(case, operation, 'PASS', timings=timings)
+    payload = json.loads(completed.stdout)
+    result = benchmark_result(case, operation, 'PASS', timings=payload['timings_s'])
+    result['counts'] = payload['counts']
+    return result
 
 
 def default_output_path(revision: str, dirty: bool) -> Path:
@@ -418,7 +421,7 @@ def make_document(
     Complete serialisable benchmark-run document.
     """
     return {
-        'schema_version': 1,
+        'schema_version': 2,
         'timestamp': dt.datetime.now().astimezone().isoformat(),
         'label': args.label,
         'suite': args.suite,

@@ -6,7 +6,6 @@ Run one Codeine benchmark in an isolated process.
 import argparse
 import json
 import time
-from typing import Optional
 
 from benchmarks.cases import Case, all_cases
 
@@ -27,67 +26,26 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def compile_space(space, compiler: Optional[str]) -> None:
+def run_operation(space, operation: str) -> None:
     """
-    Compile a coding space.
-
-    Parameters
-    ----------
-    space
-        Coding space to compile.
-    compiler
-        Optional compiler name passed unchanged to Codeine. When
-        omitted, ``compile()`` is called without a compiler argument.
+    Run a measured operation on an already compiled space.
     """
-    if compiler is None:
-        space.compile()
-    else:
-        space.compile(compiler=compiler)
-
-
-def run_operation(space, operation: str, compiler: Optional[str]) -> None:
-    """
-    Run one operation against a freshly built coding space.
-
-    Parameters
-    ----------
-    space
-        Coding space on which to run the operation.
-    operation
-        Benchmark operation name.
-    compiler
-        Optional compiler name passed through during compilation.
-
-    Raises
-    ------
-    ValueError
-        If ``operation`` is not recognised.
-    """
-    compile_space(space, compiler)
-
-    if operation == 'compile':
-        return
     if operation == 'count':
         space.count()
-        return
-    if operation == 'sample-1':
+    elif operation == 'sample-1':
         space.sample()
-        return
-    if operation == 'sample-100':
+    elif operation == 'sample-100':
         space.sample(100)
-        return
-    if operation == 'contains':
-        sample = space.sample()
-        space.contains(sample)
-        return
-    if operation == 'index':
+    elif operation == 'sample-10000':
+        space.sample(10000)
+    elif operation == 'contains':
+        space.contains(space[0])
+    elif operation == 'index':
         space[0]
-        return
-    if operation == 'slice-100':
+    elif operation == 'slice-100':
         space[:100]
-        return
-
-    raise ValueError(f"Unknown benchmark operation: {operation}")
+    else:
+        raise ValueError(f'Unknown benchmark operation: {operation}')
 
 
 def find_case(name: str) -> Case:
@@ -122,13 +80,35 @@ def main() -> None:
     case = find_case(args.case)
     timings = []
 
+    counts = []
+
     for _ in range(args.repeat):
         start = time.perf_counter()
-        space = case.build()
-        run_operation(space, args.operation, args.compiler)
+        space = case.build(compiler=args.compiler or 'flat')
+        space.compile()
+        compilation_time = time.perf_counter() - start
+        counts.append(str(space.count()))
+
+        if args.operation == 'compile':
+            timings.append(compilation_time)
+            continue
+
+        # First-sample latency is separate from steady batch sampling.
+        if args.operation in ('sample-100', 'sample-10000'):
+            space.sample()
+
+        sequence = space[0] if args.operation == 'contains' else None
+        start = time.perf_counter()
+
+        if args.operation == 'contains':
+            for _ in range(1000):
+                space.contains(sequence)
+        else:
+            run_operation(space, args.operation)
+
         timings.append(time.perf_counter() - start)
 
-    print(json.dumps({'timings_s': timings}))
+    print(json.dumps({'timings_s': timings, 'counts': counts}))
 
 
 if __name__ == '__main__':
