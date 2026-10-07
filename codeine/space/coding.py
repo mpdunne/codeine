@@ -53,7 +53,7 @@ class CodingSpace(Space):
         seed
             Seed used to initialise the random number generator for sampling.
         compiler
-            Compilation engine. Currently only ``'flat'`` is supported.
+            Compilation engine: ``'flat'`` (default) or ``'factorised'``.
         """
 
         translation_table, codon_weights = self._resolve_tables(translation_table, codon_weights, rna)

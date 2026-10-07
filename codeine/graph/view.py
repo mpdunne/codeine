@@ -6,6 +6,7 @@ from codeine.constraints.base import Constraint
 from codeine.graph.base import CodonGraph, CodonRestriction
 from codeine.graph.compiler import ViewCompiler
 from codeine.graph.compiled import CompiledView
+from codeine.graph.factorised import FactorisedCompiler
 from codeine.translation.tables import TranslationTable
 from codeine.translation.weights import CodonWeights
 from codeine.utils.sampling import Seedable
@@ -50,12 +51,12 @@ class CodonGraphView:
         seed
             Seed used to initialise a random number generator.
         compiler
-            Compilation engine, fixed at construction. Currently only ``'flat'``
-            is supported.
+            Compilation engine, fixed at construction: ``'flat'`` (default) or
+            ``'factorised'``.
         """
 
-        if compiler != 'flat':
-            raise ValueError(f"Unknown compiler {compiler!r}; supported compilers: 'flat'.")
+        if compiler not in ('flat', 'factorised'):
+            raise ValueError(f"Unknown compiler {compiler!r}; supported compilers: 'flat', 'factorised'.")
         self._compiler = compiler
 
         self.graph = graph
@@ -245,7 +246,8 @@ class CodonGraphView:
         if self._compile_status == COMPILED:
             return
 
-        compiler = ViewCompiler(self)
+        compiler_type = {'flat': ViewCompiler, 'factorised': FactorisedCompiler}[self.compiler]
+        compiler = compiler_type(self)
 
         if self._compiled is None or self._compile_status == COMPILE_DEEP:
             compiled = compiler.compile()

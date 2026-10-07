@@ -708,7 +708,7 @@ def test_view_compiler_is_read_only():
         view.compiler = 'factorised'
 
 
-@pytest.mark.parametrize('compiler', ['factorised', 'auto', 'unknown', None])
+@pytest.mark.parametrize('compiler', ['auto', 'unknown', None])
 def test_view_rejects_unsupported_compiler(compiler):
     with pytest.raises(ValueError, match="supported compilers: 'flat'"):
         CodonGraphView(CodonGraph('MK'), compiler=compiler)

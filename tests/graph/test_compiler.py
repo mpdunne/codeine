@@ -255,3 +255,75 @@ def test_sequence_at_raises_on_unexpected_dead_end():
 
     with pytest.raises(RuntimeError):
         compiled.sequence_at(0)
+
+
+@pytest.mark.parametrize('rna', [False, True])
+@pytest.mark.parametrize('contexts', [('', ''), ('AT', 'GC')])
+def test_factorised_compiled_view_matches_flat_operations(rna, contexts):
+    from codeine.constraints import DirectRepeats
+
+    graph = CodonGraph('LRFK', context_l=contexts[0], context_r=contexts[1],
+                       translation_table=TranslationTable(table_id=1, rna=rna))
+    flat = graph.view(constraints=[DirectRepeats(3)])
+    factorised = graph.view(constraints=[DirectRepeats(3)], compiler='factorised', seed=42)
+    expected = list(flat.enumerate())
+
+    assert factorised.n_valid_sequences == len(expected)
+    assert list(factorised.enumerate()) == expected
+    assert all(seq in factorised for seq in expected)
+    assert 'AAA' not in factorised
+
+    with pytest.raises(ValueError):
+        factorised.contains('invalid')
+
+    for index, seq in enumerate(expected):
+        assert factorised[index] == seq
+        assert factorised[index - len(expected)] == seq
+
+    for index_slice in [slice(None), slice(None, None, -1), slice(2, 8), slice(8, 2), slice(1, None, 3)]:
+        assert factorised[index_slice] == expected[index_slice]
+
+    assert all(seq in expected for seq in factorised.sample(30))
+
+
+def test_factorised_lifecycle_and_pickle():
+    import pickle
+    from codeine.constraints import DirectRepeats
+
+    view = CodonGraph('KKK').view(compiler='factorised', seed=42)
+    view.compile()
+    original = view.copy()
+    snapshot = view._compiled
+    weights = CodonWeights({
+        aa: {codon: float(codon != 'AAA') for codon in codons}
+        for aa, codons in view.graph.tt.aa_to_codons.items()
+    })
+    view.set_weights(weights)
+    view.compile()
+
+    assert view._compiled.counter is snapshot.counter
+    assert view.sample(5) == ['AAGAAGAAG'] * 5
+    assert original.n_valid_sequences == 8
+
+    view.pin_codons({1: 'AAA'})
+
+    assert view.n_valid_sequences == 4
+    assert original.n_valid_sequences == 8
+
+    view.unpin_codons(1)
+    view.add_constraints([DirectRepeats(3)])
+    expected = CodonGraph('KKK').view(constraints=[DirectRepeats(3)])
+
+    assert list(view.enumerate()) == list(expected.enumerate())
+    assert snapshot.n_valid_sequences == 8
+
+    restored = pickle.loads(pickle.dumps(original))
+
+    assert original.sample(20) == restored.sample(20)
+
+
+def test_factorised_rejects_unsupported_constraints():
+    view = CodonGraph('MIKEY').view(compiler='factorised', constraints=[RejectChoicesConstraint({'ATA'})])
+
+    with pytest.raises(ValueError, match='does not support'):
+        view.compile()

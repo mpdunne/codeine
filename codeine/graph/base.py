@@ -218,7 +218,7 @@ class CodonGraph:
         seed
             Seed used to initialise a random number generator.
         compiler
-            Compilation engine. Currently only ``'flat'`` is supported.
+            Compilation engine: ``'flat'`` (default) or ``'factorised'``.
 
         Returns
         -------
