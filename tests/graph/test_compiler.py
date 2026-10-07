@@ -393,3 +393,21 @@ def test_factorised_long_count_constraint():
     restored = pickle.loads(pickle.dumps(view))
 
     assert restored.sample() == view.sample()
+
+
+@pytest.mark.parametrize('protein,repeat_length', [
+    ('MIKEYMIKEY', 9),
+    ('MIKEYAAAAAMIKEY', 9),
+    ('MIKEYAAAAAMIKEY', 15),
+    ('RNYKQT', 4),
+    ('IHERQW', 4),
+])
+def test_factorised_original_prototype_cases(protein, repeat_length):
+    graph = CodonGraph(protein)
+    flat = graph.view(constraints=[DirectRepeats(repeat_length)])
+    factorised = graph.view(compiler='factorised', constraints=[DirectRepeats(repeat_length)], seed=42)
+
+    assert factorised.n_valid_sequences == flat.n_valid_sequences
+    assert factorised[:20] == flat[:20]
+    assert factorised[-1] == flat[-1]
+    assert all(sequence in flat for sequence in factorised.sample(100))

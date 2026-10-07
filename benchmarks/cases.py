@@ -21,6 +21,7 @@ from benchmarks.proteins import ANTIBODIES, DIFFICULT_PROTEINS, LARGE_PROTEINS, 
 
 CONSTRAINT_SETS = {
     'none': [],
+    'artificial-repeat-4': [DirectRepeats(4)],
     'artificial-repeat-9': [DirectRepeats(9)],
     'artificial-repeat-15': [DirectRepeats(15)],
 
@@ -155,6 +156,9 @@ def all_cases() -> List[Case]:
         # Artificial repeats from the original factorisation experiments.
         Case('artificial/mikey-repeat-9', 'artificial', 'MIKEYMIKEY', 'artificial-repeat-9'),
         Case('artificial/mikey-spacer-repeat-9', 'artificial', 'MIKEYAAAAAMIKEY', 'artificial-repeat-9'),
+        Case('artificial/mikey-spacer-repeat-15', 'artificial', 'MIKEYAAAAAMIKEY', 'artificial-repeat-15'),
+        Case('artificial/rnykqt-repeat-4', 'artificial', 'RNYKQT', 'artificial-repeat-4'),
+        Case('artificial/iherqw-repeat-4', 'artificial', 'IHERQW', 'artificial-repeat-4'),
         Case('artificial/mikey-sassafras-repeat-15', 'artificial',
              'MIKEYSASSAFRASMIKEYSASSAFRAS', 'artificial-repeat-15'),
         Case('artificial/mikey-sassafras-repeat-15-weighted', 'artificial',
