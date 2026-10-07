@@ -117,6 +117,11 @@ class FactorSampler:
         return sum(self._free_log_masses[pos] for pos in self.counter._positions(positions))
 
     def _mass_component(self, component_id):
+        cached = self._mass_cache.get(component_id)
+
+        if cached is not None:
+            return cached
+
         counter = self.counter
         stack = [(component_id, False)]
 
@@ -160,6 +165,9 @@ class FactorSampler:
         return self._mass_cache[component_id]
 
     def _plan_component(self, component_id):
+        if component_id in self._plan_cache:
+            return component_id
+
         counter = self.counter
         stack = [(component_id, False)]
 

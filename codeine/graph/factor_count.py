@@ -246,6 +246,11 @@ class _DecisionDiagrams:
         """
         Condition a diagram on one graph-position choice without recursion.
         """
+        cached = self._restrict_cache.get((node, pos, choice))
+
+        if cached is not None:
+            return cached
+
         stack = [(node, False)]
 
         while stack:
@@ -332,6 +337,11 @@ class ComponentModelCounter:
         self._initial_free_variables = all_variables & ~self._component_supports[self._initial_component_id]
 
     def _support(self, root):
+        cached = self._support_cache.get(root)
+
+        if cached is not None:
+            return cached
+
         stack = [(root, False)]
 
         while stack:
@@ -466,6 +476,10 @@ class ComponentModelCounter:
         return pos
 
     def _advance_component(self, component_id, pos, choice):
+        # Choices outside this component cannot change any of its rules.
+        if not self._component_supports[component_id] & (1 << pos):
+            return component_id, 0
+
         key = component_id, pos, choice
         cached = self._component_transitions.get(key)
         if cached is not None:
@@ -486,6 +500,11 @@ class ComponentModelCounter:
         return result
 
     def _count_component(self, component_id):
+        cached = self._component_counts[component_id]
+
+        if cached is not None:
+            return cached
+
         stack = [(component_id, False)]
 
         while stack:

@@ -37,6 +37,45 @@ Containment for 1,000 checks improved from 633.25 ms to 20.43 ms uniformly.
 The prototype's `auto` mode used flat when there were no factors. Therefore its
 unconstrained timings cannot be compared as if they were factorised timings.
 
+### Real-protein follow-up
+
+The actual prototype was also run on six real-protein workloads with identical
+constraint parameters and weights. These measurements include the small cache
+changes described below in the current engine; the artificial table above predates
+those changes. Each entry is a median of three repetitions, with 1,000 warm samples
+per repetition and a 45-second timeout covering the entire worker. Absolute times
+varied substantially between runs, so compare within these tables, not across them.
+
+| Workload | Prototype compile (ms) | New compile (ms) | Prototype 1,000 samples (ms) | New 1,000 samples (ms) |
+| --- | ---: | ---: | ---: | ---: |
+| gfp/none | 13.64 | 9.62 | 171.74 | 363.93 |
+| gfp/motifs | 18.86 | 31.14 | 443.15 | 628.35 |
+| gfp/homopolymer | 22.79 | 60.72 | 678.72 | 899.39 |
+| sfgfp/synthesis | 1053.08 | 577.23 | 1551.14 | 960.95 |
+| caplacizumab/synthesis | 341.99 | 249.55 | 501.19 | 304.46 |
+| spcas9/basic | worker timeout | 911.74 | worker timeout | 2747.22 |
+
+All five completed pairs had identical counts. The prototype was explicitly forced
+to factorised for constrained cases, and its actual engine was recorded. Only the
+unconstrained GFP row used prototype `auto`, which selected **flat**; the current
+side explicitly used factorised, so that row is an engine-selection comparison.
+
+The prototype wins on the two simple constrained GFP workloads. The current engine
+wins on both synthesis stacks. SpCas9's timeout does not establish which individual
+operation was slow, or a lower bound on compile time. These results do not support
+a claim that either implementation is faster in every case.
+
+### Did the prototype itself always beat flat?
+
+No. Both engines were run from the prototype's own source on the same GFP cases,
+using three repetitions and the same weights, seed and interpreter. Counts matched.
+For motifs, factorised compiled faster (20.09 ms versus 98.45 ms), but 1,000 warm
+samples took 476.25 ms versus flat's 184.36 ms. For homopolymer exclusion, compilation
+was 19.91 ms versus 57.02 ms, while sampling was 407.93 ms versus 174.48 ms.
+Thus the prototype's compilation benefit did not imply a sampling benefit, even
+before the current implementation. These fresh comparisons agree with the original
+chat's distinction between faster compilation and slower repeated sampling.
+
 ### Original-chat coverage
 
 The [shared benchmark discussion](https://chatgpt.com/share/6a6f1207-19d0-83eb-94cd-d0221db8bdc5)
@@ -86,6 +125,32 @@ engines and their counts agreed. The sfGFP synthesis/distance case compiled in
 2.69 s (flat) and 2.70 s (factorised), with 100 prepared samples taking 18.7 ms and
 15.6 ms respectively.
 
+## Small cache changes
+
+Cached restrictions, supports, counts, masses and sampling plans now return before
+allocating an iterative traversal stack. Conditioning a component on a position
+outside its support returns it unchanged, avoiding unnecessary transition entries.
+There is no equal-weight sampling shortcut or change to weighted choice selection.
+
+A separate comparison alternated the original and modified classes in one process
+for three repetitions per case. Counts, seeded sample hashes and ordered-output
+hashes were identical. The following ratios are **after / before** (lower is faster):
+
+| Workload | Compile | First sample | 1,000 warm samples | First index | Slice 100 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| baseline/gfp | 0.22 | 1.13 | 0.80 | 0.20 | 1.07 |
+| full/sfgfp/gene-synthesis | 1.16 | 1.00 | 1.01 | 0.65 | 1.10 |
+| artificial/mikey-repeat-9 | 0.89 | 1.49 | 1.05 | 2.19 | 1.19 |
+| artificial/mikey-sassafras-repeat-15 | 1.31 | 1.13 | 0.85 | 0.86 | 0.80 |
+| artificial/mikey-sassafras-repeat-15-weighted | 1.00 | 0.94 | 0.87 | 0.86 | 1.12 |
+
+This is mixed evidence, not an overall speed-up: larger-case first-index lookups
+improved, but some compilation, preparation and slice measurements regressed.
+Warm sampling follows the same code as before, so its fluctuations should not be
+attributed to these cache changes. These small reductions in repeated work do not
+resolve the broad indexing and sampling differences between engines. The 154 focused
+counter, sampler and compiler tests passed after these changes.
+
 ## Reproducing and inspecting results
 
 ```bash
@@ -96,14 +161,19 @@ python benchmarks/run.py --case artificial --compiler factorised --timeout 30
 ```
 
 The initial full sweep used revisions ff22fad (flat) and c115c7b (factorised).
-Follow-ups used 9464ec5 and 42acc04. Raw local results are gitignored:
+Follow-ups used 9464ec5 and 42acc04. These are the measured revision IDs before
+the documentation-only history edit removed compiler selection from the user guide.
+Raw local results are gitignored:
 
 - `flat-full.json` and `factorised-full.json`
 - `artificial-flat.json` and `artificial-factorised.json`
 - `recovered-flat.json` and `recovered-factorised.json`
 - `mutation-flat.json` and `mutation-factorised.json`
 - `prototype-comparison.json` (all seven direct prototype comparisons)
-- `prototype-check.py` (the local reproduction driver; requires the prototype source)
+- `prototype-check.py` (the artificial reproduction driver; requires the prototype source)
+- `prototype-flat-check.json` and `prototype-flat-check.py` (both engines from the prototype source)
+- `prototype-real.json`, `prototype-real-check.py` and `prototype-real-run.py` (real-protein comparison)
+- `micro-comparison.json` and `micro-check.py` (alternating before/after cache comparison)
 
 All reside in `benchmarks/results/`. Schema 2 separates setup from measured
 operations; comparisons reject mixing it with historical schema 1 results.
