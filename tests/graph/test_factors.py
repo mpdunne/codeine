@@ -1,6 +1,6 @@
 import pytest
 
-from codeine.constraints.mutations import MutationDistanceConstraint
+from codeine.constraints.base import Constraint
 from codeine.graph.factors import ChoiceFactor
 
 
@@ -34,6 +34,15 @@ def test_choice_factor_without_relations_always_rejects():
 
 
 def test_constraints_without_factor_support_return_none():
-    constraint = MutationDistanceConstraint('AAA', max_nts=1)
+    class UnsupportedConstraint(Constraint):
+        initial_state = 0
+
+        def link(self, graph):
+            pass
+
+        def advance(self, state, pos, choice):
+            return state
+
+    constraint = UnsupportedConstraint()
 
     assert constraint.factors() is None

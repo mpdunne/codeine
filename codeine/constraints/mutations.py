@@ -3,6 +3,7 @@ from typing import Optional, Tuple
 
 from codeine.constraints.base import Constraint, ConstraintState, DEAD_STATE, SAFE_STATE
 from codeine.graph.base import CodonGraph
+from codeine.graph.factors import CountFactor
 
 # nt_diffs, codon_diffs
 MutationDistanceState = Tuple[Optional[int], Optional[int]]
@@ -139,8 +140,41 @@ class MutationDistanceConstraint(Constraint):
         """
         Link up to the graph.
         """
+        self._graph = graph
+
         if len(graph.aa_seq) != len(self._ref_codons):
             raise ValueError('Length of linked graph does not match number of codons for reference CDS.')
+
+    def factors(self):
+        """
+        Express nucleotide and codon distance bounds as separate sum rules.
+        """
+        nt_counts = {
+            node.pos: {
+                choice: sum(a != b for a, b in zip(choice, self._ref_codons[node.pos - 1]))
+                for choice in node.codons
+            }
+            for node in self._graph.codon_nodes
+        }
+        factors = []
+
+        if self._tracks_nts:
+            factors.append(CountFactor(
+                nt_counts, self.min_nts or 0,
+                3 * self.last_pos if self.max_nts is None else self.max_nts,
+            ))
+
+        if self._tracks_codons:
+            codon_counts = {
+                pos: {choice: int(count != 0) for choice, count in counts.items()}
+                for pos, counts in nt_counts.items()
+            }
+            factors.append(CountFactor(
+                codon_counts, self.min_codons or 0,
+                self.last_pos if self.max_codons is None else self.max_codons,
+            ))
+
+        return tuple(factors)
 
     @property
     def is_trivial(self) -> bool:

@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Hashable, Optional, Tuple
 
 from codeine.graph.base import CodonGraph
-from codeine.graph.factors import ChoiceFactor
+from codeine.graph.factors import Factor
 
 ConstraintState = Hashable
 
@@ -65,13 +65,13 @@ class Constraint(ABC):
         """
         pass
 
-    def factors(self) -> Optional[Tuple[ChoiceFactor, ...]]:
+    def factors(self) -> Optional[Tuple[Factor, ...]]:
         """
-        Describe the constraint as a collection of forbidden choice combinations.
+        Describe the constraint as a collection of local rules.
 
         Each factor checks only the graph positions involved in one rule. A
-        sequence satisfies this constraint if and only if none of its factors
-        rejects the sequence's choices. This exposes the dependencies needed by
+        sequence satisfies this constraint if and only if every factor accepts
+        the sequence's choices. This exposes the dependencies needed by
         a factorised compiler to solve independent groups of rules separately.
 
         Call link before requesting factors. The existing flat compiler continues

@@ -1,6 +1,6 @@
 from typing import Dict, Iterable, Mapping, Sequence, Set, Tuple
 
-from codeine.graph.factors import ChoiceFactor
+from codeine.graph.factors import Factor
 
 
 def _dependency_graph(scopes: Iterable[Iterable[int]]) -> Dict[int, Set[int]]:
@@ -34,6 +34,12 @@ def _min_fill_order(scopes: Iterable[Iterable[int]]) -> Tuple[int, ...]:
     order = []
 
     while neighbours:
+        # In a complete graph every position has the same score. This shortcut
+        # matters for global count rules spanning a whole protein.
+        if all(len(adjacent) == len(neighbours) - 1 for adjacent in neighbours.values()):
+            order.extend(sorted(neighbours))
+            break
+
         def score(pos):
             adjacent = neighbours[pos]
             adjacent_tuple = tuple(adjacent)
@@ -195,6 +201,47 @@ class _DecisionDiagrams:
 
         return self.negate(forbidden)
 
+    def bounded_sum(self, counts, minimum, maximum):
+        """
+        Build a bounded-sum diagram, merging identical partial totals.
+
+        Remaining minimum and maximum contributions prune impossible branches
+        and accept branches guaranteed to stay within the bounds. An explicit
+        stack avoids Python's recursion limit for long proteins.
+        """
+        positions = tuple(sorted(counts, key=self.rank.__getitem__))
+        values = [tuple(counts[pos][choice] for choice in self.domains[pos]) for pos in positions]
+        low = [0] * (len(positions) + 1)
+        high = [0] * (len(positions) + 1)
+
+        for depth in range(len(positions) - 1, -1, -1):
+            low[depth] = low[depth + 1] + min(values[depth])
+            high[depth] = high[depth + 1] + max(values[depth])
+
+        results = {}
+        stack = [(0, 0, False)]
+
+        while stack:
+            depth, total, expanded = stack.pop()
+            key = depth, total
+
+            if key in results:
+                continue
+
+            if total + high[depth] < minimum or total + low[depth] > maximum:
+                results[key] = self.FALSE
+            elif minimum <= total + low[depth] and total + high[depth] <= maximum:
+                results[key] = self.TRUE
+            elif expanded:
+                results[key] = self.make_node(
+                    positions[depth], (results[depth + 1, total + value] for value in values[depth])
+                )
+            else:
+                stack.append((depth, total, True))
+                stack.extend((depth + 1, total + value, False) for value in set(values[depth]))
+
+        return results[0, 0]
+
     def advance(self, node, pos, choice):
         """
         Condition a diagram on one graph-position choice.
@@ -235,7 +282,7 @@ class ComponentModelCounter:
     longer used by any factor contribute their number of available choices.
     """
 
-    def __init__(self, domains: Mapping[int, Sequence[str]], factors: Sequence[ChoiceFactor]) -> None:
+    def __init__(self, domains: Mapping[int, Sequence[str]], factors: Sequence[Factor]) -> None:
         """
         Parameters
         ----------
@@ -268,7 +315,7 @@ class ComponentModelCounter:
             initial_roots = (self.manager.FALSE,)
         else:
             initial_roots = tuple(
-                self.manager.allowed_factor(factor.relations)
+                factor.compile(self.manager)
                 for factor in factors
             )
 

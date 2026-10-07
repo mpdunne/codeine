@@ -327,3 +327,57 @@ def test_factorised_rejects_unsupported_constraints():
 
     with pytest.raises(ValueError, match='does not support'):
         view.compile()
+
+
+@pytest.mark.parametrize('rna', [False, True])
+@pytest.mark.parametrize('case', range(10))
+def test_factorised_constraint_families_and_combinations(case, rna):
+    from codeine.constraints import ForbiddenMotifs, MaxHomopolymer, TandemRepeats, DirectRepeats, Hairpins
+    from codeine.constraints._gc import _GCConstraint, _GC3Constraint
+    from codeine.constraints.mutations import MutationDistanceConstraint
+    from copy import deepcopy
+
+    reference = 'CTTCGTTTTAAA'.replace('T', 'U') if rna else 'CTTCGTTTTAAA'
+    cases = [
+        [ForbiddenMotifs(['AATT', 'CGT'])],
+        [MaxHomopolymer(3)],
+        [TandemRepeats(2, 2)],
+        [Hairpins(2, 1, 5)],
+        [_GCConstraint(min_count=3, max_count=6)],
+        [_GC3Constraint(min_count=1, max_count=2)],
+        [MutationDistanceConstraint(reference, min_nts=1, max_nts=4, min_codons=1, max_codons=2)],
+        [_GCConstraint(min_count=99)],
+        [DirectRepeats(3), ForbiddenMotifs(['AATT']), MaxHomopolymer(4), _GCConstraint(max_count=6)],
+        [Hairpins(3, 1, 5), _GC3Constraint(min_count=1), MutationDistanceConstraint(reference, max_codons=2)],
+    ]
+    graph = CodonGraph('LRFK', context_l='AT', context_r='GC',
+                       translation_table=TranslationTable(table_id=1, rna=rna))
+    flat = graph.view(constraints=deepcopy(cases[case]))
+    factorised = graph.view(constraints=deepcopy(cases[case]), compiler='factorised', seed=1)
+    expected = list(flat.enumerate())
+
+    assert factorised.n_valid_sequences == len(expected)
+    assert list(factorised.enumerate()) == expected
+    assert factorised[::-1] == expected[::-1]
+
+    if expected:
+        assert all(seq in expected for seq in factorised.sample(20))
+    else:
+        with pytest.raises(ValueError, match='empty'):
+            factorised.sample()
+
+
+def test_factorised_mutation_space_updates_and_copy():
+    from codeine import CodingSpace
+    from codeine.constraints import MaxHomopolymer
+
+    base = CodingSpace('LRFK', compiler='factorised', constraints=[MaxHomopolymer(4)], seed=1)
+    reference = base.sample()
+    mutants = base.mutants(reference, free_positions=[1, 2, 3], max_codons=2)
+    flat = CodingSpace('LRFK', constraints=[MaxHomopolymer(4)]).mutants(
+        reference, free_positions=[1, 2, 3], max_codons=2,
+    )
+
+    assert mutants.compiler == 'factorised'
+    assert list(mutants.enumerate()) == list(flat.enumerate())
+    assert mutants.copy().sample(10) == mutants.sample(10)

@@ -4,6 +4,7 @@ from typing import Dict, Optional
 
 from codeine.constraints.base import Constraint, ConstraintState, DEAD_STATE, SAFE_STATE
 from codeine.graph.base import CodonGraph
+from codeine.graph.factors import CountFactor
 
 
 INITIAL_STATE = 0
@@ -116,6 +117,7 @@ class _CountConstraint(Constraint):
         Link this constraint to a codon graph, resolve count/percentage/fraction
         bounds, and precompute the minimum and maximum remaining counts.
         """
+        self._graph = graph
         n_positions = len(graph.codon_nodes)
         self._n_positions = n_positions
 
@@ -132,7 +134,7 @@ class _CountConstraint(Constraint):
 
         for pos in range(n_positions, 0, -1):
             node = graph.codon_node_by_pos(pos)
-            counts = [self._choice_counts[choice] for choice in node.codons]
+            counts = [self._choice_counts[choice.replace('U', 'T')] for choice in node.codons]
 
             ix = pos - 1
             self._min_remaining[ix] = min(counts) + self._min_remaining[ix + 1]
@@ -193,7 +195,7 @@ class _CountConstraint(Constraint):
         if pos < 1 or pos > self._n_positions:
             return state
 
-        count = state + self._choice_counts[choice]
+        count = state + self._choice_counts[choice.replace('U', 'T')]
 
         # If there's no way to satisfy the bounds from here, we're dead :(
         if count < self._min_viable_count[pos] or count > self._max_viable_count[pos]:
@@ -204,6 +206,17 @@ class _CountConstraint(Constraint):
             return SAFE_STATE
 
         return count
+
+    def factors(self):
+        """
+        Describe the resolved count bounds as one sum over coding positions.
+        """
+        counts = {
+            node.pos: {choice: self._choice_counts[choice.replace('U', 'T')] for choice in node.codons}
+            for node in self._graph.codon_nodes
+        }
+
+        return (CountFactor(counts, self._resolved_min_count, self._resolved_max_count),)
 
     @property
     def is_trivial(self) -> bool:

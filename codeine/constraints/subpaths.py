@@ -3,6 +3,7 @@ from typing import Dict, List, Tuple, NamedTuple, FrozenSet, Optional
 
 from codeine.constraints.base import Constraint, ConstraintState, DEAD_STATE, SAFE_STATE
 from codeine.graph.base import CodonGraph
+from codeine.graph.factors import ChoiceFactor
 
 
 # A step is a decision in the codon graph, i.e. (graph pos, choice)
@@ -152,6 +153,18 @@ class SubPathConstraint(Constraint, ABC):
         self.paths = self._find_paths()
         self.starts = self._build_starts()
         self.transitions = self._build_transitions()
+
+    def factors(self) -> Tuple[ChoiceFactor, ...]:
+        """
+        Return one forbidden-choice factor for each motif or tandem-repeat path.
+
+        A position compared with itself expresses one required choice. All steps
+        of a path must match for that path to violate the constraint.
+        """
+        return tuple(
+            ChoiceFactor(tuple((pos, pos, {choice: frozenset({choice})}) for pos, choice in path.steps))
+            for path in self.paths
+        )
 
     @property
     def is_trivial(self) -> bool:
