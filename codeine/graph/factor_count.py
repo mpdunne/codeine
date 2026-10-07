@@ -244,29 +244,36 @@ class _DecisionDiagrams:
 
     def advance(self, node, pos, choice):
         """
-        Condition a diagram on one graph-position choice.
+        Condition a diagram on one graph-position choice without recursion.
         """
-        if node < 2:
-            return node
+        stack = [(node, False)]
 
-        key = (node, pos, choice)
-        cached = self._restrict_cache.get(key)
-        if cached is not None:
-            return cached
+        while stack:
+            current, expanded = stack.pop()
+            key = current, pos, choice
 
-        node_pos, children = self.nodes[node]
-        if node_pos == pos:
-            result = children[self.choice_ix[pos][choice]]
-        elif self.rank[node_pos] > self.rank[pos]:
-            result = node
-        else:
-            result = self.make_node(
-                node_pos,
-                (self.advance(child, pos, choice) for child in children),
-            )
+            if key in self._restrict_cache:
+                continue
 
-        self._restrict_cache[key] = result
-        return result
+            if current < 2:
+                result = current
+            else:
+                node_pos, children = self.nodes[current]
+
+                if node_pos == pos:
+                    result = children[self.choice_ix[pos][choice]]
+                elif self.rank[node_pos] > self.rank[pos]:
+                    result = current
+                elif expanded:
+                    result = self.make_node(node_pos, (self._restrict_cache[child, pos, choice] for child in children))
+                else:
+                    stack.append((current, True))
+                    stack.extend((child, False) for child in children)
+                    continue
+
+            self._restrict_cache[key] = result
+
+        return self._restrict_cache[node, pos, choice]
 
 
 class ComponentModelCounter:
@@ -310,6 +317,7 @@ class ComponentModelCounter:
         self._component_transitions = {}
 
         self._initial_count = None
+        self._free_counts = {0: 1}
 
         if any(not choices for choices in self.domains.values()):
             initial_roots = (self.manager.FALSE,)
@@ -324,20 +332,29 @@ class ComponentModelCounter:
         self._initial_free_variables = all_variables & ~self._component_supports[self._initial_component_id]
 
     def _support(self, root):
-        cached = self._support_cache.get(root)
-        if cached is not None:
-            return cached
+        stack = [(root, False)]
 
-        if root < 2:
-            result = 0
-        else:
-            pos, children = self.manager.nodes[root]
-            result = 1 << pos
-            for child in children:
-                result |= self._support(child)
+        while stack:
+            node, expanded = stack.pop()
 
-        self._support_cache[root] = result
-        return result
+            if node in self._support_cache:
+                continue
+
+            if node < 2:
+                self._support_cache[node] = 0
+            elif expanded:
+                pos, children = self.manager.nodes[node]
+                support = 1 << pos
+
+                for child in children:
+                    support |= self._support_cache[child]
+
+                self._support_cache[node] = support
+            else:
+                stack.append((node, True))
+                stack.extend((child, False) for child in self.manager.children(node))
+
+        return self._support_cache[root]
 
     def _canonical_roots(self, roots):
         return tuple(sorted(set(
@@ -370,9 +387,20 @@ class ComponentModelCounter:
             mask ^= bit
 
     def _free_count(self, variables):
-        result = 1
-        for pos in self._positions(variables):
+        pending = []
+        remaining = variables
+
+        while remaining not in self._free_counts:
+            bit = remaining & -remaining
+            pending.append((remaining, bit.bit_length() - 1))
+            remaining ^= bit
+
+        result = self._free_counts[remaining]
+
+        for mask, pos in reversed(pending):
             result *= len(self.domains[pos])
+            self._free_counts[mask] = result
+
         return result
 
     def _components(self, roots, scopes):
@@ -419,8 +447,10 @@ class ComponentModelCounter:
         if cached is not None:
             return cached
 
+        roots = self._component_roots[component_id]
+
         occurrences = {}
-        for root in self._component_roots[component_id]:
+        for root in roots:
             for pos in self._positions(self._support(root)):
                 occurrences[pos] = occurrences.get(pos, 0) + 1
 
@@ -443,7 +473,7 @@ class ComponentModelCounter:
 
         roots = self._component_roots[component_id]
         next_component_id = self._get_component_id(
-            self.manager.advance(root, pos, choice)
+            self.manager.advance(root, pos, choice) if self._support(root) & (1 << pos) else root
             for root in roots
         )
         current_support = self._component_supports[component_id]
@@ -456,37 +486,51 @@ class ComponentModelCounter:
         return result
 
     def _count_component(self, component_id):
-        cached = self._component_counts[component_id]
-        if cached is not None:
-            return cached
+        stack = [(component_id, False)]
 
-        self.n_calls += 1
-        roots = self._component_roots[component_id]
+        while stack:
+            current, expanded = stack.pop()
 
-        if self.manager.FALSE in roots:
-            result = 0
-        elif not roots:
-            result = 1
-        else:
-            components = self._split_components(component_id)
-            if len(components) > 1:
-                self.n_splits += 1
-                result = 1
-                for child_component_id in components:
-                    result *= self._count_component(child_component_id)
-            else:
-                pos = self._choose_variable(component_id)
+            if self._component_counts[current] is not None:
+                continue
+
+            roots = self._component_roots[current]
+
+            if self.manager.FALSE in roots:
                 result = 0
-                for choice in self.domains[pos]:
-                    child_component_id, free_variables = self._advance_component(
-                        component_id, pos, choice
-                    )
-                    result += self._free_count(free_variables) * self._count_component(
-                        child_component_id
+            elif not roots:
+                result = 1
+            else:
+                components = self._split_components(current)
+
+                if len(components) > 1:
+                    children = tuple((child, 1) for child in components)
+                else:
+                    pos = self._choose_variable(current)
+                    children = tuple(
+                        (child, self._free_count(free))
+                        for choice in self.domains[pos]
+                        for child, free in (self._advance_component(current, pos, choice),)
                     )
 
-        self._component_counts[component_id] = result
-        return result
+                if not expanded:
+                    stack.append((current, True))
+                    stack.extend((child, False) for child, _multiplier in children)
+                    continue
+
+                if len(components) > 1:
+                    self.n_splits += 1
+                    result = 1
+
+                    for child, _multiplier in children:
+                        result *= self._component_counts[child]
+                else:
+                    result = sum(self._component_counts[child] * multiplier for child, multiplier in children)
+
+            self.n_calls += 1
+            self._component_counts[current] = result
+
+        return self._component_counts[component_id]
 
     def count(self) -> int:
         """

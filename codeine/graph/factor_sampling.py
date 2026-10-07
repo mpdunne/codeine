@@ -117,79 +117,99 @@ class FactorSampler:
         return sum(self._free_log_masses[pos] for pos in self.counter._positions(positions))
 
     def _mass_component(self, component_id):
-        cached = self._mass_cache.get(component_id)
-
-        if cached is not None:
-            return cached
-
         counter = self.counter
-        roots = counter._component_roots[component_id]
+        stack = [(component_id, False)]
 
-        if counter.manager.FALSE in roots:
-            result = -math.inf
-        elif not roots:
-            result = 0.0
-        else:
-            components = counter._split_components(component_id)
+        while stack:
+            current, expanded = stack.pop()
 
-            if len(components) > 1:
-                result = sum(self._mass_component(child_id) for child_id in components)
+            if current in self._mass_cache:
+                continue
+
+            roots = counter._component_roots[current]
+
+            if counter.manager.FALSE in roots:
+                result = -math.inf
+            elif not roots:
+                result = 0.0
             else:
-                pos = counter._choose_variable(component_id)
-                result = self._logsumexp(
-                    self._log_weights[pos][choice]
-                    + self._free_log_mass(free_positions)
-                    + self._mass_component(child_id)
-                    for choice in counter.domains[pos]
-                    for child_id, free_positions in (counter._advance_component(component_id, pos, choice),)
-                )
+                components = counter._split_components(current)
 
-        self._mass_cache[component_id] = result
-        return result
+                if len(components) > 1:
+                    children = tuple((child, 0.0) for child in components)
+                else:
+                    pos = counter._choose_variable(current)
+                    children = tuple(
+                        (child, self._log_weights[pos][choice] + self._free_log_mass(free))
+                        for choice in counter.domains[pos]
+                        for child, free in (counter._advance_component(current, pos, choice),)
+                    )
+
+                if not expanded:
+                    stack.append((current, True))
+                    stack.extend((child, False) for child, _weight in children)
+                    continue
+
+                if len(components) > 1:
+                    result = sum(self._mass_cache[child] for child, _weight in children)
+                else:
+                    result = self._logsumexp(self._mass_cache[child] + weight for child, weight in children)
+
+            self._mass_cache[current] = result
+
+        return self._mass_cache[component_id]
 
     def _plan_component(self, component_id):
-        cached = self._plan_cache.get(component_id)
-
-        if cached is not None:
-            return cached
-
         counter = self.counter
-        roots = counter._component_roots[component_id]
+        stack = [(component_id, False)]
 
-        if not roots:
-            plan = ('and', ())
-        else:
-            components = counter._split_components(component_id)
+        while stack:
+            current, expanded = stack.pop()
+
+            if current in self._plan_cache:
+                continue
+
+            roots = counter._component_roots[current]
+
+            if not roots:
+                self._plan_cache[current] = ('and', ())
+                continue
+
+            components = counter._split_components(current)
 
             if len(components) > 1:
-                plan = ('and', tuple(self._plan_component(child_id) for child_id in components))
+                if not expanded:
+                    stack.append((current, True))
+                    stack.extend((child, False) for child in components)
+                    continue
+
+                plan = ('and', tuple(components))
             else:
-                pos = counter._choose_variable(component_id)
+                pos = counter._choose_variable(current)
                 branches = []
                 log_masses = []
 
                 for choice in counter.domains[pos]:
-                    child_id, free_positions = counter._advance_component(component_id, pos, choice)
-                    log_mass = (
-                        self._log_weights[pos][choice]
-                        + self._free_log_mass(free_positions)
-                        + self._mass_component(child_id)
-                    )
+                    child, free = counter._advance_component(current, pos, choice)
+                    log_mass = self._log_weights[pos][choice] + self._free_log_mass(free) + self._mass_component(child)
 
                     if log_mass == -math.inf:
                         continue
 
-                    branches.append((
-                        choice,
-                        self._plan_component(child_id),
-                        tuple(counter._positions(free_positions)),
-                    ))
+                    branches.append((choice, child, tuple(counter._positions(free))))
                     log_masses.append(log_mass)
 
-                plan = ('or', pos, self._make_sampler(branches, log_masses))
+                if not expanded:
+                    stack.append((current, True))
+                    stack.extend((child, False) for _choice, child, _free in branches)
+                    continue
 
-        self._plan_cache[component_id] = plan
-        return plan
+                items = tuple(branches)
+                plan = ('or', pos, self._make_sampler(items, log_masses))
+
+            self._plan_cache[current] = plan
+
+        return component_id
 
     def prepare_sampling(self):
         """
@@ -237,7 +257,8 @@ class FactorSampler:
         stack = [plan]
 
         while stack:
-            node, free_positions = stack.pop()
+            node_id, free_positions = stack.pop()
+            node = self._plan_cache[node_id]
 
             for pos in free_positions:
                 assignment[pos] = self._draw(self._free_samplers[pos], rng)

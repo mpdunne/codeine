@@ -381,3 +381,20 @@ def test_factorised_mutation_space_updates_and_copy():
     assert mutants.compiler == 'factorised'
     assert list(mutants.enumerate()) == list(flat.enumerate())
     assert mutants.copy().sample(10) == mutants.sample(10)
+
+
+def test_factorised_long_count_constraint():
+    from codeine.constraints._gc import _GC3Constraint
+
+    view = CodonGraph('K' * 1100).view(compiler='factorised', constraints=[_GC3Constraint(max_count=1)], seed=1)
+
+    assert view.n_valid_sequences == 1101
+    assert view[0] == 'AAA' * 1100
+    assert view[-1] == 'AAG' + 'AAA' * 1099
+    assert view.sample() in view
+
+    import pickle
+
+    restored = pickle.loads(pickle.dumps(view))
+
+    assert restored.sample() == view.sample()
