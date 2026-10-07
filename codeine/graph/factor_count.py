@@ -450,3 +450,28 @@ class ComponentModelCounter:
                 self._initial_component_id
             )
         return self._initial_count
+
+    def contains(self, assignment: Mapping[int, str]) -> bool:
+        """
+        Check a complete assignment against the domains and every factor.
+
+        Assignments must include all graph positions, including contexts, and
+        no extra positions. This checks validity independently of sampling
+        weights, without building new diagrams or changing counting caches.
+        """
+        if assignment.keys() != self.domains.keys():
+            return False
+
+        for pos, choice in assignment.items():
+            if choice not in self.manager.choice_ix[pos]:
+                return False
+
+        for root in self._component_roots[self._initial_component_id]:
+            while root >= 2:
+                pos, children = self.manager.nodes[root]
+                root = children[self.manager.choice_ix[pos][assignment[pos]]]
+
+            if root == self.manager.FALSE:
+                return False
+
+        return True

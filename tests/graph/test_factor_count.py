@@ -148,3 +148,31 @@ def test_count_overlapping_unbounded_repeats():
     assert counter.count() == 542376004976640
     assert counter.n_calls < 3000
     assert counter.n_splits > 0
+
+
+@pytest.mark.parametrize('assignment,expected', [
+    ({1: 'AAA', 2: 'AAA', 3: 'CCC'}, False),
+    ({1: 'AAA', 2: 'AAG', 3: 'CCC'}, True),
+    ({1: 'AAG', 2: 'AAA', 3: 'CCC'}, True),
+    ({1: 'AAG', 2: 'AAA'}, False),
+    ({1: 'AAG', 2: 'AAA', 3: 'XXX'}, False),
+    ({1: 'AAG', 2: 'AAA', 3: 'CCC', 4: ''}, False),
+])
+def test_contains_checks_factors_and_all_domains(assignment, expected):
+    counter = ComponentModelCounter(
+        {1: ('AAA', 'AAG'), 2: ('AAA', 'AAG'), 3: ('CCC',)},
+        [ChoiceFactor([(1, 2, {'AAA': frozenset({'AAA'})})])],
+    )
+    nodes_before = len(counter.manager.nodes)
+
+    assert counter.contains(assignment) is expected
+    assert len(counter.manager.nodes) == nodes_before
+
+
+@pytest.mark.parametrize('domains,factors,expected', [
+    ({}, (), True),
+    ({}, (ChoiceFactor([]),), False),
+    ({1: ()}, (), False),
+])
+def test_contains_empty_assignments(domains, factors, expected):
+    assert ComponentModelCounter(domains, factors).contains({}) is expected
