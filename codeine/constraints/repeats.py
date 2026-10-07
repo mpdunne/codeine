@@ -1,8 +1,9 @@
 from abc import ABC
-from typing import Optional
+from typing import Optional, Tuple
 
 from codeine.constraints.base import Constraint, DEAD_STATE, SAFE_STATE
 from codeine.graph.base import CodonGraph
+from codeine.graph.factors import ChoiceFactor
 from codeine.utils.bitmasks import choices_to_nt_bitmasks, pack_nt_bitmasks
 
 
@@ -92,6 +93,42 @@ class RepeatConstraint(Constraint, ABC):
         self.repeat_ends = None
         self.choice_bits = None
         self.transition_keys = None
+
+    def factors(self) -> Tuple[ChoiceFactor, ...]:
+        """
+        Return one factor per candidate repeat in the linked graph.
+
+        Each candidate is a pair of sequence windows that could form a repeat.
+        Its factor rejects choices only when all comparisons between the windows
+        match. These are the same requirements used by stateful traversal,
+        converted from choice bitmasks to explicit codon or context choices.
+
+        Call link first. Direct and inverted repeats both use graph positions
+        and graph-alphabet choices here; inverted comparisons are normalised
+        when the candidate requirements are built.
+        """
+        factors = []
+
+        for _start_l, _start_r, requirements in self.repeats:
+            relations = []
+
+            for reference_pos, entries in requirements.items():
+                for compare_pos, allowed_by_reference_choice in entries:
+
+                    choices = {
+                        reference_choice: frozenset(
+                            compare_choice
+                            for compare_choice, bit in self.choice_bits[compare_pos].items()
+                            if allowed_bits & bit
+                        )
+                        for reference_choice, allowed_bits in allowed_by_reference_choice.items()
+                    }
+
+                    relations.append((reference_pos, compare_pos, choices))
+
+            factors.append(ChoiceFactor(relations))
+
+        return tuple(factors)
 
     @property
     def initial_state(self):

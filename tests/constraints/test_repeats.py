@@ -1,6 +1,9 @@
 import random
+
+from itertools import product
 import pytest
 
+from codeine.constraints.base import DEAD_STATE
 from codeine.constraints.repeats import DirectRepeats, InvertedRepeats, RepeatConstraint
 from codeine.graph.base import CodonGraph
 from codeine.translation.tables import TranslationTable
@@ -687,3 +690,73 @@ def test_inverted_repeat_constraint_sampling(aa_seq, repeat_length, min_distance
     for _ in range(100):
         cds = view.sample()
         assert not contains_inverted_repeat(cds, repeat_length, min_distance=min_distance, max_distance=max_distance)
+
+
+###############################
+# Local choice factors
+###############################
+
+
+@pytest.mark.parametrize('constraint_type,contains_repeat', [
+    (DirectRepeats, contains_direct_repeat),
+    (InvertedRepeats, contains_inverted_repeat),
+])
+@pytest.mark.parametrize('rna', [False, True])
+@pytest.mark.parametrize('aa_seq,context_l,context_r,fixed_codons', [
+    ('KK', '', '', None),
+    ('LR', '', '', None),
+    ('M', 'AAA', 'AAA', None),
+    ('FF', 'AT', 'AT', None),
+    ('KI', 'GC', 'TT', {1: 'AAA', 2: ['ATT', 'ATC']}),
+    ('W', '', '', None),
+])
+@pytest.mark.parametrize('repeat_length', [1, 2, 3, 5])
+@pytest.mark.parametrize('min_distance,max_distance', [(0, None), (1, 3), (0, 0)])
+def test_repeat_factors_match_traversal_and_sequence_checks(
+    constraint_type, contains_repeat, rna, aa_seq, context_l, context_r,
+    fixed_codons, repeat_length, min_distance, max_distance,
+):
+    graph = CodonGraph(
+        aa_seq,
+        context_l=context_l,
+        context_r=context_r,
+        fixed_codons=fixed_codons,
+        translation_table=TranslationTable(table_id=1, rna=rna),
+    )
+    constraint = constraint_type(repeat_length, min_distance, max_distance)
+    constraint.link(graph)
+
+    factors = constraint.factors()
+    nodes = [node for node in graph.nodes if node is not graph.end_node]
+
+    for choices in product(*(node.transitions for node in nodes)):
+        assignments = {node.pos: choice for node, choice in zip(nodes, choices)}
+        state = constraint.initial_state
+
+        for node, choice in zip(nodes, choices):
+            state = constraint.advance(state, node.pos, choice)
+
+        rejected = any(factor.rejects(assignments) for factor in factors)
+        expected = contains_repeat(''.join(choices), repeat_length, min_distance, max_distance)
+
+        assert rejected == (state == DEAD_STATE) == expected
+
+
+@pytest.mark.parametrize('constraint_type', [DirectRepeats, InvertedRepeats])
+def test_repeat_factors_with_no_candidates(constraint_type):
+    constraint = constraint_type(10)
+    constraint.link(CodonGraph('M'))
+
+    assert constraint.factors() == ()
+
+
+def test_repeat_factors_remain_valid_after_relinking():
+    constraint = DirectRepeats(3)
+    constraint.link(CodonGraph('KK'))
+    factors = constraint.factors()
+
+    constraint.link(CodonGraph('M'))
+
+    assert constraint.factors() == ()
+    assert any(factor.rejects({0: '', 1: 'AAA', 2: 'AAA', 3: ''}) for factor in factors)
+    assert not any(factor.rejects({0: '', 1: 'AAA', 2: 'AAG', 3: ''}) for factor in factors)
