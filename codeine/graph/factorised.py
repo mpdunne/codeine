@@ -22,9 +22,15 @@ class FactorisedCompiledView:
 
     @property
     def n_valid_sequences(self) -> int:
+        """
+        Count valid sequences independently of their sampling weights.
+        """
         return self.counter.count()
 
     def contains(self, seq: str) -> bool:
+        """
+        Check a coding sequence, normalising it to the graph's DNA/RNA alphabet.
+        """
         seq = self.graph.tt.normalise_sequence(seq)
 
         if len(seq) != len(self.graph.aa_seq) * 3:
@@ -37,25 +43,50 @@ class FactorisedCompiledView:
         return self.counter.contains(assignment)
 
     def _sequence(self, assignment) -> str:
+        """
+        Join coding choices, excluding the fixed context nodes.
+        """
         return ''.join(assignment[pos] for pos in range(1, len(self.graph.aa_seq) + 1))
 
     def sample(self, rng: random.Random, n: Optional[int] = None) -> Union[str, List[str]]:
+        """
+        Sample one sequence or a batch using the caller's random generator.
+        """
         if n is None:
             return self._sequence(self.sampler.sample(rng))
 
-        return [self._sequence(assignment) for assignment in self.sampler.sample(rng, n)]
+        plan = self.sampler.prepare_sampling()
+
+        if n < 0:
+            raise ValueError('n must be non-negative.')
+
+        # Convert each assignment immediately instead of holding a whole batch
+        # of position dictionaries alongside the resulting coding sequences.
+        return [self._sequence(self.sampler._sample(plan, rng)) for _ in range(n)]
 
     def enumerate(self) -> Iterator[str]:
+        """
+        Yield valid coding sequences in graph order.
+        """
         return self.enumerate_range()
 
     def enumerate_range(self, start: int = 0, stop: Optional[int] = None) -> Iterator[str]:
+        """
+        Yield the requested range without enumerating the preceding sequences.
+        """
         for assignment in self.counter.enumerate_range(start, stop):
             yield self._sequence(assignment)
 
     def sequence_at(self, index: int) -> str:
+        """
+        Return one sequence by index, accepting negative indices.
+        """
         return self._sequence(self.counter.assignment_at(index))
 
     def sequences_at(self, index_slice: slice) -> List[str]:
+        """
+        Return sequences selected by a Python slice.
+        """
         start, stop, step = index_slice.indices(self.n_valid_sequences)
 
         if step == 1:
@@ -85,6 +116,9 @@ class FactorisedCompiler:
         }
 
     def _compiled(self, counter) -> FactorisedCompiledView:
+        """
+        Pair completed counts with a fresh, lazily prepared weighted sampler.
+        """
         weights = {
             node.pos: {codon: self.view.codon_weights.weights[codon] for codon in node.codons}
             for node in self.graph.codon_nodes
@@ -94,6 +128,9 @@ class FactorisedCompiler:
         return FactorisedCompiledView(self.graph, counter, FactorSampler(counter, weights))
 
     def compile(self) -> FactorisedCompiledView:
+        """
+        Link constraints, collect their factors and count the pinned space.
+        """
         factors = []
 
         for constraint in self.view.constraints:

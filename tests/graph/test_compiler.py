@@ -1,10 +1,17 @@
 import random
+import pickle
+
+from copy import deepcopy
 
 import pytest
 
 from dataclasses import replace
 from unittest.mock import MagicMock
 
+from codeine import CodingSpace
+from codeine.constraints import DirectRepeats, ForbiddenMotifs, Hairpins, MaxHomopolymer, TandemRepeats
+from codeine.constraints._gc import _GCConstraint, _GC3Constraint
+from codeine.constraints.mutations import MutationDistanceConstraint
 from codeine.constraints.base import Constraint, DEAD_STATE, SAFE_STATE
 from codeine.graph.base import CodonGraph
 from codeine.graph.compiler import ViewCompiler
@@ -260,7 +267,6 @@ def test_sequence_at_raises_on_unexpected_dead_end():
 @pytest.mark.parametrize('rna', [False, True])
 @pytest.mark.parametrize('contexts', [('', ''), ('AT', 'GC')])
 def test_factorised_compiled_view_matches_flat_operations(rna, contexts):
-    from codeine.constraints import DirectRepeats
 
     graph = CodonGraph('LRFK', context_l=contexts[0], context_r=contexts[1],
                        translation_table=TranslationTable(table_id=1, rna=rna))
@@ -287,8 +293,6 @@ def test_factorised_compiled_view_matches_flat_operations(rna, contexts):
 
 
 def test_factorised_lifecycle_and_pickle():
-    import pickle
-    from codeine.constraints import DirectRepeats
 
     view = CodonGraph('KKK').view(compiler='factorised', seed=42)
     view.compile()
@@ -332,10 +336,6 @@ def test_factorised_rejects_unsupported_constraints():
 @pytest.mark.parametrize('rna', [False, True])
 @pytest.mark.parametrize('case', range(10))
 def test_factorised_constraint_families_and_combinations(case, rna):
-    from codeine.constraints import ForbiddenMotifs, MaxHomopolymer, TandemRepeats, DirectRepeats, Hairpins
-    from codeine.constraints._gc import _GCConstraint, _GC3Constraint
-    from codeine.constraints.mutations import MutationDistanceConstraint
-    from copy import deepcopy
 
     reference = 'CTTCGTTTTAAA'.replace('T', 'U') if rna else 'CTTCGTTTTAAA'
     cases = [
@@ -368,8 +368,6 @@ def test_factorised_constraint_families_and_combinations(case, rna):
 
 
 def test_factorised_mutation_space_updates_and_copy():
-    from codeine import CodingSpace
-    from codeine.constraints import MaxHomopolymer
 
     base = CodingSpace('LRFK', compiler='factorised', constraints=[MaxHomopolymer(4)], seed=1)
     reference = base.sample()
@@ -384,7 +382,6 @@ def test_factorised_mutation_space_updates_and_copy():
 
 
 def test_factorised_long_count_constraint():
-    from codeine.constraints._gc import _GC3Constraint
 
     view = CodonGraph('K' * 1100).view(compiler='factorised', constraints=[_GC3Constraint(max_count=1)], seed=1)
 
@@ -392,8 +389,6 @@ def test_factorised_long_count_constraint():
     assert view[0] == 'AAA' * 1100
     assert view[-1] == 'AAG' + 'AAA' * 1099
     assert view.sample() in view
-
-    import pickle
 
     restored = pickle.loads(pickle.dumps(view))
 
