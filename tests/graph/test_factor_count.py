@@ -176,3 +176,50 @@ def test_contains_checks_factors_and_all_domains(assignment, expected):
 ])
 def test_contains_empty_assignments(domains, factors, expected):
     assert ComponentModelCounter(domains, factors).contains({}) is expected
+
+
+@pytest.mark.parametrize('seed', range(10))
+def test_indexing_and_ranges_preserve_graph_order(seed):
+    rng = random.Random(seed)
+    domains = {pos: ('AAA', 'AAG') for pos in range(5)}
+    factors = [ChoiceFactor([(rng.randrange(5), rng.randrange(5), {'AAA': frozenset({'AAA'})})])]
+    counter = ComponentModelCounter(domains, factors)
+    expected = [
+        dict(zip(domains, choices))
+        for choices in product(*domains.values())
+        if not any(factor.rejects(dict(zip(domains, choices))) for factor in factors)
+    ]
+
+    assert list(counter.enumerate_range()) == expected
+
+    for index, assignment in enumerate(expected):
+        assert counter.assignment_at(index) == assignment
+        assert counter.assignment_at(index - len(expected)) == assignment
+
+    assert list(counter.enumerate_range(2, 5)) == expected[2:5]
+    assert list(counter.enumerate_range(2, 2)) == []
+
+    for start, stop in [(-1, 0), (2, 1), (0, len(expected) + 1)]:
+        with pytest.raises(IndexError):
+            list(counter.enumerate_range(start, stop))
+
+    for index in [-len(expected) - 1, len(expected)]:
+        with pytest.raises(IndexError):
+            counter.assignment_at(index)
+
+
+def test_indexing_large_unconstrained_space():
+    domains = {pos: ('AAA', 'AAG') for pos in range(1100)}
+    counter = ComponentModelCounter(domains, ())
+
+    assert counter.assignment_at(-1) == {pos: 'AAG' for pos in domains}
+    assert list(counter.enumerate_range(counter.count() - 1)) == [counter.assignment_at(-1)]
+
+
+def test_enumerating_empty_space():
+    counter = ComponentModelCounter({1: ('AAA',)}, [ChoiceFactor([])])
+
+    assert list(counter.enumerate_range()) == []
+
+    with pytest.raises(IndexError):
+        counter.assignment_at(0)

@@ -475,3 +475,75 @@ class ComponentModelCounter:
                 return False
 
         return True
+
+    def assignment_at(self, index: int) -> Dict[int, str]:
+        """
+        Return the assignment at an index in graph order, including negative indices.
+        """
+        count = self.count()
+
+        if index < -count or index >= count:
+            raise IndexError(f'Sequence index {index} out of range for {count} valid sequences.')
+
+        if index < 0:
+            index += count
+
+        return next(self.enumerate_range(index, index + 1))
+
+    def enumerate_range(self, start: int = 0, stop=None):
+        """
+        Yield assignments in graph order, skipping branches outside the range.
+
+        The counter may choose variables in any order internally. Enumeration
+        always follows graph positions and their original choice order. Counts
+        of remaining assignments let us skip entire branches without generating
+        the sequences before start. The traversal uses a stack for long proteins.
+        """
+        count = self.count()
+        stop = count if stop is None else stop
+
+        if start < 0 or stop < start or stop > count:
+            raise IndexError('Enumeration range is out of bounds.')
+
+        if start == stop:
+            return
+
+        positions = tuple(sorted(self.domains))
+        remaining = [0] * (len(positions) + 1)
+
+        for depth in range(len(positions) - 1, -1, -1):
+            remaining[depth] = remaining[depth + 1] | (1 << positions[depth])
+
+        assignment = {}
+        to_skip = start
+        to_yield = stop - start
+        stack = [(0, self._initial_component_id, None)]
+
+        while stack:
+            depth, component_id, choices = stack.pop()
+
+            if depth == len(positions):
+                yield assignment.copy()
+                to_yield -= 1
+
+                if not to_yield:
+                    return
+
+                continue
+
+            pos = positions[depth]
+            choices = iter(self.domains[pos]) if choices is None else choices
+
+            for choice in choices:
+                child_id, _free = self._advance_component(component_id, pos, choice)
+                free = remaining[depth + 1] & ~self._component_supports[child_id]
+                branch_count = self._count_component(child_id) * self._free_count(free)
+
+                if to_skip >= branch_count:
+                    to_skip -= branch_count
+                    continue
+
+                assignment[pos] = choice
+                stack.append((depth, component_id, choices))
+                stack.append((depth + 1, child_id, None))
+                break
