@@ -25,7 +25,9 @@ The suite is broad enough to expose different compiler behaviour without taking 
 - one deliberately awkward repeat-heavy stress case;
 - two representative sfGFP mutation spaces.
 
-The individual cases are intentionally not a protein × constraint matrix. GFP covers motif and ordinary homopolymer constraints; luciferase adds a stricter homopolymer case and provides a longer ordinary coding space for inverted-repeat and hairpin constraints; collagen and elastin provide real repetitive proteins for tandem and direct-repeat constraints. SpCas9 is retained as the deliberately long real-world case rather than being used as the default substrate. There is no synthetic-protein matrix.
+The individual cases are intentionally not a protein × constraint matrix. GFP covers motif and ordinary homopolymer constraints; luciferase adds a stricter homopolymer case and provides a longer ordinary coding space for inverted-repeat and hairpin constraints; collagen and elastin provide real repetitive proteins for tandem and direct-repeat constraints. SpCas9 is retained as the deliberately long real-world case rather than being used as the default substrate. A small artificial-repeat group also reproduces the original factorisation
+experiments: MIKEYMIKEY, MIKEYAAAAAMIKEY, and MIKEYSASSAFRASMIKEYSASSAFRAS,
+including a weighted version of the last case.
 
 The full practical stack is exercised on several proteins rather than only one: sfGFP, luciferase, caplacizumab and SpCas9. The SpCas9 case uses its documented constraint stack. The full benchmark suite also includes the heavier elastin direct-repeat case.
 
@@ -74,3 +76,7 @@ outside the timed operation. A timeout is therefore a workload timeout, not a
 lower bound on that operation's steady-state latency. Counts are recorded as
 strings and comparisons flag disagreements. Schema 1 timings included setup in
 every operation; comparisons reject mixing the two definitions.
+
+Mutation benchmarks use the first valid sequence as their reference, rather than
+an engine-dependent random sample, so both engines receive identical workloads.
+Run the artificial repeat cases with ``--case artificial``.

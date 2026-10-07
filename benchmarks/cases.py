@@ -21,6 +21,8 @@ from benchmarks.proteins import ANTIBODIES, DIFFICULT_PROTEINS, LARGE_PROTEINS, 
 
 CONSTRAINT_SETS = {
     'none': [],
+    'artificial-repeat-9': [DirectRepeats(9)],
+    'artificial-repeat-15': [DirectRepeats(15)],
 
     # Individual constraints at useful levels of stringency.
     'motifs-small': [ForbiddenMotifs(['GAATTC', 'GGATCC', 'GGTCTC'])],
@@ -100,7 +102,9 @@ class Case:
         if self.mutation_fraction is None:
             return space
 
-        coding_sequence = space.sample()
+        # Seeded samples differ between engines. Use the same ordered reference
+        # so mutation benchmarks describe identical spaces for both compilers.
+        coding_sequence = space[0]
         free_count = max(1, int(len(self.sequence) * self.mutation_fraction))
         return space.mutants(coding_sequence, free_positions=range(1, free_count + 1), max_codons=self.max_codons)
 
@@ -147,6 +151,14 @@ def all_cases() -> List[Case]:
         Case('full/luciferase/gene-synthesis', 'full', luciferase, 'gene-synthesis'),
         Case('full/caplacizumab/gene-synthesis', 'full', caplacizumab, 'gene-synthesis'),
         Case('full/spcas9/basic', 'full', spcas9, 'basic', quick=False),
+
+        # Artificial repeats from the original factorisation experiments.
+        Case('artificial/mikey-repeat-9', 'artificial', 'MIKEYMIKEY', 'artificial-repeat-9'),
+        Case('artificial/mikey-spacer-repeat-9', 'artificial', 'MIKEYAAAAAMIKEY', 'artificial-repeat-9'),
+        Case('artificial/mikey-sassafras-repeat-15', 'artificial',
+             'MIKEYSASSAFRASMIKEYSASSAFRAS', 'artificial-repeat-15'),
+        Case('artificial/mikey-sassafras-repeat-15-weighted', 'artificial',
+             'MIKEYSASSAFRASMIKEYSASSAFRAS', 'artificial-repeat-15', CodonWeights.ecoli()),
 
         # A deliberately awkward repeat-heavy sequence retained as a stress case.
         Case('pathological/hard/direct-repeat-18', 'pathological', DIFFICULT_PROTEINS['hard'], 'direct-repeat-18'),
